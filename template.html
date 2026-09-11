@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude Code Werkzeug-Inventar</title>
+<title>3zero Tool-Inventar</title>
 <style>
 /* Werte aus dem 3zero-Design-Kit (BRAND.md / brand-tokens.css) */
 :root {
@@ -32,19 +32,23 @@ a:hover { color: var(--cyan); }
 code { font: 12.5px/1.4 var(--mono); background: var(--bg-gray); padding: 1px 4px; border-radius: 2px; color: var(--text-dark); overflow-wrap: anywhere; }
 h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 
-.hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 40px 30px; }
-.hero h1 { color: #fff; font-weight: 300; font-size: clamp(1.4rem, 3.5vw, 2.2rem); }
-.hero h1 strong { font-weight: 700; }
-.hero p { margin: 10px 0 0; color: #d6d6d6; font-size: 14px; }
+.kopf { position: sticky; top: 0; z-index: 100; }
+.hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 14px 30px; }
+.hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.hero .logo { display: block; width: 140px; height: auto; }
+.hero h1 { color: #fff; font-weight: 300; font-size: clamp(1.3rem, 3vw, 1.8rem); }
+.hero p { margin: 2px 0 0; color: #d6d6d6; font-size: 13px; }
 .wrap { max-width: 1100px; margin: 0 auto; }
 
-nav { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
+nav { background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
 nav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding-block: 12px; }
-nav a { color: var(--text-dark); text-decoration: none; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-nav a:hover { color: var(--cyan); }
+nav a { position: relative; color: var(--text-dark); text-decoration: none; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+nav a::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: var(--cyan); transform: scaleX(0); transition: transform .15s; }
+nav a:hover, nav a[aria-current] { color: var(--cyan); }
+nav a:hover::after, nav a[aria-current]::after { transform: scaleX(1); }
 
 main { padding-inline: 30px; }
-section { padding-block: 44px 8px; scroll-margin-top: 48px; }
+section { padding-block: 44px 8px; scroll-margin-top: var(--kopf, 0px); }
 .label { color: var(--cyan); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
 section > .wrap > h2 { font-size: 22px; font-weight: 400; margin-bottom: 10px; }
 .intro { max-width: 760px; margin: 0 0 20px; }
@@ -104,8 +108,19 @@ tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
 
 .befehl { display: flex; gap: 8px; align-items: flex-start; }
 .befehl code { flex: 1; }
-button.kopieren { font: 600 12px var(--body); color: var(--text-dark); background: #fff; border: 1px solid var(--cool-gray); border-radius: 2px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
-button.kopieren:hover { border-color: var(--cyan); color: var(--cyan-dark); }
+button.kopieren, button.zeilenknopf { font: 600 12px var(--body); color: var(--text-dark); background: #fff; border: 1px solid var(--cool-gray); border-radius: 2px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+button.kopieren:hover, button.zeilenknopf:hover { border-color: var(--cyan); color: var(--cyan-dark); }
+.btn { font: 600 14px var(--body); text-transform: uppercase; letter-spacing: .05em; padding: 10px 22px; border-radius: var(--radius); border: 1px solid transparent; cursor: pointer; }
+.btn-primary { background: var(--cyan); color: #fff; }
+.btn-primary:hover { background: var(--cyan-dark); }
+.btn-outline { background: #fff; color: var(--cyan); border-color: var(--cyan); }
+.btn-outline:hover { background: var(--cyan); color: #fff; }
+button:disabled { opacity: .45; cursor: default; pointer-events: none; }
+.aktionsleiste { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; }
+select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: #fff; }
+select.wahl.gesetzt { border-color: var(--cyan); font-weight: 600; }
+td details summary { white-space: nowrap; cursor: pointer; }
+td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 420px; }
 
 .empf-gruppe { margin-top: 30px; }
 .empf-gruppe > .kopf { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
@@ -139,11 +154,10 @@ footer ul { margin: 6px 0 0; padding-left: 18px; }
 footer li { margin: 4px 0; }
 
 @media (max-width: 640px) {
-  .hero { padding: 28px 20px; }
+  .hero { padding: 12px 20px; }
   nav, main { padding-inline: 20px; }
   nav .wrap { flex-wrap: nowrap; overflow-x: auto; }
   nav a { white-space: nowrap; }
-  section { scroll-margin-top: 44px; }
   footer { padding: 24px 20px 36px; }
   .balken .zeile { grid-template-columns: 110px 1fr 70px; }
   .detail dl { grid-template-columns: 1fr; }
@@ -152,13 +166,15 @@ footer li { margin: 4px 0; }
 </style>
 </head>
 <body>
+<div class="kopf">
 <header class="hero"><div class="wrap">
-  <h1><strong>Claude Code</strong> Werkzeug-Inventar</h1>
-  <p id="stand"></p>
+  <img class="logo" src="__LOGO__" alt="3zero IT-Consulting" width="140" height="53">
+  <div><h1>Tool-Inventar</h1><p id="stand"></p></div>
 </div></header>
 <nav aria-label="Abschnitte"><div class="wrap">
   <a href="#ueberblick">Überblick</a>
   <a href="#empfehlungen">Empfehlungen</a>
+  <a href="#ausfuehren" id="nav-ausfuehren" hidden>Ausführen<span id="zahl-aktionen"></span></a>
   <a href="#ueberschneidungen">Überschneidungen</a>
   <a href="#mcp">MCP-Server</a>
   <a href="#plugins">Plugins</a>
@@ -166,13 +182,17 @@ footer li { margin: 4px 0; }
   <a href="#eingebaut">Eingebaut</a>
   <a href="#hinweise">Hinweise</a>
 </div></nav>
+</div>
 <main id="app"></main>
 <footer id="fuss"></footer>
 
 <script id="daten" type="application/json">__DATEN__</script>
+<script id="token" type="application/json">null</script>
 <script>
 "use strict";
 const D = JSON.parse(document.getElementById("daten").textContent);
+/* Setzt server.py beim Ausliefern; als Datei geöffnet bleibt es null und das Dashboard nur lesbar */
+const TOKEN = JSON.parse(document.getElementById("token").textContent);
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -242,6 +262,39 @@ const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 const tokensGesamt = D.skills.reduce((s, e) => s + e.tokens, 0);
 const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) ? s + (e.tokens || 0) : s, 0);
 
+/* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
+const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
+const REIHENFOLGE = ["deinstallieren", "deaktivieren", "nur manuell"];
+const SPEICHER = "3zero-tool-inventar:auswahl";
+let abweichung = {};
+try { abweichung = JSON.parse(localStorage.getItem(SPEICHER)) || {}; } catch (_) { /* ohne Speicher gilt die Vorbelegung */ }
+function gewaehlt(e) {
+  const a = e.id in abweichung ? abweichung[e.id] : STANDARD[e.bewertung?.empfehlung];
+  return a && e.aktionen?.[a] ? a : "";
+}
+function waehle(id, a) {
+  const e = INDEX.get(id);
+  if (a === (STANDARD[e.bewertung?.empfehlung] || "")) delete abweichung[id];
+  else abweichung[id] = a;
+  try { localStorage.setItem(SPEICHER, JSON.stringify(abweichung)); } catch (_) { /* dito */ }
+}
+function befehlText(e, a) {
+  const s = e.aktionen[a];
+  if (s.override) return `~/.claude/settings.json → "skillOverrides": {"${e.name}": "${s.override}"}`;
+  const argv = s.argv.map(x => /^[\w@%+=:,./-]+$/.test(x) ? x : `"${x}"`).join(" ");
+  return s.cwd ? `cd "${s.cwd}" && ${argv}` : argv;
+}
+const SP = TOKEN ? 1 : 0; /* zusätzliche Spalte „Aktion“ */
+const WAHL_KOPF = TOKEN ? "<th>Aktion</th>" : "";
+function wahlZelle(e) {
+  if (!TOKEN) return "";
+  const namen = Object.keys(e.aktionen || {});
+  if (!namen.length) return '<td><span class="leer">–</span></td>';
+  const g = gewaehlt(e);
+  return `<td><select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}">
+    <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${a}</option>`).join("")}</select></td>`;
+}
+
 function abschnitt(id, label, titel, inhalt, intro) {
   return `<section id="${id}"><div class="wrap"><p class="label">${esc(label)}</p><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
 }
@@ -255,7 +308,7 @@ function renderUeberblick() {
   if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong> ${D.unbewertet.map(esc).join(", ")}.`);
   if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong> ${D.entfallen.map(esc).join(", ")}.`);
   if (!D.live_status) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
-  const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in Claude Code <code>/tool-inventar</code> aus, um die Bewertung nachzuziehen.</div>` : "";
+  const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in Claude Code <code>/3zero-tool-inventar</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
   const kpis = `<div class="kpis">
     <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server verbunden / eingetragen</div></div>
@@ -300,10 +353,10 @@ function renderEmpfehlungen() {
       ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
     html += `<div class="empf-gruppe"><div class="kopf"><h3>${empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
       <p>${texte[typ]}</p>
-      <div class="tabelle"><table><thead><tr><th>Name</th><th>Warum</th><th>Befehl</th></tr></thead><tbody>
+      <div class="tabelle"><table><thead><tr><th>Name</th><th>Warum</th><th>Befehl</th>${WAHL_KOPF}</tr></thead><tbody>
       ${liste.map(e => `<tr><td class="name" style="min-width:190px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
         <td style="min-width:260px">${txt(e.bewertung.grund || "")}</td>
-        <td style="min-width:260px">${befehlZeile(e.befehl)}</td></tr>`).join("")}
+        <td style="min-width:260px">${befehlZeile(e.befehl)}</td>${wahlZelle(e)}</tr>`).join("")}
       </tbody></table></div></div>`;
     if (typ === "nur manuell") html += overrideBlock();
   }
@@ -346,8 +399,8 @@ function detailZeile(spalten, paare) {
 
 function renderMcp() {
   const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td>
-      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td></tr>` +
-    detailZeile(5, [
+      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
+    detailZeile(5 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
@@ -356,7 +409,7 @@ function renderMcp() {
       ["Entfernen", befehlZeile(m.befehl)],
     ])).join("");
   return abschnitt("mcp", "Bestand", "MCP-Server",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     "Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. Zeile anklicken für Details.");
 }
 
@@ -370,8 +423,8 @@ function renderPlugins() {
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
     return `<tr class="haupt"><td class="name"><strong>${esc(p.name)}</strong><div class="klein">${esc(p.marktplatz)}</div></td>
       <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}</td><td class="klein">${teile || "–"}</td>
-      <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td></tr>` +
-      detailZeile(8, [
+      <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td>${wahlZelle(p)}</tr>` +
+      detailZeile(8 + SP, [
         ["Beschreibung", esc(p.beschreibung)],
         ["Begründung", txt(p.bewertung?.grund || "")],
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
@@ -384,7 +437,7 @@ function renderPlugins() {
       ]);
   }).join("");
   return abschnitt("plugins", "Bestand", "Plugins",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     "„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen in jeder Sitzung belegen.");
 }
 
@@ -402,7 +455,7 @@ function renderSkillsRahmen() {
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl" id="f-anzahl"></span></div>`;
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
-    .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("");
+    .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Bestand", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
     "Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle und alles, was Plugins mitbringen. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst.");
@@ -428,8 +481,8 @@ function skillsFiltern() {
     return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
         ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}</td>
       <td>${esc(herkunft)}</td><td class="nowrap klein">${esc(s.aufruf)}</td><td class="zahl">${kontext}</td>
-      <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td></tr>` +
-      detailZeile(7, [
+      <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
+      detailZeile(7 + SP, [
         ["Beschreibung", esc(s.beschreibung)],
         ["Begründung", txt(s.bewertung?.grund || "")],
         ["Herkunft", s.quelle.url ? link(s.quelle.url, s.quelle.repo || s.quelle.url) : esc(s.quelle.repo || s.quelle.art)],
@@ -447,7 +500,7 @@ function renderEingebaut() {
     <td class="zahl">${b.nutzung ? `${zahl(b.nutzung.anzahl)}× <span class="klein">· ${datum(b.nutzung.zuletzt)}</span>` : '<span class="leer">nie</span>'}</td></tr>`).join("");
   return abschnitt("eingebaut", "Zum Vergleich", "In Claude Code eingebaute Skills",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Was er macht</th><th class="zahl">Genutzt</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    `Kommen mit Claude Code, lassen sich nicht deinstallieren und sind hier nur aufgeführt, weil sie sich mit installierten Werkzeugen überschneiden. Liste gepflegt über <code>/tool-inventar</code>, Stand ${datum(D.bewertung_stand)}.`);
+    `Kommen mit Claude Code, lassen sich nicht deinstallieren und sind hier nur aufgeführt, weil sie sich mit installierten Werkzeugen überschneiden. Liste gepflegt über <code>/3zero-tool-inventar</code>, Stand ${datum(D.bewertung_stand)}.`);
 }
 
 function renderHinweise() {
@@ -456,12 +509,63 @@ function renderHinweise() {
   return abschnitt("hinweise", "Hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
 }
 
+/* Tab „Ausführen“: gewählte Aktionen einzeln oder alle nacheinander über server.py starten */
+const ERGEBNIS = new Map();
+let beschaeftigt = false, meldung = "";
+function renderAusfuehren() {
+  return abschnitt("ausfuehren", "Ausführen", "Gewählte Aktionen", '<div id="warteschlange"></div>',
+    "Vorbelegt aus den Empfehlungen, ändern lässt sich die Auswahl in der Spalte „Aktion“ der anderen Tabs. Deinstalliertes kommt nur per Neuinstallation zurück, Deaktiviertes per Einschalten. Alles wirkt ab der nächsten Claude-Code-Sitzung.");
+}
+function warteschlange() {
+  return ALLE.filter(gewaehlt).sort((a, b) =>
+    REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
+}
+function renderWarteschlange() {
+  const liste = warteschlange();
+  const offen = liste.filter(e => !ERGEBNIS.get(e.id)?.ok);
+  document.getElementById("zahl-aktionen").textContent = offen.length ? ` (${offen.length})` : "";
+  const zeilen = liste.map(e => {
+    const a = gewaehlt(e), r = ERGEBNIS.get(e.id);
+    const status = !r ? '<span class="leer">offen</span>'
+      : r.laeuft ? '<span class="status">läuft …</span>'
+      : r.ok ? '<span class="status st-an"><span aria-hidden="true">●</span> erledigt</span>'
+      : '<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span>';
+    const ausgabe = r?.ausgabe ? `<details${r.ok ? "" : " open"}><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>` : "";
+    return `<tr><td class="name"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
+      <td class="nowrap">${esc(a)}</td><td style="min-width:260px"><code>${esc(befehlText(e, a))}</code></td><td>${status}${ausgabe}</td>
+      <td><button type="button" class="zeilenknopf" data-ausfuehren="${esc(e.id)}"${beschaeftigt || r?.ok ? " disabled" : ""}>ausführen</button></td></tr>`;
+  }).join("");
+  document.getElementById("warteschlange").innerHTML = `<div class="aktionsleiste">
+      <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen.length ? " disabled" : ""}>alle ${offen.length} ausführen</button>
+      <button type="button" class="btn btn-outline" id="neu-einlesen"${beschaeftigt ? " disabled" : ""}>Inventar neu einlesen</button>
+      <span class="klein">${esc(meldung)}</span></div>` +
+    (liste.length ? `<div class="tabelle"><table><thead><tr><th>Name</th><th>Aktion</th><th>Befehl</th><th>Status</th><th></th></tr></thead><tbody>${zeilen}</tbody></table></div>`
+      : '<p class="leer">Keine Aktion gewählt.</p>');
+}
+async function api(pfad, daten) {
+  try {
+    const r = await fetch(pfad, { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" }, body: daten && JSON.stringify(daten) });
+    return await r.json();
+  } catch (_) {
+    return { ok: false, ausgabe: "Keine Antwort vom Server. Läuft python3 server.py noch?" };
+  }
+}
+async function mitSperre(arbeit) {
+  beschaeftigt = true; renderWarteschlange();
+  try { await arbeit(); } finally { beschaeftigt = false; renderWarteschlange(); }
+}
+async function fuehreAus(e) {
+  ERGEBNIS.set(e.id, { laeuft: true }); renderWarteschlange();
+  ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion: gewaehlt(e) }));
+}
+
 function renderFuss() {
   document.getElementById("fuss").innerHTML = `<div class="wrap">
     <h3>Aktualisieren</h3>
     <ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Tool-Inventar: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
-      <li><code>/tool-inventar</code> in Claude Code: macht dasselbe und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard mit dem Tab „Ausführen“, in dem sich die gewählten Aktionen starten lassen.</li>
+      <li><code>/3zero-tool-inventar</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
     </ul>
     <h3 style="margin-top:18px">Woher die Zahlen kommen</h3>
     <ul>
@@ -487,9 +591,30 @@ document.getElementById("stand").innerHTML =
   `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
   (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
+  renderUeberblick() + renderEmpfehlungen() + (TOKEN ? renderAusfuehren() : "") + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
 renderFuss();
 skillsFiltern();
+if (TOKEN) {
+  document.getElementById("nav-ausfuehren").hidden = false;
+  renderWarteschlange();
+}
+
+/* Tabs: sichtbar ist nur der Abschnitt aus dem Hash, sonst der erste */
+function zeigeTab() {
+  const abschnitte = [...document.querySelectorAll("#app > section")];
+  const aktiv = abschnitte.find(s => "#" + s.id === location.hash) || abschnitte[0];
+  abschnitte.forEach(s => { s.hidden = s !== aktiv; });
+  document.querySelectorAll("nav a").forEach(a =>
+    a.hash === "#" + aktiv.id ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  window.scrollTo(0, 0);
+}
+/* Kopf und Tabs stehen fest: Sprungziele um ihre Höhe versetzen, auch wenn die Tabs umbrechen */
+const kopf = document.querySelector(".kopf");
+const kopfHoehe = () => document.documentElement.style.setProperty("--kopf", kopf.offsetHeight + "px");
+kopfHoehe(); /* sofort, sonst springt der Browser beim Laden mit Anker noch ohne Versatz */
+new ResizeObserver(kopfHoehe).observe(kopf);
+zeigeTab();
+window.addEventListener("hashchange", zeigeTab);
 
 document.addEventListener("click", ev => {
   const knopf = ev.target.closest("[data-copy]");
@@ -515,6 +640,36 @@ for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-stat
   document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
 }
 document.getElementById("f-teile").addEventListener("change", ev => { F.teile = ev.target.checked; skillsFiltern(); });
+
+if (TOKEN) {
+  document.addEventListener("change", ev => {
+    const s = ev.target.closest("select.wahl");
+    if (!s) return;
+    waehle(s.dataset.wahl, s.value);
+    document.querySelectorAll("select.wahl").forEach(x => {
+      if (x.dataset.wahl === s.dataset.wahl) { x.value = s.value; x.classList.toggle("gesetzt", !!s.value); }
+    });
+    renderWarteschlange();
+  });
+  document.addEventListener("click", ev => {
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, [data-ausfuehren]");
+    if (!knopf) return;
+    if (knopf.id === "alle-ausfuehren") {
+      const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
+      if (confirm(`${offen.length} Aktionen nacheinander ausführen?`)) mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
+    } else if (knopf.id === "neu-einlesen") {
+      mitSperre(async () => {
+        meldung = "Liest den Bestand neu ein …";
+        renderWarteschlange();
+        const r = await api("/api/neu");
+        if (r.ok) location.reload();
+        else meldung = "Neu einlesen fehlgeschlagen: " + r.ausgabe;
+      });
+    } else {
+      mitSperre(() => fuehreAus(INDEX.get(knopf.dataset.ausfuehren)));
+    }
+  });
+}
 </script>
 </body>
 </html>

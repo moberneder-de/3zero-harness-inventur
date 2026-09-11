@@ -7,11 +7,12 @@ schreibt dashboard.html sowie inventar.json.
 
 Die fachliche Bewertung (Beschreibung auf Deutsch, Überschneidungen,
 Empfehlungen) steht in bewertung.json. Die pflegt Claude über den Skill
-/tool-inventar, dieses Skript liest sie nur.
+/3zero-tool-inventar, dieses Skript liest sie nur.
 
 Aufruf: python3 build.py
 """
 
+import base64
 import json
 import re
 import subprocess
@@ -22,6 +23,7 @@ HOME = Path.home()
 CLAUDE = HOME / ".claude"
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
+LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark-invers.svg"
 
 
 def lies_json(pfad):
@@ -331,6 +333,38 @@ def befehl(e, empfehlung):
     return f"mv ~/.claude/skills/{e['name']} ~/.Trash/"
 
 
+def aktionen(e):
+    """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`) oder skillOverrides-Wert.
+    Aktionen, die schon gelten, fehlen."""
+    eid = e["id"]
+    if eid.startswith("plugin:"):
+        pid = f"{e['name']}@{e['marktplatz']}"
+        a = {"deinstallieren": {"argv": ["claude", "plugin", "uninstall", pid]}}
+        if e["status"] == "aktiv":
+            a["deaktivieren"] = {"argv": ["claude", "plugin", "disable", pid]}
+        return a
+    if eid.startswith("mcp:"):
+        if e["art"] == "User":
+            return {"deinstallieren": {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}}
+        if e["art"] == "Projekt":
+            return {"deinstallieren": {"argv": ["claude", "mcp", "remove", e["name"], "-s", "local"], "cwd": e["quelle"]}}
+        return {}
+    if e["typ"] == "Agent":
+        return {}
+    a = {}
+    if not e.get("plugin"):
+        if e["quelle"]["art"] == "skills-CLI":
+            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]]}
+        else:
+            ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
+            a["deinstallieren"] = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+    if e["override"] != "off":
+        a["deaktivieren"] = {"override": "off"}
+    if e["aufruf"] != "nur /":
+        a["nur manuell"] = {"override": "user-invocable-only"}
+    return a
+
+
 def bewerte(eintraege):
     bewertungen = BEWERTUNG.get("eintraege", {})
     for e in eintraege:
@@ -358,6 +392,8 @@ def main():
     mcp = mcp_server(plugin_liste, live)
     alle = mcp + plugin_liste + skills
     bewerte(alle)
+    for e in alle:
+        e["aktionen"] = aktionen(e)
 
     eingebaut = []
     for b in BEWERTUNG.get("eingebaut", []):
@@ -385,7 +421,8 @@ def main():
     (HIER / "inventar.json").write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
-    vorlage = (HIER / "template.html").read_text(encoding="utf-8")
+    logo = "data:image/svg+xml;base64," + base64.b64encode(LOGO.read_bytes()).decode()
+    vorlage = (HIER / "template.html").read_text(encoding="utf-8").replace("__LOGO__", logo)
     (HIER / "dashboard.html").write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
     print(f"dashboard.html geschrieben: {len(mcp)} MCP-Server, {len(plugin_liste)} Plugins, {len(skills)} Skills/Befehle/Agenten")
