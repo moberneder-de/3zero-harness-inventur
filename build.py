@@ -23,7 +23,7 @@ HOME = Path.home()
 CLAUDE = HOME / ".claude"
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
-LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark-invers.svg"
+LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
 
 
 def lies_json(pfad):

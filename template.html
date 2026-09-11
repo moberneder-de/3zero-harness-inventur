@@ -32,7 +32,7 @@ a:hover { color: var(--cyan); }
 code { font: 12.5px/1.4 var(--mono); background: var(--bg-gray); padding: 1px 4px; border-radius: 2px; color: var(--text-dark); overflow-wrap: anywhere; }
 h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 
-.kopf { position: sticky; top: 0; z-index: 100; }
+.seitenkopf { position: sticky; top: 0; z-index: 100; }
 .hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 14px 30px; }
 .hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
 .hero .logo { display: block; width: 140px; height: auto; }
@@ -166,7 +166,7 @@ footer li { margin: 4px 0; }
 </style>
 </head>
 <body>
-<div class="kopf">
+<div class="seitenkopf">
 <header class="hero"><div class="wrap">
   <img class="logo" src="__LOGO__" alt="3zero IT-Consulting" width="140" height="53">
   <div><h1>Tool-Inventar</h1><p id="stand"></p></div>
@@ -609,7 +609,7 @@ function zeigeTab() {
   window.scrollTo(0, 0);
 }
 /* Kopf und Tabs stehen fest: Sprungziele um ihre Höhe versetzen, auch wenn die Tabs umbrechen */
-const kopf = document.querySelector(".kopf");
+const kopf = document.querySelector(".seitenkopf");
 const kopfHoehe = () => document.documentElement.style.setProperty("--kopf", kopf.offsetHeight + "px");
 kopfHoehe(); /* sofort, sonst springt der Browser beim Laden mit Anker noch ohne Versatz */
 new ResizeObserver(kopfHoehe).observe(kopf);
