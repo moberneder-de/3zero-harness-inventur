@@ -1,0 +1,10 @@
+.DS_Store
+.env
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+
+# Erzeugt von build.py aus der lokalen Konfiguration
+dashboard.html
+inventar.json

@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Werkzeug-Inventar</title>
+<style>
+/* Werte aus dem 3zero-Design-Kit (BRAND.md / brand-tokens.css) */
+:root {
+  --cyan: #00afd0;
+  --cyan-dark: #0096b4;
+  --cool-gray: #9b9ea0;
+  --text: #555555;
+  --text-dark: #333333;
+  --text-light: #6f6f6f;
+  --bg: #ffffff;
+  --bg-gray: #f3f3f3;
+  --hero: #2a2a2a;
+  --border-light: #e0e0e0;
+  --cyan-10: rgba(0,175,208,.1);
+  --cyan-20: rgba(0,175,208,.2);
+  --shadow-nav: 0 1px 4px rgba(0,0,0,.06);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,.08);
+  --body: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 3px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--body); }
+a { color: var(--cyan-dark); }
+a:hover { color: var(--cyan); }
+code { font: 12.5px/1.4 var(--mono); background: var(--bg-gray); padding: 1px 4px; border-radius: 2px; color: var(--text-dark); overflow-wrap: anywhere; }
+h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
+
+.hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 40px 30px; }
+.hero h1 { color: #fff; font-weight: 300; font-size: clamp(1.4rem, 3.5vw, 2.2rem); }
+.hero h1 strong { font-weight: 700; }
+.hero p { margin: 10px 0 0; color: #d6d6d6; font-size: 14px; }
+.wrap { max-width: 1100px; margin: 0 auto; }
+
+nav { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
+nav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding-block: 12px; }
+nav a { color: var(--text-dark); text-decoration: none; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+nav a:hover { color: var(--cyan); }
+
+main { padding-inline: 30px; }
+section { padding-block: 44px 8px; scroll-margin-top: 48px; }
+.label { color: var(--cyan); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
+section > .wrap > h2 { font-size: 22px; font-weight: 400; margin-bottom: 10px; }
+.intro { max-width: 760px; margin: 0 0 20px; }
+h3 { font-size: 16px; font-weight: 600; }
+.klein { font-size: 13px; color: var(--text-light); }
+
+.banner { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 14px 20px; margin-top: 28px; font-size: 15px; }
+.banner strong { color: var(--text-dark); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 10px; }
+.kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 18px 18px 16px; }
+.kpi .zahl { color: var(--cyan); font-size: 2rem; font-weight: 700; line-height: 1.1; }
+.kpi .zahl small { font-size: 1rem; font-weight: 600; }
+.kpi .was { font-size: 13px; color: var(--text); margin-top: 6px; }
+
+.balken { margin-top: 30px; max-width: 760px; }
+.balken h3 { margin-bottom: 4px; }
+.balken .zeile { display: grid; grid-template-columns: minmax(120px, 230px) 1fr 84px; gap: 12px; align-items: center; padding: 5px 0; font-size: 14px; }
+.balken .name { color: var(--text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.balken .spur { height: 10px; }
+.balken .fuellung { height: 10px; background: var(--cyan); border-radius: 0 2px 2px 0; min-width: 2px; }
+.balken .wert { text-align: right; color: var(--text-dark); font-variant-numeric: tabular-nums; }
+
+.tabelle { overflow-x: auto; margin-top: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-light); padding: 8px 10px; border-bottom: 1px solid var(--cool-gray); white-space: nowrap; vertical-align: bottom; }
+th.sortierbar { cursor: pointer; user-select: none; }
+th.sortierbar:hover { color: var(--cyan-dark); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--border-light); vertical-align: top; }
+td.name { min-width: 150px; }
+td.name strong { color: var(--text-dark); font-weight: 600; overflow-wrap: break-word; }
+td.zahl, th.zahl { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.haupt { cursor: pointer; }
+tr.haupt:hover td { background: #fafafa; }
+tr.offen td { background: var(--bg-gray); border-bottom-color: transparent; }
+tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
+.detail dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; font-size: 13.5px; }
+.detail dt { color: var(--text-light); }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.nowrap { white-space: nowrap; }
+
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; padding: 2px 8px; border-radius: 2px; white-space: nowrap; line-height: 1.5; }
+.e-entfernen { background: var(--text-dark); color: #fff; border: 1px solid var(--text-dark); }
+.e-abschalten { background: #fff; color: var(--text-dark); border: 1px solid var(--text-dark); }
+.e-manuell { background: #fff; color: var(--text-dark); border: 1px dashed var(--text-dark); }
+.e-pruefen { background: #fff; color: var(--text-dark); border: 1px solid var(--cyan); }
+.e-behalten { background: var(--cyan-10); color: var(--text-dark); border: 1px solid var(--cyan-20); }
+.e-neu { background: #fff; color: var(--text-light); border: 1px dashed var(--cool-gray); }
+.badge .geerbt { font-weight: 400; opacity: .8; }
+.status { white-space: nowrap; font-size: 13.5px; }
+.st-an span { color: var(--cyan); }
+.st-aus { color: var(--text-light); }
+.st-teil span { color: var(--cyan); }
+.st-fehler { color: var(--text-dark); font-weight: 600; }
+.tag { display: inline-block; font-size: 12px; border: 1px solid var(--cool-gray); color: var(--text-light); border-radius: 2px; padding: 0 6px; margin: 2px 4px 0 0; white-space: nowrap; }
+.leer { color: var(--text-light); }
+
+.befehl { display: flex; gap: 8px; align-items: flex-start; }
+.befehl code { flex: 1; }
+button.kopieren { font: 600 12px var(--body); color: var(--text-dark); background: #fff; border: 1px solid var(--cool-gray); border-radius: 2px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+button.kopieren:hover { border-color: var(--cyan); color: var(--cyan-dark); }
+
+.empf-gruppe { margin-top: 30px; }
+.empf-gruppe > .kopf { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.empf-gruppe > p { margin: 6px 0 0; font-size: 14px; max-width: 760px; }
+.block { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 16px 20px; margin-top: 18px; }
+.block pre { margin: 10px 0 0; font: 12.5px/1.5 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 18px; margin-top: 16px; }
+.karte { background: #fff; border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 24px 22px; transition: box-shadow .15s; }
+.karte:hover { box-shadow: var(--shadow-hover); }
+.karte p { font-size: 14.5px; margin: 8px 0 0; }
+.karte ul { list-style: none; padding: 0; margin: 14px 0 0; border-top: 1px solid var(--border-light); }
+.karte li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border-light); font-size: 13.5px; }
+.karte li .links { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-width: 0; }
+.karte li strong { color: var(--text-dark); font-weight: 600; overflow-wrap: anywhere; }
+.karte .fazit { background: var(--bg-gray); padding: 10px 12px; margin-top: 14px; font-size: 14px; border-radius: 2px; }
+.karte .fazit b { color: var(--text-dark); }
+
+.filter { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; font-size: 14px; }
+.filter input[type=search], .filter select { font: 14px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 6px 9px; background: #fff; }
+.filter input[type=search] { min-width: 220px; flex: 1 1 220px; max-width: 340px; }
+.filter label { display: inline-flex; gap: 6px; align-items: center; }
+.filter .anzahl { color: var(--text-light); margin-left: auto; }
+
+.hinweis { margin-top: 16px; }
+.hinweis .befehl { margin-top: 10px; }
+
+footer { margin-top: 56px; background: var(--bg-gray); border-top: 1px solid var(--border-light); padding: 24px 30px 40px; font-size: 14px; }
+footer h3 { margin-bottom: 8px; }
+footer ul { margin: 6px 0 0; padding-left: 18px; }
+footer li { margin: 4px 0; }
+
+@media (max-width: 640px) {
+  .hero { padding: 28px 20px; }
+  nav, main { padding-inline: 20px; }
+  nav .wrap { flex-wrap: nowrap; overflow-x: auto; }
+  nav a { white-space: nowrap; }
+  section { scroll-margin-top: 44px; }
+  footer { padding: 24px 20px 36px; }
+  .balken .zeile { grid-template-columns: 110px 1fr 70px; }
+  .detail dl { grid-template-columns: 1fr; }
+  .detail dt { margin-top: 6px; }
+}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <h1><strong>Claude Code</strong> Werkzeug-Inventar</h1>
+  <p id="stand"></p>
+</div></header>
+<nav aria-label="Abschnitte"><div class="wrap">
+  <a href="#ueberblick">Überblick</a>
+  <a href="#empfehlungen">Empfehlungen</a>
+  <a href="#ueberschneidungen">Überschneidungen</a>
+  <a href="#mcp">MCP-Server</a>
+  <a href="#plugins">Plugins</a>
+  <a href="#skills">Skills</a>
+  <a href="#eingebaut">Eingebaut</a>
+  <a href="#hinweise">Hinweise</a>
+</div></nav>
+<main id="app"></main>
+<footer id="fuss"></footer>
+
+<script id="daten" type="application/json">__DATEN__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("daten").textContent);
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const datum = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : "–";
+const zahl = n => Number(n || 0).toLocaleString("de-DE");
+const link = (url, text) => /^https:\/\//.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text || url)}</a>` : esc(text || "");
+const kopierKnopf = text => `<button type="button" class="kopieren" data-copy="${esc(text)}">kopieren</button>`;
+const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopierKnopf(text)}</div>`;
+
+const ALLE = [...D.mcp, ...D.plugins, ...D.skills];
+const INDEX = new Map(ALLE.map(e => [e.id, e]));
+D.eingebaut.forEach(b => INDEX.set("builtin:" + b.name, { ...b, id: "builtin:" + b.name, typ: "eingebaut", status: "aktiv" }));
+
+const EMPF = {
+  "entfernen":   { icon: "✕", cls: "e-entfernen" },
+  "abschalten":  { icon: "⊘", cls: "e-abschalten" },
+  "nur manuell": { icon: "/", cls: "e-manuell" },
+  "prüfen":      { icon: "?", cls: "e-pruefen" },
+  "behalten":    { icon: "✓", cls: "e-behalten" },
+};
+/* Plugin-Bestandteile ohne eigene Empfehlung übernehmen die ihres Plugins */
+function wirksam(e) {
+  if (e.bewertung?.empfehlung) return { empfehlung: e.bewertung.empfehlung, geerbt: false };
+  const pid = e.plugin ? "plugin:" + e.plugin : (e.id?.startsWith("mcp:") && e.art === "Plugin") ? "plugin:" + e.quelle : null;
+  const p = pid && INDEX.get(pid);
+  return p?.bewertung?.empfehlung ? { empfehlung: p.bewertung.empfehlung, geerbt: true } : null;
+}
+function empfBadge(e) {
+  if (e.typ === "eingebaut") return '<span class="tag">eingebaut</span>';
+  if (!e.bewertung) return '<span class="badge e-neu">neu · unbewertet</span>';
+  const w = wirksam(e);
+  const k = w && EMPF[w.empfehlung];
+  if (!k) return '<span class="leer">–</span>';
+  return `<span class="badge ${k.cls}"><span aria-hidden="true">${k.icon}</span>${esc(w.empfehlung)}${w.geerbt ? '<span class="geerbt">· Plugin</span>' : ""}</span>`;
+}
+const STATUS = {
+  "aktiv": ["●", "an"], "verbunden": ["●", "an"], "nur im Projekt": ["◐", "teil"],
+  "aus": ["○", "aus"], "deaktiviert": ["○", "aus"], "nicht aktiviert": ["○", "aus"], "inaktiv (Plugin aus)": ["○", "aus"],
+  "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
+};
+function statusBadge(s) {
+  const [icon, cls] = STATUS[s] || ["?", "aus"];
+  return `<span class="status st-${cls}"><span aria-hidden="true">${icon}</span> ${esc(s)}</span>`;
+}
+function nutzungText(e) {
+  if (e.typ === "Agent") return '<span class="leer">nicht erfasst</span>';
+  if (e.id.startsWith("mcp:")) return '<span class="leer">nicht erfasst</span>';
+  if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
+  const n = e.nutzung;
+  return n ? `${zahl(n.anzahl)}× <span class="klein">· ${datum(n.zuletzt)}</span>` : '<span class="leer">nie</span>';
+}
+const was = e => e.bewertung?.was ? txt(e.bewertung.was) : `<span class="klein">${esc(e.beschreibung || "")}</span>`;
+function quelleText(e) {
+  if (e.typ === "eingebaut") return "Claude Code";
+  if (e.id.startsWith("plugin:")) return esc(e.autor);
+  if (e.id.startsWith("mcp:")) return esc(e.art);
+  return esc(e.quelle?.autor || "");
+}
+function typText(e) {
+  if (e.id.startsWith("plugin:")) return "Plugin";
+  if (e.id.startsWith("mcp:")) return "MCP-Server";
+  return e.typ;
+}
+
+/* Kontextlast: was fällt weg, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
+const SPAREN = ["entfernen", "abschalten", "nur manuell"];
+const tokensGesamt = D.skills.reduce((s, e) => s + e.tokens, 0);
+const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) ? s + (e.tokens || 0) : s, 0);
+
+function abschnitt(id, label, titel, inhalt, intro) {
+  return `<section id="${id}"><div class="wrap"><p class="label">${esc(label)}</p><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
+}
+
+function renderUeberblick() {
+  const mcpAn = D.mcp.filter(m => m.status === "verbunden").length;
+  const plAn = D.plugins.filter(p => p.status === "aktiv").length;
+  const skAn = D.skills.filter(s => s.status === "aktiv").length;
+  const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t).length;
+  const banner = [];
+  if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong> ${D.unbewertet.map(esc).join(", ")}.`);
+  if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong> ${D.entfallen.map(esc).join(", ")}.`);
+  if (!D.live_status) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
+  const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in Claude Code <code>/tool-inventar</code> aus, um die Bewertung nachzuziehen.</div>` : "";
+
+  const kpis = `<div class="kpis">
+    <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server verbunden / eingetragen</div></div>
+    <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
+    <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
+    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen</div></div>
+    <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
+    <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
+  </div>`;
+
+  const summen = new Map();
+  D.skills.filter(e => e.tokens > 0).forEach(e => {
+    const k = e.plugin ? `Plugin ${e.plugin.split("@")[0]}` : (e.quelle?.autor || "unbekannt");
+    const v = summen.get(k) || { tokens: 0, anzahl: 0 };
+    v.tokens += e.tokens; v.anzahl += 1; summen.set(k, v);
+  });
+  const reihen = [...summen.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
+  const max = reihen.length ? reihen[0][1].tokens : 1;
+  const balken = `<div class="balken"><h3>Kontextlast nach Herkunft</h3>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die Claude Code in jede Sitzung lädt (grob geschätzt: Zeichen ÷ 4). Skills mit „nur /“ kosten nichts.</p>
+    ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
+      <span class="name">${esc(k)}</span>
+      <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
+      <span class="wert">≈ ${zahl(v.tokens)}</span></div>`).join("")}
+  </div>`;
+  return abschnitt("ueberblick", "Überblick", "Was installiert ist und was es kostet", bannerHtml + kpis + balken);
+}
+
+function renderEmpfehlungen() {
+  const texte = {
+    "entfernen": "Deinstallieren. Alles lässt sich bei Bedarf wieder installieren.",
+    "abschalten": "Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
+    "nur manuell": "Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
+    "prüfen": "Hier fehlt deine Entscheidung. Der Befehl zeigt, wie das Entfernen ginge.",
+  };
+  let html = "";
+  for (const typ of ["entfernen", "abschalten", "nur manuell", "prüfen"]) {
+    const liste = ALLE.filter(e => e.bewertung?.empfehlung === typ).sort((a, b) => a.name.localeCompare(b.name));
+    if (!liste.length) continue;
+    const shell = liste.map(e => e.befehl).filter(b => !b.includes("→"));
+    const alle = shell.length > 1 && (typ === "entfernen" || typ === "prüfen")
+      ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
+    html += `<div class="empf-gruppe"><div class="kopf"><h3>${empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
+      <p>${texte[typ]}</p>
+      <div class="tabelle"><table><thead><tr><th>Name</th><th>Warum</th><th>Befehl</th></tr></thead><tbody>
+      ${liste.map(e => `<tr><td class="name" style="min-width:190px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
+        <td style="min-width:260px">${txt(e.bewertung.grund || "")}</td>
+        <td style="min-width:260px">${befehlZeile(e.befehl)}</td></tr>`).join("")}
+      </tbody></table></div></div>`;
+    if (typ === "nur manuell") html += overrideBlock();
+  }
+  return abschnitt("empfehlungen", "Empfehlungen", "Was weg kann und was du entscheiden solltest", html,
+    "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills. Nichts wird automatisch geändert.");
+}
+
+function overrideBlock() {
+  const neu = { ...D.skill_overrides };
+  ALLE.forEach(e => {
+    const t = e.bewertung?.empfehlung;
+    if (t === "abschalten") neu[e.name] = "off";
+    if (t === "nur manuell") neu[e.name] = "user-invocable-only";
+  });
+  const json = `"skillOverrides": ${JSON.stringify(neu, null, 2)}`;
+  return `<div class="block"><div class="empf-gruppe" style="margin:0"><div class="kopf"><h3>„abschalten“ und „nur manuell“ auf einmal</h3>${kopierKnopf(json)}</div>
+    <p class="klein">Ersetzt den bisherigen skillOverrides-Eintrag in ~/.claude/settings.json; die vorhandenen Einträge sind schon enthalten. Wirkt ab der nächsten Sitzung.</p></div>
+    <pre>${esc(json)}</pre></div>`;
+}
+
+function renderGruppen() {
+  const karten = D.gruppen.map(g => {
+    const zeilen = g.mitglieder.map(id => {
+      const e = INDEX.get(id);
+      if (!e) return `<li><span class="links"><strong>${esc(id)}</strong><span class="klein">nicht mehr vorhanden</span></span></li>`;
+      return `<li><span class="links"><strong>${esc(e.name)}</strong><span class="klein">${typText(e)} · ${quelleText(e)}</span></span>
+        <span class="links"><span class="klein">${nutzungText(e)}</span>${statusBadge(e.status)}${empfBadge(e)}</span></li>`;
+    }).join("");
+    return `<article class="karte"><h3>${esc(g.titel)}</h3><p>${txt(g.einschaetzung)}</p><ul>${zeilen}</ul>
+      <div class="fazit"><b>Empfehlung:</b> ${txt(g.empfehlung)}</div></article>`;
+  }).join("");
+  return abschnitt("ueberschneidungen", "Überschneidungen", `${D.gruppen.length} Bereiche mit mehreren Werkzeugen für dieselbe Aufgabe`,
+    `<div class="karten">${karten}</div>`);
+}
+
+function detailZeile(spalten, paare) {
+  const dl = paare.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
+  return `<tr class="detail" hidden><td colspan="${spalten}"><dl>${dl}</dl></td></tr>`;
+}
+
+function renderMcp() {
+  const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td>
+      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td></tr>` +
+    detailZeile(5, [
+      ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
+      ["Quelle", esc(m.quelle)],
+      ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
+      ["Eingetragen in", (m.projekte || []).map(esc).join("<br>")],
+      ["Begründung", txt(m.bewertung?.grund || "")],
+      ["Entfernen", befehlZeile(m.befehl)],
+    ])).join("");
+  return abschnitt("mcp", "Bestand", "MCP-Server",
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    "Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. Zeile anklicken für Details.");
+}
+
+function renderPlugins() {
+  const zeilen = [...D.plugins].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
+    const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
+    const teile = [
+      anzahl(p.skills.length, "Skill", "Skills"), anzahl(p.befehle.length, "Befehl", "Befehle"),
+      anzahl(p.agenten.length, "Agent", "Agenten"), Object.keys(p.mcp).length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"),
+    ].filter(Boolean).join(" · ");
+    const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
+    return `<tr class="haupt"><td class="name"><strong>${esc(p.name)}</strong><div class="klein">${esc(p.marktplatz)}</div></td>
+      <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}</td><td class="klein">${teile || "–"}</td>
+      <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td></tr>` +
+      detailZeile(8, [
+        ["Beschreibung", esc(p.beschreibung)],
+        ["Begründung", txt(p.bewertung?.grund || "")],
+        ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
+        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")],
+        ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}`],
+        ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
+        ["Homepage", p.homepage ? link(p.homepage) : ""],
+        ["Aktivität", p.aktivitaet != null ? `${zahl(p.aktivitaet)} laut Claude Code (zählt auch Hook-Läufe und MCP-Aufrufe)` : ""],
+        ["Entfernen", befehlZeile(p.befehl)],
+      ]);
+  }).join("");
+  return abschnitt("plugins", "Bestand", "Plugins",
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    "„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen in jeder Sitzung belegen.");
+}
+
+/* Skills-Tabelle mit Filter und Sortierung */
+const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", teile: true, sort: "name", richtung: 1 };
+function renderSkillsRahmen() {
+  const quellen = [...new Set(D.skills.map(s => s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor))].sort();
+  const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
+  const filter = `<div class="filter">
+    <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
+    <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
+    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus"], "jeder Status")}</select>
+    <select id="f-aufruf" aria-label="Aufruf">${opt(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], "jeder Aufruf")}</select>
+    <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
+    <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
+    <span class="anzahl" id="f-anzahl"></span></div>`;
+  const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
+    .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("");
+  return abschnitt("skills", "Bestand", "Skills, Befehle und Agenten",
+    filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
+    "Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle und alles, was Plugins mitbringen. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst.");
+}
+function skillsFiltern() {
+  const q = F.suche.toLowerCase();
+  const liste = D.skills.filter(s => {
+    const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
+    const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
+    return (F.teile || !s.plugin)
+      && (!q || `${s.name} ${s.beschreibung} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
+      && (!F.quelle || herkunft === F.quelle)
+      && (!F.status || s.status === F.status)
+      && (!F.aufruf || s.aufruf === F.aufruf)
+      && (!F.empf || empf === F.empf);
+  });
+  const wert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : s.name.toLowerCase();
+  liste.sort((a, b) => (wert(a) > wert(b) ? 1 : wert(a) < wert(b) ? -1 : 0) * F.richtung);
+  document.getElementById("f-anzahl").textContent = `${liste.length} von ${D.skills.length}`;
+  document.getElementById("skills-body").innerHTML = liste.map(s => {
+    const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
+    const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
+    return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
+        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}</td>
+      <td>${esc(herkunft)}</td><td class="nowrap klein">${esc(s.aufruf)}</td><td class="zahl">${kontext}</td>
+      <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td></tr>` +
+      detailZeile(7, [
+        ["Beschreibung", esc(s.beschreibung)],
+        ["Begründung", txt(s.bewertung?.grund || "")],
+        ["Herkunft", s.quelle.url ? link(s.quelle.url, s.quelle.repo || s.quelle.url) : esc(s.quelle.repo || s.quelle.art)],
+        ["Upstream-Status", s.reife ? esc(s.reife) + " (laut Ordner im Quell-Repo)" : ""],
+        ["Installiert", s.installiert ? datum(s.installiert) : ""],
+        ["skillOverrides", s.override ? `<code>${esc(s.override)}</code>` : ""],
+        ["Datei", `<code>${esc(s.pfad)}</code>`],
+        ["Umsetzen", befehlZeile(s.befehl)],
+      ]);
+  }).join("");
+}
+
+function renderEingebaut() {
+  const zeilen = D.eingebaut.map(b => `<tr><td class="name"><strong>${esc(b.name)}</strong></td><td>${txt(b.was)}</td>
+    <td class="zahl">${b.nutzung ? `${zahl(b.nutzung.anzahl)}× <span class="klein">· ${datum(b.nutzung.zuletzt)}</span>` : '<span class="leer">nie</span>'}</td></tr>`).join("");
+  return abschnitt("eingebaut", "Zum Vergleich", "In Claude Code eingebaute Skills",
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Was er macht</th><th class="zahl">Genutzt</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `Kommen mit Claude Code, lassen sich nicht deinstallieren und sind hier nur aufgeführt, weil sie sich mit installierten Werkzeugen überschneiden. Liste gepflegt über <code>/tool-inventar</code>, Stand ${datum(D.bewertung_stand)}.`);
+}
+
+function renderHinweise() {
+  const karten = D.hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p>
+    ${(h.befehle || []).map(befehlZeile).join("")}</article>`).join("");
+  return abschnitt("hinweise", "Hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
+}
+
+function renderFuss() {
+  document.getElementById("fuss").innerHTML = `<div class="wrap">
+    <h3>Aktualisieren</h3>
+    <ul>
+      <li><code>python3 build.py</code> im Projektordner 3zero-Tool-Inventar: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
+      <li><code>/tool-inventar</code> in Claude Code: macht dasselbe und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
+    </ul>
+    <h3 style="margin-top:18px">Woher die Zahlen kommen</h3>
+    <ul>
+      <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten und MCP-Server gibt es keine Zähler.</li>
+      <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
+      <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills.</li>
+    </ul></div>`;
+}
+
+function kopiere(text, knopf) {
+  const fertig = () => { const alt = knopf.textContent; knopf.textContent = "kopiert"; setTimeout(() => { knopf.textContent = alt; }, 1400); };
+  const notweg = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); fertig(); } catch (_) { /* Kopieren nicht möglich, Text bleibt markierbar */ }
+    ta.remove();
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(fertig, notweg);
+  else notweg();
+}
+
+document.getElementById("stand").innerHTML =
+  `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
+  (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
+document.getElementById("app").innerHTML =
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
+renderFuss();
+skillsFiltern();
+
+document.addEventListener("click", ev => {
+  const knopf = ev.target.closest("[data-copy]");
+  if (knopf) { kopiere(knopf.dataset.copy, knopf); return; }
+  if (ev.target.closest("a, button, input, select")) return;
+  const th = ev.target.closest("th[data-sort]");
+  if (th) {
+    F.richtung = F.sort === th.dataset.sort ? -F.richtung : (th.dataset.sort === "name" ? 1 : -1);
+    F.sort = th.dataset.sort;
+    skillsFiltern();
+    return;
+  }
+  const zeile = ev.target.closest("tr.haupt");
+  if (zeile && !window.getSelection().toString()) {
+    const detail = zeile.nextElementSibling;
+    if (detail?.classList.contains("detail")) {
+      detail.hidden = !detail.hidden;
+      zeile.classList.toggle("offen", !detail.hidden);
+    }
+  }
+});
+for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"]]) {
+  document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
+}
+document.getElementById("f-teile").addEventListener("change", ev => { F.teile = ev.target.checked; skillsFiltern(); });
+</script>
+</body>
+</html>
