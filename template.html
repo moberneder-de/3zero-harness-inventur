@@ -168,13 +168,12 @@ footer li { margin: 4px 0; }
 <body>
 <div class="seitenkopf">
 <header class="hero"><div class="wrap">
-  <img class="logo" src="__LOGO__" alt="3zero IT-Consulting" width="140" height="53">
+  <img class="logo" src="__LOGO__" alt="3zero" width="140" height="25">
   <div><h1>Tool-Inventar</h1><p id="stand"></p></div>
 </div></header>
 <nav aria-label="Abschnitte"><div class="wrap">
   <a href="#ueberblick">Überblick</a>
-  <a href="#empfehlungen">Empfehlungen</a>
-  <a href="#ausfuehren" id="nav-ausfuehren" hidden>Ausführen<span id="zahl-aktionen"></span></a>
+  <a href="#empfehlungen">Empfehlungen<span id="zahl-aktionen"></span></a>
   <a href="#ueberschneidungen">Überschneidungen</a>
   <a href="#mcp">MCP-Server</a>
   <a href="#plugins">Plugins</a>
@@ -286,14 +285,14 @@ function befehlText(e, a) {
 }
 const SP = TOKEN ? 1 : 0; /* zusätzliche Spalte „Aktion“ */
 const WAHL_KOPF = TOKEN ? "<th>Aktion</th>" : "";
-function wahlZelle(e) {
-  if (!TOKEN) return "";
+function wahlFeld(e) {
   const namen = Object.keys(e.aktionen || {});
-  if (!namen.length) return '<td><span class="leer">–</span></td>';
+  if (!namen.length) return '<span class="leer">–</span>';
   const g = gewaehlt(e);
-  return `<td><select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}">
-    <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${a}</option>`).join("")}</select></td>`;
+  return `<select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}">
+    <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${a}</option>`).join("")}</select>`;
 }
+const wahlZelle = e => TOKEN ? `<td>${wahlFeld(e)}</td>` : "";
 
 function abschnitt(id, label, titel, inhalt, intro) {
   return `<section id="${id}"><div class="wrap"><p class="label">${esc(label)}</p><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
@@ -337,31 +336,53 @@ function renderUeberblick() {
   return abschnitt("ueberblick", "Überblick", "Was installiert ist und was es kostet", bannerHtml + kpis + balken);
 }
 
+/* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
+const GRUPPEN_TEXT = {
+  "entfernen": "Deinstallieren. Alles lässt sich bei Bedarf wieder installieren.",
+  "abschalten": "Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
+  "nur manuell": "Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
+  "prüfen": "Hier fehlt deine Entscheidung. Der Befehl zeigt, wie das Entfernen ginge.",
+  "selbst gewählt": "Ohne Empfehlung, von dir in den Bestandstabellen gewählt.",
+};
 function renderEmpfehlungen() {
-  const texte = {
-    "entfernen": "Deinstallieren. Alles lässt sich bei Bedarf wieder installieren.",
-    "abschalten": "Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
-    "nur manuell": "Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
-    "prüfen": "Hier fehlt deine Entscheidung. Der Befehl zeigt, wie das Entfernen ginge.",
-  };
-  let html = "";
-  for (const typ of ["entfernen", "abschalten", "nur manuell", "prüfen"]) {
-    const liste = ALLE.filter(e => e.bewertung?.empfehlung === typ).sort((a, b) => a.name.localeCompare(b.name));
+  return abschnitt("empfehlungen", "Empfehlungen", "Was weg kann und was du entscheiden solltest",
+    '<div id="empf-inhalt"></div>',
+    "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills." +
+    (TOKEN ? " Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten Claude-Code-Sitzung."
+           : " Nichts wird automatisch geändert."));
+}
+function empfZeile(e) {
+  const a = gewaehlt(e);
+  const befehl = a ? `<div class="klein" style="margin-top:5px"><code>${esc(befehlText(e, a))}</code></div>` : befehlZeile(e.befehl);
+  return `<tr><td class="name" style="min-width:170px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
+    <td style="min-width:220px">${was(e)}</td>
+    <td style="min-width:220px">${txt(e.bewertung?.grund || "")}</td>
+    <td style="min-width:250px">${TOKEN ? wahlFeld(e) + befehl : befehlZeile(e.befehl)}</td>
+    ${TOKEN ? `<td>${ausfuehrZelle(e)}</td>` : ""}</tr>`;
+}
+function renderEmpfInhalt() {
+  let html = TOKEN ? aktionsleiste() : "";
+  const typen = ["entfernen", "abschalten", "nur manuell", "prüfen"];
+  const gruppen = typen.map(typ => [typ, ALLE.filter(e => e.bewertung?.empfehlung === typ)]);
+  /* alles mit Aktion, das in keiner der Empfehlungsgruppen steht */
+  gruppen.push(["selbst gewählt", ALLE.filter(e => gewaehlt(e) && !typen.includes(e.bewertung?.empfehlung))]);
+  for (const [typ, roh] of gruppen) {
+    const liste = roh.sort((a, b) => a.name.localeCompare(b.name));
     if (!liste.length) continue;
     const shell = liste.map(e => e.befehl).filter(b => !b.includes("→"));
     const alle = shell.length > 1 && (typ === "entfernen" || typ === "prüfen")
       ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
-    html += `<div class="empf-gruppe"><div class="kopf"><h3>${empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
-      <p>${texte[typ]}</p>
-      <div class="tabelle"><table><thead><tr><th>Name</th><th>Warum</th><th>Befehl</th>${WAHL_KOPF}</tr></thead><tbody>
-      ${liste.map(e => `<tr><td class="name" style="min-width:190px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
-        <td style="min-width:260px">${txt(e.bewertung.grund || "")}</td>
-        <td style="min-width:260px">${befehlZeile(e.befehl)}</td>${wahlZelle(e)}</tr>`).join("")}
-      </tbody></table></div></div>`;
+    html += `<div class="empf-gruppe"><div class="kopf"><h3>${typ === "selbst gewählt" ? '<span class="badge e-neu">selbst gewählt</span>' : empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
+      <p>${GRUPPEN_TEXT[typ]}</p>
+      <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${TOKEN ? "Aktion" : "Befehl"}</th>${TOKEN ? "<th>Ausführen</th>" : ""}</tr></thead>
+      <tbody>${liste.map(empfZeile).join("")}</tbody></table></div></div>`;
     if (typ === "nur manuell") html += overrideBlock();
   }
-  return abschnitt("empfehlungen", "Empfehlungen", "Was weg kann und was du entscheiden solltest", html,
-    "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills. Nichts wird automatisch geändert.");
+  document.getElementById("empf-inhalt").innerHTML = html || '<p class="leer">Keine offenen Empfehlungen.</p>';
+  if (TOKEN) {
+    const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
+    document.getElementById("zahl-aktionen").textContent = offen ? ` (${offen})` : "";
+  }
 }
 
 function overrideBlock() {
@@ -509,38 +530,29 @@ function renderHinweise() {
   return abschnitt("hinweise", "Hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
 }
 
-/* Tab „Ausführen“: gewählte Aktionen einzeln oder alle nacheinander über server.py starten */
+/* Gewählte Aktionen über server.py starten, einzeln oder alle nacheinander */
 const ERGEBNIS = new Map();
 let beschaeftigt = false, meldung = "";
-function renderAusfuehren() {
-  return abschnitt("ausfuehren", "Ausführen", "Gewählte Aktionen", '<div id="warteschlange"></div>',
-    "Vorbelegt aus den Empfehlungen, ändern lässt sich die Auswahl in der Spalte „Aktion“ der anderen Tabs. Deinstalliertes kommt nur per Neuinstallation zurück, Deaktiviertes per Einschalten. Alles wirkt ab der nächsten Claude-Code-Sitzung.");
-}
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
 }
-function renderWarteschlange() {
-  const liste = warteschlange();
-  const offen = liste.filter(e => !ERGEBNIS.get(e.id)?.ok);
-  document.getElementById("zahl-aktionen").textContent = offen.length ? ` (${offen.length})` : "";
-  const zeilen = liste.map(e => {
-    const a = gewaehlt(e), r = ERGEBNIS.get(e.id);
-    const status = !r ? '<span class="leer">offen</span>'
-      : r.laeuft ? '<span class="status">läuft …</span>'
-      : r.ok ? '<span class="status st-an"><span aria-hidden="true">●</span> erledigt</span>'
-      : '<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span>';
-    const ausgabe = r?.ausgabe ? `<details${r.ok ? "" : " open"}><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>` : "";
-    return `<tr><td class="name"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
-      <td class="nowrap">${esc(a)}</td><td style="min-width:260px"><code>${esc(befehlText(e, a))}</code></td><td>${status}${ausgabe}</td>
-      <td><button type="button" class="zeilenknopf" data-ausfuehren="${esc(e.id)}"${beschaeftigt || r?.ok ? " disabled" : ""}>ausführen</button></td></tr>`;
-  }).join("");
-  document.getElementById("warteschlange").innerHTML = `<div class="aktionsleiste">
-      <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen.length ? " disabled" : ""}>alle ${offen.length} ausführen</button>
-      <button type="button" class="btn btn-outline" id="neu-einlesen"${beschaeftigt ? " disabled" : ""}>Inventar neu einlesen</button>
-      <span class="klein">${esc(meldung)}</span></div>` +
-    (liste.length ? `<div class="tabelle"><table><thead><tr><th>Name</th><th>Aktion</th><th>Befehl</th><th>Status</th><th></th></tr></thead><tbody>${zeilen}</tbody></table></div>`
-      : '<p class="leer">Keine Aktion gewählt.</p>');
+function aktionsleiste() {
+  const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
+  return `<div class="aktionsleiste">
+    <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>
+    <button type="button" class="btn btn-outline" id="neu-einlesen"${beschaeftigt ? " disabled" : ""}>Inventar neu einlesen</button>
+    <span class="klein">${esc(meldung)}</span></div>`;
+}
+function ausfuehrZelle(e) {
+  if (!gewaehlt(e)) return '<span class="leer">–</span>';
+  const r = ERGEBNIS.get(e.id);
+  const status = !r ? "" : r.laeuft ? '<span class="status">läuft …</span>'
+    : r.ok ? '<span class="status st-an"><span aria-hidden="true">●</span> erledigt</span>'
+    : '<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span>';
+  const ausgabe = r?.ausgabe ? `<details${r.ok ? "" : " open"}><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>` : "";
+  return `<button type="button" class="zeilenknopf" data-ausfuehren="${esc(e.id)}"${beschaeftigt || r?.ok ? " disabled" : ""}>ausführen</button>
+    <div class="klein">${status}</div>${ausgabe}`;
 }
 async function api(pfad, daten) {
   try {
@@ -551,11 +563,11 @@ async function api(pfad, daten) {
   }
 }
 async function mitSperre(arbeit) {
-  beschaeftigt = true; renderWarteschlange();
-  try { await arbeit(); } finally { beschaeftigt = false; renderWarteschlange(); }
+  beschaeftigt = true; renderEmpfInhalt();
+  try { await arbeit(); } finally { beschaeftigt = false; renderEmpfInhalt(); }
 }
 async function fuehreAus(e) {
-  ERGEBNIS.set(e.id, { laeuft: true }); renderWarteschlange();
+  ERGEBNIS.set(e.id, { laeuft: true }); renderEmpfInhalt();
   ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion: gewaehlt(e) }));
 }
 
@@ -564,7 +576,7 @@ function renderFuss() {
     <h3>Aktualisieren</h3>
     <ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Tool-Inventar: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
-      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard mit dem Tab „Ausführen“, in dem sich die gewählten Aktionen starten lassen.</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard so, dass sich die Aktionen im Tab „Empfehlungen“ direkt starten lassen.</li>
       <li><code>/3zero-tool-inventar</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
     </ul>
     <h3 style="margin-top:18px">Woher die Zahlen kommen</h3>
@@ -591,13 +603,10 @@ document.getElementById("stand").innerHTML =
   `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
   (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + (TOKEN ? renderAusfuehren() : "") + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
 renderFuss();
 skillsFiltern();
-if (TOKEN) {
-  document.getElementById("nav-ausfuehren").hidden = false;
-  renderWarteschlange();
-}
+renderEmpfInhalt();
 
 /* Tabs: sichtbar ist nur der Abschnitt aus dem Hash, sonst der erste */
 function zeigeTab() {
@@ -646,10 +655,11 @@ if (TOKEN) {
     const s = ev.target.closest("select.wahl");
     if (!s) return;
     waehle(s.dataset.wahl, s.value);
+    renderEmpfInhalt(); /* baut die Empfehlungen neu, deshalb danach den Fokus zurücksetzen */
     document.querySelectorAll("select.wahl").forEach(x => {
       if (x.dataset.wahl === s.dataset.wahl) { x.value = s.value; x.classList.toggle("gesetzt", !!s.value); }
     });
-    renderWarteschlange();
+    if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", ev => {
     const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, [data-ausfuehren]");
@@ -660,7 +670,7 @@ if (TOKEN) {
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
         meldung = "Liest den Bestand neu ein …";
-        renderWarteschlange();
+        renderEmpfInhalt();
         const r = await api("/api/neu");
         if (r.ok) location.reload();
         else meldung = "Neu einlesen fehlgeschlagen: " + r.ausgabe;

@@ -24,6 +24,8 @@ CLAUDE = HOME / ".claude"
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
 LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
+# Nur die Wortmarke: „IT- Consulting“ steht unterhalb von y=163 und fällt aus der viewBox
+LOGO_MASSE = ('width="789" height="298" viewBox="21 29 789 298"', 'width="789" height="141" viewBox="21 29 789 141"')
 
 
 def lies_json(pfad):
@@ -421,7 +423,10 @@ def main():
     (HIER / "inventar.json").write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
-    logo = "data:image/svg+xml;base64," + base64.b64encode(LOGO.read_bytes()).decode()
+    svg = LOGO.read_text(encoding="utf-8")
+    if LOGO_MASSE[0] not in svg:
+        raise SystemExit(f"{LOGO} hat andere Maße als erwartet, Zuschnitt in LOGO_MASSE prüfen.")
+    logo = "data:image/svg+xml;base64," + base64.b64encode(svg.replace(*LOGO_MASSE).encode()).decode()
     vorlage = (HIER / "template.html").read_text(encoding="utf-8").replace("__LOGO__", logo)
     (HIER / "dashboard.html").write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
