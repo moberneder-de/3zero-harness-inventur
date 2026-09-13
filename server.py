@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lokaler Server für das Harness-Inventur.
+"""Lokaler Server für die Harness-Inventur.
 
 Liest den Bestand neu ein (build.py), zeigt das Dashboard auf http://127.0.0.1:8765
 und führt die dort gewählten Aktionen aus. Ausgeführt wird nur, was build.py in
