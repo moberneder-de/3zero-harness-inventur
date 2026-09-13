@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>3zero Tool-Inventar</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23cfd2d3'/%3E%3Crect x='4' y='4' width='56' height='56' rx='11' fill='%2300afd0'/%3E%3Crect x='13' y='16' width='9' height='9' rx='2' fill='none' stroke='%23fff' stroke-width='2.4'/%3E%3Crect x='27' y='18.5' width='24' height='4' rx='2' fill='%23fff'/%3E%3Crect x='13' y='29.5' width='9' height='9' rx='2' fill='none' stroke='%23fff' stroke-width='2.4'/%3E%3Crect x='27' y='32' width='24' height='4' rx='2' fill='%23fff'/%3E%3Cpath d='M13 47.5 L16.5 51 L22.5 44' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='27' y='45.5' width='24' height='4' rx='2' fill='%23fff'/%3E%3C/svg%3E">
 <style>
 /* Werte aus dem 3zero-Design-Kit (BRAND.md / brand-tokens.css) */
 :root {
@@ -34,10 +35,13 @@ h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 
 .seitenkopf { position: sticky; top: 0; z-index: 100; }
 .hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 14px 30px; }
-.hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
-.hero .logo { display: block; width: 140px; height: auto; }
-.hero h1 { color: #fff; font-weight: 300; font-size: clamp(1.3rem, 3vw, 1.8rem); }
-.hero p { margin: 2px 0 0; color: #d6d6d6; font-size: 13px; }
+.hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.hero .icon { display: block; flex: none; }
+.hero .marke { display: flex; flex-direction: column; gap: 3px; }
+.hero .logo { display: block; width: 132px; height: auto; }
+.hero h1 { color: var(--cool-gray); font: 600 19px/1.1 var(--body); text-transform: uppercase; letter-spacing: .16em; }
+.hero .rechts { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.hero p { margin: 0; color: #d6d6d6; font-size: 12.5px; text-align: right; }
 .wrap { margin: 0; } /* linksbündig über die volle Fensterbreite */
 
 nav { background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
@@ -116,8 +120,19 @@ button.kopieren:hover, button.zeilenknopf:hover { border-color: var(--cyan); col
 .btn-outline { background: #fff; color: var(--cyan); border-color: var(--cyan); }
 .btn-outline:hover { background: var(--cyan); color: #fff; }
 button:disabled { opacity: .45; cursor: default; pointer-events: none; }
-.aktionsleiste { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; }
-#meldung { white-space: pre-line; max-width: 760px; }
+.aktionsleiste { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.hero .aktionsleiste { margin-left: auto; }
+.hero .btn { padding: 7px 14px; font-size: 12.5px; }
+.hero .btn-outline { background: transparent; color: #fff; border-color: rgba(255,255,255,.45); }
+.hero .btn-outline:hover { background: var(--cyan); border-color: var(--cyan); color: #fff; }
+
+.meldung { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 14px 20px 16px; margin-top: 24px; max-width: 900px; font-size: 14.5px; }
+.meldung .zeile { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.meldung .label { margin: 0; }
+.meldung p { margin: 0 0 8px; }
+.meldung ul { margin: 0 0 8px; padding-left: 18px; }
+.meldung li { margin: 3px 0; }
+.meldung > :last-child { margin-bottom: 0; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: #fff; }
 select.wahl.gesetzt { border-color: var(--cyan); font-weight: 600; }
 td details summary { white-space: nowrap; cursor: pointer; }
@@ -156,6 +171,7 @@ footer li { margin: 4px 0; }
 
 @media (max-width: 640px) {
   .hero { padding: 12px 20px; }
+  .hero .btn { padding: 6px 10px; font-size: 11.5px; letter-spacing: .03em; }
   nav, main { padding-inline: 20px; }
   nav .wrap { flex-wrap: nowrap; overflow-x: auto; }
   nav a { white-space: nowrap; }
@@ -169,8 +185,18 @@ footer li { margin: 4px 0; }
 <body>
 <div class="seitenkopf">
 <header class="hero"><div class="wrap">
-  <img class="logo" src="__LOGO__" alt="3zero" width="140" height="25">
-  <div><h1>Tool-Inventar</h1><p id="stand"></p></div>
+  <svg class="icon" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+    <rect width="64" height="64" rx="14" fill="#cfd2d3"/>
+    <rect x="4" y="4" width="56" height="56" rx="11" fill="#00afd0"/>
+    <rect x="13" y="16" width="9" height="9" rx="2" fill="none" stroke="#fff" stroke-width="2.4"/>
+    <rect x="27" y="18.5" width="24" height="4" rx="2" fill="#fff"/>
+    <rect x="13" y="29.5" width="9" height="9" rx="2" fill="none" stroke="#fff" stroke-width="2.4"/>
+    <rect x="27" y="32" width="24" height="4" rx="2" fill="#fff"/>
+    <path d="M13 47.5 L16.5 51 L22.5 44" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="27" y="45.5" width="24" height="4" rx="2" fill="#fff"/>
+  </svg>
+  <div class="marke"><img class="logo" src="__LOGO__" alt="3zero" width="132" height="24"><h1>Tool-Inventar</h1></div>
+  <div class="rechts"><div class="aktionsleiste" id="aktionen"></div><p id="stand"></p></div>
 </div></header>
 <nav aria-label="Abschnitte"><div class="wrap">
   <a href="#ueberblick">Überblick</a>
@@ -183,7 +209,7 @@ footer li { margin: 4px 0; }
   <a href="#hinweise">Hinweise</a>
 </div></nav>
 </div>
-<main id="app"></main>
+<main><div id="meldung-bereich"></div><div id="app"></div></main>
 <footer id="fuss"></footer>
 
 <script id="daten" type="application/json">__DATEN__</script>
@@ -362,7 +388,7 @@ function empfZeile(e) {
     ${TOKEN ? `<td>${ausfuehrZelle(e)}</td>` : ""}</tr>`;
 }
 function renderEmpfInhalt() {
-  let html = TOKEN ? aktionsleiste() : "";
+  let html = "";
   const typen = ["entfernen", "abschalten", "nur manuell", "prüfen"];
   const gruppen = typen.map(typ => [typ, ALLE.filter(e => e.bewertung?.empfehlung === typ)]);
   /* alles mit Aktion, das in keiner der Empfehlungsgruppen steht */
@@ -534,28 +560,53 @@ function renderHinweise() {
 /* Gewählte Aktionen über server.py starten, einzeln oder alle nacheinander */
 const ERGEBNIS = new Map();
 const MELDUNG = "3zero-tool-inventar:meldung"; /* überlebt das Neuladen nach einem Claude-Lauf */
-let beschaeftigt = false, meldung = "";
+let beschaeftigt = false, meldung = "", meldungTitel = "Ergebnis der Bewertung";
 try {
   meldung = sessionStorage.getItem(MELDUNG) || "";
   if (meldung) sessionStorage.removeItem(MELDUNG);
-} catch (_) { /* ohne Speicher bleibt die Leiste leer */ }
+} catch (_) { /* ohne Speicher bleibt die Karte leer */ }
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
 }
-function aktionsleiste() {
+/* Knöpfe sitzen im festen Kopf, also in jedem Tab und bei jeder Scrollposition erreichbar */
+function renderAktionen() {
   const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
-  return `<div class="aktionsleiste">
+  document.getElementById("aktionen").innerHTML = `
     <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>
-    <button type="button" class="btn btn-outline" id="neu-einlesen"${beschaeftigt ? " disabled" : ""}>Inventar neu einlesen</button>
-    <button type="button" class="btn btn-outline" id="bewerten"${beschaeftigt ? " disabled" : ""}>Bewertung nachziehen</button>
-    <span class="klein" id="meldung">${esc(meldung)}</span></div>`;
+    <button type="button" class="btn btn-outline" id="neu-einlesen" title="Bestand neu einlesen (build.py)"${beschaeftigt ? " disabled" : ""}>neu einlesen</button>
+    <button type="button" class="btn btn-outline" id="bewerten" title="Claude zieht die Bewertung nach (/3zero-tool-inventar)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>`;
 }
-/* Meldung ohne Neuaufbau der Tabellen ändern, sonst flackert die Seite im Sekundentakt */
-function setMeldung(text) {
+/* Claudes Zusammenfassung kommt als Markdown: Absätze, Listen, **fett**, `code` */
+function markdown(text) {
+  const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const teile = [];
+  let absatz = [], punkte = [];
+  const absatzZu = () => { if (absatz.length) teile.push(`<p>${inline(absatz.join(" "))}</p>`); absatz = []; };
+  const listeZu = () => { if (punkte.length) teile.push(`<ul>${punkte.map(p => `<li>${inline(p)}</li>`).join("")}</ul>`); punkte = []; };
+  for (const zeile of esc(text).split("\n")) {
+    const punkt = zeile.match(/^\s*[-*]\s+(.*)$/);
+    if (punkt) { absatzZu(); punkte.push(punkt[1]); }
+    else if (!zeile.trim()) { absatzZu(); listeZu(); }
+    else { listeZu(); absatz.push(zeile.trim()); }
+  }
+  absatzZu(); listeZu();
+  return teile.join("");
+}
+function renderMeldung() {
+  document.getElementById("meldung-bereich").innerHTML = meldung
+    ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
+       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>${markdown(meldung)}</div>`
+    : "";
+}
+function setMeldung(text, titel = meldungTitel) {
   meldung = text;
-  const feld = document.getElementById("meldung");
-  if (feld) feld.textContent = text;
+  meldungTitel = titel;
+  renderMeldung();
+}
+function zeichne() {
+  renderAktionen();
+  renderEmpfInhalt();
 }
 function ausfuehrZelle(e) {
   if (!gewaehlt(e)) return '<span class="leer">–</span>';
@@ -576,11 +627,11 @@ async function api(pfad, daten) {
   }
 }
 async function mitSperre(arbeit) {
-  beschaeftigt = true; renderEmpfInhalt();
-  try { await arbeit(); } finally { beschaeftigt = false; renderEmpfInhalt(); }
+  beschaeftigt = true; zeichne();
+  try { await arbeit(); } finally { beschaeftigt = false; zeichne(); }
 }
 async function fuehreAus(e) {
-  ERGEBNIS.set(e.id, { laeuft: true }); renderEmpfInhalt();
+  ERGEBNIS.set(e.id, { laeuft: true }); zeichne();
   ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion: gewaehlt(e) }));
 }
 
@@ -619,7 +670,8 @@ document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
 renderFuss();
 skillsFiltern();
-renderEmpfInhalt();
+if (TOKEN) zeichne(); else renderEmpfInhalt();
+renderMeldung();
 
 /* Tabs: sichtbar ist nur der Abschnitt aus dem Hash, sonst der erste */
 function zeigeTab() {
@@ -668,34 +720,35 @@ if (TOKEN) {
     const s = ev.target.closest("select.wahl");
     if (!s) return;
     waehle(s.dataset.wahl, s.value);
-    renderEmpfInhalt(); /* baut die Empfehlungen neu, deshalb danach den Fokus zurücksetzen */
+    zeichne(); /* baut die Empfehlungen neu, deshalb danach den Fokus zurücksetzen */
     document.querySelectorAll("select.wahl").forEach(x => {
       if (x.dataset.wahl === s.dataset.wahl) { x.value = s.value; x.classList.toggle("gesetzt", !!s.value); }
     });
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, [data-ausfuehren]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, [data-ausfuehren]");
     if (!knopf) return;
+    if (knopf.id === "meldung-zu") return setMeldung("");
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
       if (confirm(`${offen.length} Aktionen nacheinander ausführen?`)) mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
-        setMeldung("Liest den Bestand neu ein …");
+        setMeldung("Liest den Bestand neu ein …", "Inventar");
         const r = await api("/api/neu");
         if (r.ok) location.reload();
-        else setMeldung("Neu einlesen fehlgeschlagen: " + r.ausgabe);
+        else setMeldung("Neu einlesen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
       });
     } else if (knopf.id === "bewerten") {
       if (!confirm("Claude liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und ist ein echter Claude-Lauf auf deinem Konto. Starten?")) return;
       mitSperre(async () => {
         const start = Date.now();
-        setMeldung("Claude bewertet …");
-        const uhr = setInterval(() => setMeldung(`Claude bewertet … (${Math.round((Date.now() - start) / 1000)} s)`), 1000);
+        const uhr = setInterval(() => setMeldung(`Claude liest den Bestand ein und zieht die Bewertung nach … (${Math.round((Date.now() - start) / 1000)} s)`, "Bewertung läuft"), 1000);
+        setMeldung("Claude liest den Bestand ein und zieht die Bewertung nach …", "Bewertung läuft");
         const r = await api("/api/bewerten");
         clearInterval(uhr);
-        if (!r.ok) return setMeldung("Bewertung fehlgeschlagen: " + r.ausgabe);
+        if (!r.ok) return setMeldung("Bewertung fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
         try { sessionStorage.setItem(MELDUNG, r.ausgabe); } catch (_) { /* ohne Speicher geht die Meldung verloren */ }
         location.reload();
       });
