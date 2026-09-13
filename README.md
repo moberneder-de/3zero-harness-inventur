@@ -1,3 +1,3 @@
-# 3zero-Tool-Inventar
+# 3zero-Harness-Inventur
 
-Dashboard der installierten MCP-Server, Plugins und Skills von Claude Code, mit Bewertung von Überschneidungen und Empfehlungen, was entfernt werden kann.
+Inventur der Claude-Code-Laufzeitumgebung: MCP-Server, Plugins, Skills, Befehle und Agenten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard.

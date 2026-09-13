@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lokaler Server für das Tool-Inventar.
+"""Lokaler Server für das Harness-Inventur.
 
 Liest den Bestand neu ein (build.py), zeigt das Dashboard auf http://127.0.0.1:8765
 und führt die dort gewählten Aktionen aus. Ausgeführt wird nur, was build.py in
@@ -25,7 +25,7 @@ TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
 
 # Bewertung nachziehen: Claude Code ohne Oberfläche, nur mit den Rechten, die der Skill braucht
 BEWERTEN = [
-    "claude", "-p", "/3zero-tool-inventar", "--model", "opus", "--output-format", "json",
+    "claude", "-p", "/3zero-harness-inventur", "--model", "opus", "--output-format", "json",
     "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash(python3 *)",
     "--append-system-prompt", "Dieser Lauf kommt aus dem Dashboard-Server. Das Dashboard ist bereits "
     "geöffnet: baue es in Schritt 5 nur neu, öffne es nicht. Ändere nichts außer bewertung.json.",

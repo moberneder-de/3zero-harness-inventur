@@ -146,7 +146,7 @@ class Server(unittest.TestCase):
         status, inhalt = self.anfrage("POST", "/api/bewerten")
         self.assertEqual((status, json.loads(inhalt)), (200, {"ok": True, "ausgabe": "2 neu, 1 weg."}))
         argv = (self.tmp / "argv").read_text().split("\n")
-        self.assertEqual(argv[:3], ["-p", "/3zero-tool-inventar", "--model"])
+        self.assertEqual(argv[:3], ["-p", "/3zero-harness-inventur", "--model"])
         for erwartet in ("opus", "Read", "Edit", "Write", "Bash(python3 *)"):
             self.assertIn(erwartet, argv)
         self.assertNotIn("--dangerously-skip-permissions", argv)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tool-Inventar für Claude Code.
+"""Harness-Inventur für Claude Code.
 
 Liest MCP-Server, Plugins und Skills aus ~/.claude, ~/.claude.json und
 ~/.agents, holt den Live-Status der MCP-Server über `claude mcp list` und
@@ -7,7 +7,7 @@ schreibt dashboard.html sowie inventar.json.
 
 Die fachliche Bewertung (Beschreibung auf Deutsch, Überschneidungen,
 Empfehlungen) steht in bewertung.json. Die pflegt Claude über den Skill
-/3zero-tool-inventar, dieses Skript liest sie nur.
+/3zero-harness-inventur, dieses Skript liest sie nur.
 
 Aufruf: python3 build.py
 """
