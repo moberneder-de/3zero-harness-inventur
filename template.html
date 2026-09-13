@@ -307,6 +307,7 @@ function waehle(id, a) {
 function befehlText(e, a) {
   const s = e.aktionen[a];
   if (s.override) return `~/.claude/settings.json → "skillOverrides": {"${e.name}": "${s.override}"}`;
+  if (s.sperren) return `~/.claude/settings.json → "deniedMcpServers": [${JSON.stringify(s.sperren)}]`;
   const argv = s.argv.map(x => /^[\w@%+=:,./-]+$/.test(x) ? x : `"${x}"`).join(" ");
   return s.cwd ? `cd "${s.cwd}" && ${argv}` : argv;
 }
@@ -446,8 +447,9 @@ function detailZeile(spalten, paare) {
 }
 
 function renderMcp() {
+  const ausIn = n => n ? ` <span class="klein">· aus in ${n} ${n === 1 ? "Projekt" : "Projekten"}</span>` : "";
   const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td>
-      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
+      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
     detailZeile(5 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
@@ -458,7 +460,8 @@ function renderMcp() {
     ])).join("");
   return abschnitt("mcp", "Bestand", "MCP-Server",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    "Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. Zeile anklicken für Details.");
+    "Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. " +
+    "„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.");
 }
 
 function renderPlugins() {

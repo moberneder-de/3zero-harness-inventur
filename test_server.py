@@ -133,6 +133,19 @@ class Server(unittest.TestCase):
         self.ausfuehren("skill:grilling", "deaktivieren")
         self.assertEqual(json.loads(self.settings.read_text()), {"skillOverrides": {"grilling": "off"}})
 
+    def test_mcp_sperre_landet_einmal_in_settings(self):
+        self.settings.write_text('{\n  "deniedMcpServers": [\n    {\n      "serverName": "alt"\n    }\n  ]\n}\n')
+        vorher = self.settings.read_text()
+        self.schreibe_inventar([], mcp=[
+            {"id": "mcp:claude.ai Gmail", "name": "claude.ai Gmail",
+             "aktionen": {"deaktivieren": {"sperren": {"serverName": "claude.ai Gmail"}}}}])
+        for _ in range(2):
+            status, antwort = self.ausfuehren("mcp:claude.ai Gmail", "deaktivieren")
+            self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertEqual(json.loads(self.settings.read_text()),
+                         {"deniedMcpServers": [{"serverName": "alt"}, {"serverName": "claude.ai Gmail"}]})
+        self.assertEqual((self.tmp / "settings.json.bak").read_text(), vorher)
+
     def test_kaputte_settings_bleiben_unangetastet(self):
         self.settings.write_text("{ kaputt")
         self.schreibe_inventar([], skills=[

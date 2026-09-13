@@ -66,22 +66,37 @@ class Inventarserver(ThreadingHTTPServer):
                 return e["name"], e["aktionen"][aktion]
         return None
 
-    def override_setzen(self, name, wert):
+    def settings_aendern(self, aendern):
         text = self.settings.read_text(encoding="utf-8")
         daten = json.loads(text)
         if not self.gesichert:
             self.settings.with_name(self.settings.name + ".bak").write_text(text, encoding="utf-8")
             self.gesichert = True
-        daten.setdefault("skillOverrides", {})[name] = wert
+        aendern(daten)
         neu = self.settings.with_name(self.settings.name + ".neu")
         neu.write_text(json.dumps(daten, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         os.replace(neu, self.settings)
+
+    def override_setzen(self, name, wert):
+        def aendern(daten):
+            daten.setdefault("skillOverrides", {})[name] = wert
+        self.settings_aendern(aendern)
         return {"ok": True, "ausgabe": f'skillOverrides: "{name}": "{wert}"'}
+
+    def mcp_sperren(self, eintrag):
+        def aendern(daten):
+            liste = daten.setdefault("deniedMcpServers", [])
+            if eintrag not in liste:
+                liste.append(eintrag)
+        self.settings_aendern(aendern)
+        return {"ok": True, "ausgabe": "deniedMcpServers: " + json.dumps(eintrag, ensure_ascii=False)}
 
     def ausfuehren(self, name, schritt):
         with self.sperre:
             if "override" in schritt:
                 return self.override_setzen(name, schritt["override"])
+            if "sperren" in schritt:
+                return self.mcp_sperren(schritt["sperren"])
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):

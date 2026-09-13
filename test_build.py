@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import build
 
@@ -76,15 +77,36 @@ class Aktionen(unittest.TestCase):
     def test_mcp_server(self):
         faelle = [
             (mcp("sentry", "User", "~/.claude.json"),
-             {"deinstallieren": {"argv": ["claude", "mcp", "remove", "sentry", "-s", "user"]}}),
+             {"deinstallieren": {"argv": ["claude", "mcp", "remove", "sentry", "-s", "user"]},
+              "deaktivieren": {"sperren": {"serverName": "sentry"}}}),
             (mcp("upnote", "Projekt", "/Users/x/Daten/3zero-Website"),
-             {"deinstallieren": {"argv": ["claude", "mcp", "remove", "upnote", "-s", "local"], "cwd": "/Users/x/Daten/3zero-Website"}}),
-            (mcp("plugin:context7:context7", "Plugin", "context7@claude-plugins-official"), {}),
-            (mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"), {}),
+             {"deinstallieren": {"argv": ["claude", "mcp", "remove", "upnote", "-s", "local"], "cwd": "/Users/x/Daten/3zero-Website"},
+              "deaktivieren": {"sperren": {"serverName": "upnote"}}}),
+            (mcp("plugin:context7:context7", "Plugin", "context7@claude-plugins-official"),
+             {"deaktivieren": {"sperren": {"serverName": "plugin:context7:context7"}}}),
+            (mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"),
+             {"deaktivieren": {"sperren": {"serverName": "claude.ai Gmail"}}}),
         ]
         for e, erwartet in faelle:
             with self.subTest(e["art"]):
                 self.assertEqual(build.aktionen(e), erwartet)
+
+    def test_gesperrter_mcp_server_bietet_kein_deaktivieren(self):
+        e = {**mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"), "gesperrt": True}
+        self.assertEqual(build.aktionen(e), {})
+
+
+class McpStatus(unittest.TestCase):
+    def test_gesperrt_schlaegt_live_status(self):
+        cfg = {"claudeAiMcpEverConnected": ["claude.ai Gmail", "claude.ai Google Drive"]}
+        live = {n: {"ziel": "https://example.org/mcp", "zustand": "✔ Connected"} for n in cfg["claudeAiMcpEverConnected"]}
+        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", {"claude.ai Gmail"}):
+            status = {e["name"]: (e["status"], e["gesperrt"]) for e in build.mcp_server([], live)}
+        self.assertEqual(status, {"claude.ai Gmail": ("deaktiviert", True), "claude.ai Google Drive": ("verbunden", False)})
+
+    def test_nur_serverName_eintraege_zaehlen(self):
+        self.assertEqual(build.gesperrte_namen({"deniedMcpServers": [
+            {"serverName": "claude.ai Gmail"}, {"serverUrl": "https://example.org/*"}, "kaputt"]}), {"claude.ai Gmail"})
 
 
 if __name__ == "__main__":

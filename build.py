@@ -43,6 +43,14 @@ OVERRIDES = SETTINGS.get("skillOverrides", {})
 LOCK = lies_json(HOME / ".agents" / ".skill-lock.json").get("skills", {})
 
 
+def gesperrte_namen(settings):
+    """Server, die deniedMcpServers per Name in allen Projekten sperrt."""
+    return {e.get("serverName") for e in settings.get("deniedMcpServers", []) if isinstance(e, dict)} - {None}
+
+
+GESPERRT = gesperrte_namen(SETTINGS)
+
+
 def datum_ms(ms):
     return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d") if ms else None
 
@@ -305,7 +313,9 @@ def mcp_server(plugin_liste, live):
             status = "nur im Projekt"
         else:
             status = "unbekannt"
-        ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status,
+        if name in GESPERRT:
+            status = "deaktiviert"
+        ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": name in GESPERRT,
                          "aus_in_projekten": aus_in.get(name, []), **s})
     return ergebnis
 
@@ -336,8 +346,8 @@ def befehl(e, empfehlung):
 
 
 def aktionen(e):
-    """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`) oder skillOverrides-Wert.
-    Aktionen, die schon gelten, fehlen."""
+    """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert
+    oder deniedMcpServers-Eintrag (`sperren`). Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
@@ -346,11 +356,14 @@ def aktionen(e):
             a["deaktivieren"] = {"argv": ["claude", "plugin", "disable", pid]}
         return a
     if eid.startswith("mcp:"):
+        a = {}
         if e["art"] == "User":
-            return {"deinstallieren": {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}}
+            a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}
         if e["art"] == "Projekt":
-            return {"deinstallieren": {"argv": ["claude", "mcp", "remove", e["name"], "-s", "local"], "cwd": e["quelle"]}}
-        return {}
+            a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "local"], "cwd": e["quelle"]}
+        if not e.get("gesperrt"):
+            a["deaktivieren"] = {"sperren": {"serverName": e["name"]}}
+        return a
     if e["typ"] == "Agent":
         return {}
     a = {}
