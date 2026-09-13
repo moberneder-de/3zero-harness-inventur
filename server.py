@@ -23,6 +23,24 @@ HIER = Path(__file__).resolve().parent
 PORT = 8765
 TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
 
+# Bewertung nachziehen: Claude Code ohne Oberfläche, nur mit den Rechten, die der Skill braucht
+BEWERTEN = [
+    "claude", "-p", "/3zero-tool-inventar", "--model", "opus", "--output-format", "json",
+    "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash(python3 *)",
+    "--append-system-prompt", "Dieser Lauf kommt aus dem Dashboard-Server. Das Dashboard ist bereits "
+    "geöffnet: baue es in Schritt 5 nur neu, öffne es nicht. Ändere nichts außer bewertung.json.",
+]
+
+
+def claude_text(ausgabe):
+    """Aus `claude --output-format json` die Schlussmeldung holen, sonst die Rohausgabe."""
+    for text in (ausgabe, ausgabe[ausgabe.find("{"):ausgabe.rfind("}") + 1]):
+        try:
+            return json.loads(text).get("result") or ausgabe
+        except (ValueError, AttributeError):
+            continue
+    return ausgabe
+
 
 def lauf(argv, cwd, timeout):
     try:
@@ -70,6 +88,11 @@ class Inventarserver(ThreadingHTTPServer):
         with self.sperre:
             return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
 
+    def bewerten(self):
+        with self.sperre:
+            r = lauf(BEWERTEN, self.ordner, 1200)
+        return {"ok": r["ok"], "ausgabe": claude_text(r["ausgabe"])}
+
 
 class Handler(BaseHTTPRequestHandler):
     def antworte(self, status, inhalt, typ="application/json"):
@@ -96,6 +119,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(403, {"ok": False, "ausgabe": "nicht erlaubt"})
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
+        if self.path == "/api/bewerten":
+            return self.antworte(200, self.server.bewerten())
         if self.path != "/api/ausfuehren":
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:

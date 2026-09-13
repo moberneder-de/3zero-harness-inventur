@@ -117,6 +117,7 @@ button.kopieren:hover, button.zeilenknopf:hover { border-color: var(--cyan); col
 .btn-outline:hover { background: var(--cyan); color: #fff; }
 button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .aktionsleiste { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; }
+#meldung { white-space: pre-line; max-width: 760px; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: #fff; }
 select.wahl.gesetzt { border-color: var(--cyan); font-weight: 600; }
 td details summary { white-space: nowrap; cursor: pointer; }
@@ -532,7 +533,12 @@ function renderHinweise() {
 
 /* Gewählte Aktionen über server.py starten, einzeln oder alle nacheinander */
 const ERGEBNIS = new Map();
+const MELDUNG = "3zero-tool-inventar:meldung"; /* überlebt das Neuladen nach einem Claude-Lauf */
 let beschaeftigt = false, meldung = "";
+try {
+  meldung = sessionStorage.getItem(MELDUNG) || "";
+  if (meldung) sessionStorage.removeItem(MELDUNG);
+} catch (_) { /* ohne Speicher bleibt die Leiste leer */ }
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
@@ -542,7 +548,14 @@ function aktionsleiste() {
   return `<div class="aktionsleiste">
     <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>
     <button type="button" class="btn btn-outline" id="neu-einlesen"${beschaeftigt ? " disabled" : ""}>Inventar neu einlesen</button>
-    <span class="klein">${esc(meldung)}</span></div>`;
+    <button type="button" class="btn btn-outline" id="bewerten"${beschaeftigt ? " disabled" : ""}>Bewertung nachziehen</button>
+    <span class="klein" id="meldung">${esc(meldung)}</span></div>`;
+}
+/* Meldung ohne Neuaufbau der Tabellen ändern, sonst flackert die Seite im Sekundentakt */
+function setMeldung(text) {
+  meldung = text;
+  const feld = document.getElementById("meldung");
+  if (feld) feld.textContent = text;
 }
 function ausfuehrZelle(e) {
   if (!gewaehlt(e)) return '<span class="leer">–</span>';
@@ -577,7 +590,7 @@ function renderFuss() {
     <ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Tool-Inventar: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard so, dass sich die Aktionen im Tab „Empfehlungen“ direkt starten lassen.</li>
-      <li><code>/3zero-tool-inventar</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
+      <li><code>/3zero-tool-inventar</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json). Denselben Lauf startet der Knopf „Bewertung nachziehen“ im Tab Empfehlungen.</li>
     </ul>
     <h3 style="margin-top:18px">Woher die Zahlen kommen</h3>
     <ul>
@@ -662,18 +675,29 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, [data-ausfuehren]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, [data-ausfuehren]");
     if (!knopf) return;
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
       if (confirm(`${offen.length} Aktionen nacheinander ausführen?`)) mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
-        meldung = "Liest den Bestand neu ein …";
-        renderEmpfInhalt();
+        setMeldung("Liest den Bestand neu ein …");
         const r = await api("/api/neu");
         if (r.ok) location.reload();
-        else meldung = "Neu einlesen fehlgeschlagen: " + r.ausgabe;
+        else setMeldung("Neu einlesen fehlgeschlagen: " + r.ausgabe);
+      });
+    } else if (knopf.id === "bewerten") {
+      if (!confirm("Claude liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und ist ein echter Claude-Lauf auf deinem Konto. Starten?")) return;
+      mitSperre(async () => {
+        const start = Date.now();
+        setMeldung("Claude bewertet …");
+        const uhr = setInterval(() => setMeldung(`Claude bewertet … (${Math.round((Date.now() - start) / 1000)} s)`), 1000);
+        const r = await api("/api/bewerten");
+        clearInterval(uhr);
+        if (!r.ok) return setMeldung("Bewertung fehlgeschlagen: " + r.ausgabe);
+        try { sessionStorage.setItem(MELDUNG, r.ausgabe); } catch (_) { /* ohne Speicher geht die Meldung verloren */ }
+        location.reload();
       });
     } else {
       mitSperre(() => fuehreAus(INDEX.get(knopf.dataset.ausfuehren)));

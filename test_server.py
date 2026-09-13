@@ -1,5 +1,6 @@
 import http.client
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -31,7 +32,22 @@ class Server(unittest.TestCase):
     def tearDown(self):
         self.srv.shutdown()
         self.srv.server_close()
+        if self.pfad_vorher is not None:
+            os.environ["PATH"] = self.pfad_vorher
         shutil.rmtree(self.tmp)
+
+    pfad_vorher = None
+
+    def claude_ersatz(self, ausgabe, code=0):
+        """Legt ein Skript namens claude in den PATH, das seine Argumente protokolliert."""
+        ordner = self.tmp / "bin"
+        ordner.mkdir()
+        skript = ordner / "claude"
+        skript.write_text(f'#!/bin/sh\nfor a in "$@"; do echo "$a"; done > "{self.tmp}/argv"\npwd > "{self.tmp}/cwd"\n'
+                          f'cat <<\'ENDE\'\n{ausgabe}\nENDE\nexit {code}\n')
+        skript.chmod(0o755)
+        self.pfad_vorher = os.environ["PATH"]
+        os.environ["PATH"] = f"{ordner}:{self.pfad_vorher}"
 
     def schreibe_inventar(self, plugins, skills=(), mcp=()):
         inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills)}
@@ -124,6 +140,30 @@ class Server(unittest.TestCase):
         status, antwort = self.ausfuehren("skill:grilling", "deaktivieren")
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertEqual(self.settings.read_text(), "{ kaputt")
+
+    def test_bewerten_startet_claude_eng_begrenzt(self):
+        self.claude_ersatz('{"type":"result","is_error":false,"result":"2 neu, 1 weg."}')
+        status, inhalt = self.anfrage("POST", "/api/bewerten")
+        self.assertEqual((status, json.loads(inhalt)), (200, {"ok": True, "ausgabe": "2 neu, 1 weg."}))
+        argv = (self.tmp / "argv").read_text().split("\n")
+        self.assertEqual(argv[:3], ["-p", "/3zero-tool-inventar", "--model"])
+        for erwartet in ("opus", "Read", "Edit", "Write", "Bash(python3 *)"):
+            self.assertIn(erwartet, argv)
+        self.assertNotIn("--dangerously-skip-permissions", argv)
+        self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), self.tmp.resolve())
+
+    def test_bewerten_ohne_token_startet_nichts(self):
+        self.claude_ersatz('{"result":"egal"}')
+        status, _ = self.anfrage("POST", "/api/bewerten", token=None)
+        self.assertEqual(status, 403)
+        self.assertFalse((self.tmp / "argv").exists())
+
+    def test_bewerten_meldet_fehler_im_klartext(self):
+        self.claude_ersatz("Credit balance too low", code=2)
+        status, inhalt = self.anfrage("POST", "/api/bewerten")
+        antwort = json.loads(inhalt)
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("Credit balance too low", antwort["ausgabe"])
 
     def test_neu_einlesen_liest_frisches_inventar(self):
         neu = {"mcp": [], "plugins": [], "skills": [
