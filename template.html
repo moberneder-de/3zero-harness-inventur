@@ -164,7 +164,13 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .hinweis { margin-top: 16px; }
 .hinweis .befehl { margin-top: 10px; }
 
-.hilfe h3 { margin: 26px 0 8px; }
+/* Unterreiter im Stil der Navigation: Versalien, Unterstrich in Cyan */
+.unterreiter { display: flex; flex-wrap: wrap; gap: 4px 22px; border-bottom: 1px solid var(--border-light); margin-top: 8px; }
+.unterreiter button { position: relative; background: none; border: 0; padding: 10px 0; font: 600 13px var(--body); color: var(--text-dark); text-transform: uppercase; letter-spacing: .05em; cursor: pointer; }
+.unterreiter button::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--cyan); transform: scaleX(0); transition: transform .15s; }
+.unterreiter button:hover, .unterreiter button[aria-selected="true"] { color: var(--cyan); }
+.unterreiter button:hover::after, .unterreiter button[aria-selected="true"]::after { transform: scaleX(1); }
+.hilfe [role="tabpanel"] { padding-top: 12px; }
 .hilfe ul { margin: 6px 0 0; padding-left: 18px; max-width: 760px; font-size: 14.5px; }
 .hilfe li { margin: 5px 0; }
 
@@ -174,6 +180,8 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
   nav, main { padding-inline: 20px; }
   nav .wrap { flex-wrap: nowrap; overflow-x: auto; }
   nav a { white-space: nowrap; }
+  .unterreiter { flex-wrap: nowrap; overflow-x: auto; }
+  .unterreiter button { white-space: nowrap; }
   .balken .zeile { grid-template-columns: 110px 1fr 70px; }
   .detail dl { grid-template-columns: 1fr; }
   .detail dt { margin-top: 6px; }
@@ -713,35 +721,37 @@ async function fuehreAus(e) {
 
 function renderHilfe() {
   const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
-  return abschnitt("hilfe", "Hilfe", "So funktioniert das Dashboard", `<div class="hilfe">
-    <h3>Aktualisieren</h3>
-    <ul>
+  const teile = [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und der Spalte „Aktion“. Als Datei geöffnet bleibt es nur lesbar.</li>
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
       <li>Mit dem Server erledigen das die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf.</li>
-    </ul>
-    <h3>Aktionen ausführen</h3>
-    <ul>
+    </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab Empfehlungen oder alles über „alle … ausführen“ im Kopf.</li>
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
       <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server <code>settings.json.bak</code> an. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
-    </ul>
-    <h3>Empfehlungen lesen</h3>
-    <ul>
+    </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
-    </ul>
-    <h3>Woher die Zahlen kommen</h3>
-    <ul>
+    </ul>`], ["Woher die Zahlen kommen", `<ul>
       <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten, Hooks und MCP-Server gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
       <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4.</li>
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills.</li>
-    </ul></div>`);
+    </ul>`]];
+  const reiter = teile.map(([titel], i) => `<button type="button" role="tab" id="hilfe-reiter-${i}" aria-controls="hilfe-teil-${i}" aria-selected="${i === 0}">${titel}</button>`).join("");
+  const inhalte = teile.map(([, html], i) => `<div role="tabpanel" id="hilfe-teil-${i}" aria-labelledby="hilfe-reiter-${i}"${i ? " hidden" : ""}>${html}</div>`).join("");
+  return abschnitt("hilfe", "Hilfe", "So funktioniert das Dashboard",
+    `<div class="hilfe"><div class="unterreiter" role="tablist" aria-label="Hilfe">${reiter}</div>${inhalte}</div>`);
+}
+function waehleReiter(gewaehlt) {
+  gewaehlt.parentElement.querySelectorAll('[role="tab"]').forEach(r => {
+    r.setAttribute("aria-selected", r === gewaehlt);
+    document.getElementById(r.getAttribute("aria-controls")).hidden = r !== gewaehlt;
+  });
 }
 
 function kopiere(text, knopf) {
@@ -785,6 +795,8 @@ window.addEventListener("hashchange", zeigeTab);
 document.addEventListener("click", ev => {
   const knopf = ev.target.closest("[data-copy]");
   if (knopf) { kopiere(knopf.dataset.copy, knopf); return; }
+  const reiter = ev.target.closest('[role="tab"]');
+  if (reiter) { waehleReiter(reiter); return; }
   if (ev.target.closest("a, button, input, select")) return;
   const th = ev.target.closest("th[data-sort]");
   if (th) {
