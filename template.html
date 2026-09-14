@@ -141,8 +141,6 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .empf-gruppe { margin-top: 30px; }
 .empf-gruppe > .kopf { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
 .empf-gruppe > p { margin: 6px 0 0; font-size: 14px; max-width: 760px; }
-.block { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 16px 20px; margin-top: 18px; }
-.block pre { margin: 10px 0 0; font: 12.5px/1.5 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 18px; margin-top: 16px; }
 .karte { background: #fff; border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 24px 22px; transition: box-shadow .15s; }
@@ -295,6 +293,8 @@ function typText(e) {
 /* Kontextlast je Sitzung: automatisch geladene Beschreibungen und was SessionStart-Hooks einspielen.
    Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Dazu, was wegfällt, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
+/* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand */
+const umgesetzt = e => ({ "abschalten": e.override === "off", "nur manuell": e.aufruf === "nur /" })[e.bewertung?.empfehlung] || false;
 const JE_SITZUNG = [...D.skills, ...D.hooks];
 const tokensGesamt = JE_SITZUNG.reduce((s, e) => s + e.tokens, 0);
 const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt ? s + (e.tokens || 0) : s, 0);
@@ -341,7 +341,7 @@ function renderUeberblick() {
   const mcpAn = D.mcp.filter(m => m.status === "verbunden").length;
   const plAn = D.plugins.filter(p => p.status === "aktiv").length;
   const skAn = D.skills.filter(s => s.status === "aktiv").length;
-  const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t).length;
+  const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !umgesetzt(e)).length;
   const banner = [];
   if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong> ${D.unbewertet.map(esc).join(", ")}.`);
   if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong> ${D.entfallen.map(esc).join(", ")}.`);
@@ -381,7 +381,7 @@ const GRUPPEN_TEXT = {
   "abschalten": "Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
   "nur manuell": "Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
   "prüfen": "Hier fehlt deine Entscheidung. Der Befehl zeigt, wie das Entfernen ginge.",
-  "selbst gewählt": "Ohne Empfehlung, von dir in den Bestandstabellen gewählt.",
+  "selbst gewählt": "Ohne offene Empfehlung, von dir in den Bestandstabellen gewählt.",
 };
 function renderEmpfehlungen() {
   return abschnitt("empfehlungen", "Empfehlungen", "Was weg kann und was du entscheiden solltest",
@@ -402,9 +402,10 @@ function empfZeile(e) {
 function renderEmpfInhalt() {
   let html = "";
   const typen = ["entfernen", "abschalten", "nur manuell", "prüfen"];
-  const gruppen = typen.map(typ => [typ, ALLE.filter(e => e.bewertung?.empfehlung === typ)]);
+  const offen = e => typen.includes(e.bewertung?.empfehlung) && !umgesetzt(e);
+  const gruppen = typen.map(typ => [typ, ALLE.filter(e => e.bewertung?.empfehlung === typ && offen(e))]);
   /* alles mit Aktion, das in keiner der Empfehlungsgruppen steht */
-  gruppen.push(["selbst gewählt", ALLE.filter(e => gewaehlt(e) && !typen.includes(e.bewertung?.empfehlung))]);
+  gruppen.push(["selbst gewählt", ALLE.filter(e => gewaehlt(e) && !offen(e))]);
   for (const [typ, roh] of gruppen) {
     const liste = roh.sort((a, b) => a.name.localeCompare(b.name));
     if (!liste.length) continue;
@@ -415,26 +416,14 @@ function renderEmpfInhalt() {
       <p>${GRUPPEN_TEXT[typ]}</p>
       <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${TOKEN ? "Aktion" : "Befehl"}</th>${TOKEN ? "<th>Ausführen</th>" : ""}</tr></thead>
       <tbody>${liste.map(empfZeile).join("")}</tbody></table></div></div>`;
-    if (typ === "nur manuell") html += overrideBlock();
   }
+  const erledigt = ALLE.filter(umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
+  if (erledigt.length) html += `<p class="klein">Schon umgesetzt: ${erledigt.map(esc).join(", ")}.</p>`;
   document.getElementById("empf-inhalt").innerHTML = html || '<p class="leer">Keine offenen Empfehlungen.</p>';
   if (TOKEN) {
     const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
     document.getElementById("zahl-aktionen").textContent = offen ? ` (${offen})` : "";
   }
-}
-
-function overrideBlock() {
-  const neu = { ...D.skill_overrides };
-  ALLE.forEach(e => {
-    const t = e.bewertung?.empfehlung;
-    if (t === "abschalten") neu[e.name] = "off";
-    if (t === "nur manuell") neu[e.name] = "user-invocable-only";
-  });
-  const json = `"skillOverrides": ${JSON.stringify(neu, null, 2)}`;
-  return `<div class="block"><div class="empf-gruppe" style="margin:0"><div class="kopf"><h3>„abschalten“ und „nur manuell“ auf einmal</h3>${kopierKnopf(json)}</div>
-    <p class="klein">Ersetzt den bisherigen skillOverrides-Eintrag in ~/.claude/settings.json; die vorhandenen Einträge sind schon enthalten. Wirkt ab der nächsten Sitzung.</p></div>
-    <pre>${esc(json)}</pre></div>`;
 }
 
 function renderGruppen() {
@@ -636,7 +625,10 @@ function renderEingebaut() {
 }
 
 function renderHinweise() {
-  const karten = D.hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p>
+  const hinweise = [...D.hinweise];
+  if (D.overrides_verwaist.length) hinweise.unshift({ titel: "skillOverrides für Skills, die es nicht gibt",
+    text: `\`~/.claude/settings.json\` legt unter skillOverrides noch fest: ${D.overrides_verwaist.map(n => `\`${n}\``).join(", ")}. Kein installierter oder eingebauter Skill heißt so, der Eintrag wirkt also nicht. Lösch ihn von Hand, sonst gilt er wieder, sobald ein Skill mit diesem Namen dazukommt.` });
+  const karten = hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p>
     ${(h.befehle || []).map(befehlZeile).join("")}</article>`).join("");
   return abschnitt("hinweise", "Hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
 }

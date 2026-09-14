@@ -583,13 +583,15 @@ def main():
     ids = {e["id"] for e in alle}
     unbewertet = [e["id"] for e in alle if not e["bewertung"]]
     entfallen = sorted(set(BEWERTUNG.get("eintraege", {})) - ids)
+    # Overrides gelten nach Namen, auch für Projekt- und eingebaute Skills
+    verwaist = sorted(set(OVERRIDES) - {e["name"] for e in skills + projekte + eingebaut})
 
     daten = {
         "erstellt": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "claude_version": claude_version(),
         "live_status": live is not None,
         "bewertung_stand": BEWERTUNG.get("stand"),
-        "skill_overrides": OVERRIDES,
+        "overrides_verwaist": verwaist,
         "mcp": mcp,
         "plugins": plugin_liste,
         "skills": skills,
