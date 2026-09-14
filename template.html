@@ -205,6 +205,8 @@ footer li { margin: 4px 0; }
   <a href="#mcp">MCP-Server</a>
   <a href="#plugins">Plugins</a>
   <a href="#skills">Skills</a>
+  <a href="#projekte">Projekte</a>
+  <a href="#hooks">Hooks</a>
   <a href="#eingebaut">Eingebaut</a>
   <a href="#hinweise">Hinweise</a>
 </div></nav>
@@ -228,7 +230,7 @@ const link = (url, text) => /^https:\/\//.test(url || "") ? `<a href="${esc(url)
 const kopierKnopf = text => `<button type="button" class="kopieren" data-copy="${esc(text)}">kopieren</button>`;
 const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopierKnopf(text)}</div>`;
 
-const ALLE = [...D.mcp, ...D.plugins, ...D.skills];
+const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.hooks];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
 D.eingebaut.forEach(b => INDEX.set("builtin:" + b.name, { ...b, id: "builtin:" + b.name, typ: "eingebaut", status: "aktiv" }));
 
@@ -264,7 +266,7 @@ function statusBadge(s) {
   return `<span class="status st-${cls}"><span aria-hidden="true">${icon}</span> ${esc(s)}</span>`;
 }
 function nutzungText(e) {
-  if (e.typ === "Agent") return '<span class="leer">nicht erfasst</span>';
+  if (e.typ === "Agent" || e.typ === "Hook") return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("mcp:")) return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
   const n = e.nutzung;
@@ -280,13 +282,16 @@ function quelleText(e) {
 function typText(e) {
   if (e.id.startsWith("plugin:")) return "Plugin";
   if (e.id.startsWith("mcp:")) return "MCP-Server";
+  if (e.projekt) return `${e.typ} in ${e.projekt.split("/").pop()}`;
   return e.typ;
 }
 
-/* Kontextlast: was fällt weg, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
+/* Kontextlast je Sitzung: automatisch geladene Beschreibungen und was SessionStart-Hooks einspielen.
+   Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Dazu, was wegfällt, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
-const tokensGesamt = D.skills.reduce((s, e) => s + e.tokens, 0);
-const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) ? s + (e.tokens || 0) : s, 0);
+const JE_SITZUNG = [...D.skills, ...D.hooks];
+const tokensGesamt = JE_SITZUNG.reduce((s, e) => s + e.tokens, 0);
+const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt ? s + (e.tokens || 0) : s, 0);
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
@@ -341,13 +346,13 @@ function renderUeberblick() {
     <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server verbunden / eingetragen</div></div>
     <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
     <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
-    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen</div></div>
+    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen und SessionStart-Hooks</div></div>
     <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
     <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
   </div>`;
 
   const summen = new Map();
-  D.skills.filter(e => e.tokens > 0).forEach(e => {
+  JE_SITZUNG.filter(e => e.tokens > 0).forEach(e => {
     const k = e.plugin ? `Plugin ${e.plugin.split("@")[0]}` : (e.quelle?.autor || "unbekannt");
     const v = summen.get(k) || { tokens: 0, anzahl: 0 };
     v.tokens += e.tokens; v.anzahl += 1; summen.set(k, v);
@@ -355,7 +360,7 @@ function renderUeberblick() {
   const reihen = [...summen.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
   const max = reihen.length ? reihen[0][1].tokens : 1;
   const balken = `<div class="balken"><h3>Kontextlast nach Herkunft</h3>
-    <p class="klein" style="margin:0 0 10px">Beschreibungen, die Claude Code in jede Sitzung lädt (grob geschätzt: Zeichen ÷ 4). Skills mit „nur /“ kosten nichts.</p>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die Claude Code in jede Sitzung lädt, und Text, den SessionStart-Hooks einspielen (grob geschätzt: Zeichen ÷ 4). Skills mit „nur /“ kosten nichts.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
@@ -489,7 +494,7 @@ function renderPlugins() {
   }).join("");
   return abschnitt("plugins", "Bestand", "Plugins",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    "„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen in jeder Sitzung belegen.");
+    "„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen.");
 }
 
 /* Skills-Tabelle mit Filter und Sortierung */
@@ -544,6 +549,47 @@ function skillsFiltern() {
         ["Umsetzen", befehlZeile(s.befehl)],
       ]);
   }).join("");
+}
+
+function renderProjekte() {
+  const projekt = e => e.projekt.split("/").pop();
+  const liste = [...D.projekt_skills].sort((a, b) => projekt(a).localeCompare(projekt(b)) || a.name.localeCompare(b.name));
+  const zeilen = liste.map(s => `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}</div></td>
+      <td>${esc(projekt(s))}</td><td>${esc(s.quelle.autor)}</td><td class="nowrap klein">${esc(s.aufruf)}</td>
+      <td class="zahl">${s.tokens ? "≈ " + zahl(s.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${nutzungText(s)}</td>
+      <td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
+    detailZeile(8 + SP, [
+      ["Beschreibung", esc(s.beschreibung)],
+      ["Begründung", txt(s.bewertung?.grund || "")],
+      ["Herkunft", s.quelle.url ? link(s.quelle.url, s.quelle.repo) : esc(s.quelle.art)],
+      ["Projekt", `<code>${esc(s.projekt)}</code>`],
+      ["Datei", `<code>${esc(s.pfad)}</code>`],
+      ["Umsetzen", befehlZeile(s.befehl)],
+    ])).join("");
+  return abschnitt("projekte", "Bestand", "Skills und Befehle in Projekten",
+    liste.length ? `<div class="tabelle"><table><thead><tr><th>Name</th><th>Projekt</th><th>Herkunft</th><th>Aufruf</th><th class="zahl">Kontext</th><th class="zahl">Genutzt</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`
+      : '<p class="leer">Keine Skills oder Befehle in Projekten gefunden.</p>',
+    "Aus <code>.claude/skills</code> und <code>.claude/commands</code> der Projekte, die Claude Code in ~/.claude.json kennt. Sie laden nur, wenn Claude in diesem Projekt läuft, und zählen deshalb nicht zur Kontextlast je Sitzung. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.");
+}
+
+function renderHooks() {
+  const herkunft = h => h.plugin ? `Plugin ${h.plugin.split("@")[0]}` : h.quelle.autor;
+  const ausgabe = h => h.ausgabe ? `≈ ${zahl(h.ausgabe.tokens)} <span class="klein">· ${zahl(h.ausgabe.laeufe)}× · ${datum(h.ausgabe.zuletzt)}</span>` : '<span class="leer">keine erfasst</span>';
+  const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
+  const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name"><strong>${esc(h.name)}</strong></td>
+      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="klein">${h.befehle.length === 1 ? "1 Befehl" : `${h.befehle.length} Befehle`}</td>
+      <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td>
+      <td>${was(h)}</td><td>${empfBadge(h)}</td></tr>` +
+    detailZeile(8, [
+      ["Befehle", befehle(h)],
+      ["Ausgabe an Claude", h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
+      ["Begründung", txt(h.bewertung?.grund || "")],
+      ["Datei", `<code>${esc(h.pfad)}</code>`],
+      ["Entfernen", befehlZeile(h.befehl)],
+    ])).join("");
+  return abschnitt("hooks", "Bestand", "Hooks",
+    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an Claude</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`);
 }
 
 function renderEingebaut() {
@@ -650,7 +696,8 @@ function renderFuss() {
     <ul>
       <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten und MCP-Server gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
-      <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills.</li>
+      <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4.</li>
+      <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills.</li>
     </ul></div>`;
 }
 
@@ -670,7 +717,7 @@ document.getElementById("stand").innerHTML =
   `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
   (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderEingebaut() + renderHinweise();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderProjekte() + renderHooks() + renderEingebaut() + renderHinweise();
 renderFuss();
 skillsFiltern();
 if (TOKEN) zeichne(); else renderEmpfInhalt();

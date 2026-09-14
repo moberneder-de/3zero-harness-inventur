@@ -4,11 +4,11 @@ Hinweise für Claude Code beim Arbeiten in diesem Repository.
 
 ## Projekt
 
-Inventur der Claude-Code-Laufzeitumgebung: MCP-Server, Plugins, Skills, Befehle und Agenten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard. Die Skills aus `~/.agents` gelten auch für andere Agenten, das Inventar reicht also über Claude Code hinaus.
+Inventur der Claude-Code-Laufzeitumgebung: MCP-Server, Plugins, Skills, Befehle, Agenten und Hooks, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard. Die Skills aus `~/.agents` gelten auch für andere Agenten, das Inventar reicht also über Claude Code hinaus.
 
 ## Aufbau
 
-- `build.py` liest den Bestand aus `~/.claude`, `~/.claude.json` und `~/.agents` und schreibt `dashboard.html` und `inventar.json`. Beide sind erzeugt: nicht von Hand bearbeiten, nicht einchecken.
+- `build.py` liest den Bestand aus `~/.claude`, `~/.claude.json` und `~/.agents` und schreibt `dashboard.html` und `inventar.json`. Beide sind erzeugt: nicht von Hand bearbeiten, nicht einchecken. Projekt-Skills kommen aus `<Projekt>/.claude` der Projekte in `~/.claude.json`; was Hooks an Claude zurückgeben, misst `build.py` in den Transkripten der letzten `HOOK_TAGE` Tage unter `~/.claude/projects`.
 - `bewertung.json` enthält die Urteile: Beschreibung, Empfehlung, Überschneidungsgruppen, Hinweise. Gepflegt über den Skill `/3zero-harness-inventur` in `skill/SKILL.md`; global verfügbar über den Symlink `~/.claude/skills/3zero-harness-inventur` auf diesen Ordner.
 - `server.py` zeigt das Dashboard auf http://127.0.0.1:8765 und führt die dort gewählten Aktionen aus (deinstallieren, deaktivieren, nur manuell). Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` fest; der Server führt nur aus, was so in `inventar.json` steht. Als Datei geöffnet bleibt das Dashboard nur lesbar. Der Knopf „Bewertung nachziehen“ startet über `/api/bewerten` einen eigenen Claude-Lauf (`claude -p "/3zero-harness-inventur"`, Opus) mit fester Werkzeugliste: Lesen, Schreiben und `python3`, sonst nichts.
 - Tests: `python3 -m unittest`. Die Server-Tests arbeiten mit harmlosen Befehlen und Temp-Dateien, nie gegen die echte Konfiguration.

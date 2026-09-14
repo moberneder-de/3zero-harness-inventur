@@ -1,6 +1,6 @@
 ---
 name: 3zero-harness-inventur
-description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins und Skills und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen).
+description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen).
 disable-model-invocation: true
 ---
 
@@ -22,16 +22,16 @@ Fertig, wenn: das Skript ohne Fehler durchlief. Sind beide Listen leer und will 
 
 ## 2. Neue Einträge bewerten
 
-Schlage jede ID in `inventar.json` nach (Feld `id`) und lies die Datei unter `pfad`. Bei Plugins reichen Beschreibung und Bestandteile. Trage dann in `bewertung.json` unter `eintraege` ein:
+Schlage jede ID in `inventar.json` nach (Feld `id`) und lies die Datei unter `pfad`. Bei Plugins reichen Beschreibung und Bestandteile. Projekt-Skills (`projekt_skills`, ID `skill:<Projekt>/<Name>`) laden nur in ihrem Projekt. Bei Hooks (`hooks`, ID `hook:<Quelle>:<Ereignis>`) lies die Skripte hinter `befehle`; `ausgabe` sagt, was sie laut Transkripten an Claude zurückgaben. Trage dann in `bewertung.json` unter `eintraege` ein:
 
 - `was`: ein Satz auf Deutsch, was der Eintrag tut. Keine Übersetzung der Beschreibung, sondern ihr Kern.
-- `empfehlung`: nur für Plugins, eigenständige Skills und MCP-Server. Plugin-Bestandteile bekommen nur dann eine, wenn sie einzeln abgeschaltet werden sollen; sonst übernimmt das Dashboard die des Plugins. Werte:
+- `empfehlung`: nur für Plugins, eigenständige Skills (auch in Projekten), eigene Hooks und MCP-Server. Plugin-Bestandteile, auch Plugin-Hooks, bekommen nur dann eine, wenn sie einzeln abgeschaltet werden sollen; sonst übernimmt das Dashboard die des Plugins. Projekt-Skills bekommen nur `behalten`, `prüfen` oder `entfernen`: Overrides gelten global nach Namen. Werte:
   - `behalten`
   - `prüfen`: hängt an einer Entscheidung, die nur der Benutzer treffen kann. Nenne diese Entscheidung im `grund`.
   - `entfernen`: veraltet oder unfertig und ungenutzt, doppelt zu einem genutzten Eintrag, defekt, oder ohne Bezug zu Martins Arbeit (IT-Beratung, Requirements Engineering, eigene Web- und Supabase-Projekte).
   - `abschalten`: einzelner Skill eines Plugins, das bleibt (`skillOverrides: off`).
   - `nur manuell`: gelegentlich nützlich, lädt aber seine Beschreibung in jede Sitzung (`skillOverrides: user-invocable-only`).
-- `grund`: ein bis zwei Sätze mit Belegen aus `inventar.json`: Nutzung, Überschneidung mit welchem Eintrag, `reife` (Upstream-Status), `tokens` (Kontextkosten).
+- `grund`: ein bis zwei Sätze mit Belegen aus `inventar.json`: Nutzung, Überschneidung mit welchem Eintrag, `reife` (Upstream-Status), `tokens` (Kontextkosten; bei Hooks nur SessionStart je Sitzung, sonst `ausgabe`).
 - `autor`, `repo`, `url`: nur wenn die Herkunft im Dashboard als „unbekannt“ erscheint und du sie belegen kannst.
 
 Keine Empfehlung ohne Beleg. „Nie genutzt“ trägt nicht, wenn der Eintrag erst vor wenigen Tagen installiert wurde (`installiert`).

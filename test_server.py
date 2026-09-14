@@ -107,6 +107,13 @@ class Server(unittest.TestCase):
         _, antwort = self.ausfuehren("mcp:upnote", "deinstallieren")
         self.assertEqual(Path(antwort["ausgabe"].strip()).resolve(), ordner.resolve())
 
+    def test_projekt_skills_sind_ausfuehrbar(self):
+        inventar = {"mcp": [], "plugins": [], "skills": [], "projekt_skills": [
+            {"id": "skill:Kit/seo-audit", "name": "seo-audit", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}]}
+        (self.tmp / "inventar.json").write_text(json.dumps(inventar))
+        self.assertTrue(self.ausfuehren("skill:Kit/seo-audit", "deinstallieren")[1]["ok"])
+        self.assertTrue(self.marker.exists())
+
     def test_nur_aktionen_aus_dem_inventar(self):
         for eid, aktion in (("plugin:x@y", "nur manuell"), ("plugin:gibtsnicht", "deinstallieren")):
             with self.subTest(eid=eid, aktion=aktion):

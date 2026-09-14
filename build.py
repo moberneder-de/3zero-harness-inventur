@@ -49,6 +49,7 @@ def gesperrte_namen(settings):
 
 
 GESPERRT = gesperrte_namen(SETTINGS)
+HOOK_TAGE = 14  # so weit zurück liest build.py die Transkripte, um Hook-Ausgaben zu messen
 
 
 def datum_ms(ms):
@@ -131,9 +132,18 @@ def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True):
     }
 
 
+def cli_quelle(repo):
+    besitzer = repo.split("/")[0]
+    return {
+        "art": "skills-CLI",
+        "autor": BEWERTUNG.get("autoren", {}).get(besitzer, besitzer),
+        "repo": repo,
+        "url": f"https://github.com/{repo}",
+    }
+
+
 def persoenliche_skills():
     ergebnis = []
-    autoren = BEWERTUNG.get("autoren", {})
     for ordner in sorted((CLAUDE / "skills").iterdir()):
         datei = ordner / "SKILL.md"
         if not datei.is_file():
@@ -141,15 +151,8 @@ def persoenliche_skills():
         e = skill_eintrag(ordner.name, "Skill", datei)
         lock = LOCK.get(ordner.name)
         if lock:
-            repo = lock.get("source", "")
-            besitzer = repo.split("/")[0]
             pfad = lock.get("skillPath", "")
-            e["quelle"] = {
-                "art": "skills-CLI",
-                "autor": autoren.get(besitzer, besitzer),
-                "repo": repo,
-                "url": f"https://github.com/{repo}",
-            }
+            e["quelle"] = cli_quelle(lock.get("source", ""))
             e["installiert"] = (lock.get("installedAt") or "")[:10] or None
             if "/deprecated/" in pfad:
                 e["reife"] = "upstream veraltet"
@@ -165,6 +168,109 @@ def persoenliche_skills():
     return ergebnis
 
 
+def projekt_skills(projekte):
+    """Skills und Befehle unter <Projekt>/.claude aller Projekte, die Claude Code kennt. Sie laden nur in ihrem Projekt."""
+    ergebnis, gesehen = [], {CLAUDE.resolve()}
+    for pfad in sorted(projekte):
+        wurzel = Path(pfad) / ".claude"
+        if not wurzel.is_dir() or wurzel.resolve() in gesehen:
+            continue
+        gesehen.add(wurzel.resolve())
+        lock = lies_json(Path(pfad) / "skills-lock.json").get("skills", {})
+        dateien = [(o.name, "Skill", o / "SKILL.md") for o in sorted((wurzel / "skills").iterdir())] if (wurzel / "skills").is_dir() else []
+        dateien += [(d.stem, "Befehl", d) for d in sorted(wurzel.glob("commands/*.md"))]
+        for name, typ, datei in dateien:
+            if not datei.is_file():
+                continue
+            e = skill_eintrag(name, typ, datei)
+            e["id"] = f"skill:{Path(pfad).name}/{name}"
+            e["projekt"] = str(pfad)
+            repo = (lock.get(name) or {}).get("source") if typ == "Skill" else None
+            e["quelle"] = cli_quelle(repo) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"}
+            ergebnis.append(e)
+    return ergebnis
+
+
+def hook_eintraege(roh, schluessel, quelle, pfad, status="aktiv"):
+    """Ein Eintrag je Ereignis aus einem hooks-Block (settings.json oder hooks/hooks.json), mit allen Befehlen darunter."""
+    ergebnis = []
+    for ereignis, gruppen in sorted((roh or {}).items()):
+        befehle = [{"befehl": h.get("command") or h.get("prompt") or h.get("url") or h.get("type"),
+                    "matcher": g.get("matcher"), "bedingung": h.get("if")}
+                   for g in gruppen for h in g.get("hooks", [])]
+        ergebnis.append({"id": f"hook:{schluessel}:{ereignis}", "name": ereignis, "typ": "Hook", "ereignis": ereignis,
+                         "status": status, "befehle": befehle, "quelle": dict(quelle), "pfad": str(pfad),
+                         "tokens": 0, "ausgabe": None})
+    return ergebnis
+
+
+def eigene_hooks(settings, pfad):
+    quelle = {"art": "Einstellungen", "autor": "eigene Einstellungen"}
+    hooks = hook_eintraege(settings.get("hooks"), "einstellungen", quelle, pfad)
+    zeile = settings.get("statusLine")
+    if isinstance(zeile, dict) and zeile.get("command"):
+        (status,) = hook_eintraege({"statusLine": [{"hooks": [zeile]}]}, "einstellungen", quelle, pfad)
+        hooks.append({**status, "name": "Statuszeile", "ereignis": "Statuszeile"})
+    return hooks
+
+
+def an_claude(ereignis, stdout):
+    """Der Teil einer Hook-Ausgabe, den Claude zu sehen bekommt."""
+    try:
+        daten = json.loads(stdout)
+    except ValueError:
+        # reiner Text landet nur bei diesen beiden Ereignissen im Kontext
+        return stdout.strip() if ereignis in ("SessionStart", "UserPromptSubmit") else ""
+    if not isinstance(daten, dict):
+        return ""
+    spezifisch = daten.get("hookSpecificOutput") if isinstance(daten.get("hookSpecificOutput"), dict) else {}
+    teile = [spezifisch.get("additionalContext"), daten.get("reason") if daten.get("decision") == "block" else None]
+    return "".join(t for t in teile if isinstance(t, str))
+
+
+def transkripte():
+    grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
+    # rglob: Hooks laufen auch in Subagenten, deren Transkripte liegen eine Ebene tiefer
+    return [d for d in (CLAUDE / "projects").rglob("*.jsonl") if d.stat().st_mtime >= grenze]
+
+
+def hook_ausgaben(dateien):
+    """Was Hooks laut Transkript an Claude zurückgaben, je (Ereignis, Befehl): zuletzt, höchstens, Läufe mit Ausgabe."""
+    funde = {}
+    for datei in dateien:
+        try:
+            f = open(datei, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with f:
+            for zeile in f:
+                if '"hook_success"' not in zeile:
+                    continue
+                try:
+                    d = json.loads(zeile)
+                except ValueError:
+                    continue
+                a = d.get("attachment") or {}
+                text = an_claude(a.get("hookEvent"), a.get("stdout") or "") if a.get("type") == "hook_success" else ""
+                if text:
+                    funde.setdefault((a.get("hookEvent"), a.get("command")), []).append((d.get("timestamp") or "", round(len(text) / 4)))
+    return {k: {"zuletzt": max(l)[0][:10], "tokens": max(l)[1], "max": max(t for _, t in l), "laeufe": len(l)}
+            for k, l in funde.items()}
+
+
+def messen(hooks, ausgaben):
+    """Trägt die gemessenen Ausgaben ein. Kontext in jeder Sitzung kosten nur aktive SessionStart-Hooks."""
+    for h in hooks:
+        funde = [ausgaben[k] for k in {(h["ereignis"], b["befehl"]) for b in h["befehle"]} if k in ausgaben]
+        if not funde:
+            continue
+        letzte = max(funde, key=lambda f: f["zuletzt"])
+        h["ausgabe"] = {"zuletzt": letzte["zuletzt"], "tokens": letzte["tokens"],
+                        "max": max(f["max"] for f in funde), "laeufe": sum(f["laeufe"] for f in funde)}
+        if h["ereignis"] == "SessionStart" and h["status"] == "aktiv":
+            h["tokens"] = sum(f["tokens"] for f in funde)
+
+
 def mcp_definitionen(wurzel, manifest):
     roh = lies_json(wurzel / ".mcp.json")
     server = roh.get("mcpServers", roh)
@@ -177,7 +283,7 @@ def plugins():
     installiert = lies_json(PLUGINS / "installed_plugins.json").get("plugins", {})
     aktiviert = SETTINGS.get("enabledPlugins", {})
     marktplaetze = lies_json(PLUGINS / "known_marketplaces.json")
-    liste, bestandteile = [], []
+    liste, bestandteile, hooks = [], [], []
     for pid, installationen in sorted(installiert.items()):
         inst = next((i for i in installationen if i.get("scope") == "user"), installationen[0])
         name, _, mkt = pid.partition("@")
@@ -215,6 +321,10 @@ def plugins():
             t["plugin"] = pid
             t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}
         bestandteile += teile
+        hooks_datei = wurzel / "hooks" / "hooks.json"
+        hooks_roh = lies_json(hooks_datei).get("hooks", {})
+        for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
+            hooks.append({**h, "plugin": pid})
 
         genutzt = [t["nutzung"] for t in teile if t["nutzung"]]
         pnutzung = CFG.get("pluginUsage", {}).get(pid, {})
@@ -234,7 +344,7 @@ def plugins():
             "skills": [t["name"] for t in teile if t["typ"] == "Skill"],
             "befehle": [t["name"] for t in teile if t["typ"] == "Befehl"],
             "agenten": [t["name"] for t in teile if t["typ"] == "Agent"],
-            "hooks": sorted(lies_json(wurzel / "hooks" / "hooks.json").get("hooks", {}).keys()),
+            "hooks": sorted(hooks_roh.keys()),
             "mcp": mcp_definitionen(wurzel, manifest),
             "tokens": sum(t["tokens"] for t in teile),
             "nutzung": {
@@ -243,7 +353,7 @@ def plugins():
             } if genutzt else None,
             "aktivitaet": pnutzung.get("usageCount"),
         })
-    return liste, bestandteile
+    return liste, bestandteile, hooks
 
 
 def mcp_live():
@@ -323,6 +433,10 @@ def mcp_server(plugin_liste, live):
 def befehl(e, empfehlung):
     """Der Befehl, mit dem sich die Empfehlung umsetzen ließe."""
     eid = e["id"]
+    if eid.startswith("hook:") and not e.get("plugin"):
+        if e["ereignis"] == "Statuszeile":
+            return '~/.claude/settings.json → "statusLine" entfernen'
+        return f'~/.claude/settings.json → "hooks" → "{e["ereignis"]}" entfernen'
     if empfehlung in ("abschalten", "nur manuell"):
         wert = "off" if empfehlung == "abschalten" else "user-invocable-only"
         return f"~/.claude/settings.json → \"skillOverrides\": {{\"{e['name']}\": \"{wert}\"}}"
@@ -338,6 +452,11 @@ def befehl(e, empfehlung):
         return f"cd \"{e['quelle']}\" && claude mcp remove \"{e['name']}\" -s local"
     if e.get("plugin"):
         return f"claude plugin uninstall {e['plugin']}"
+    if e.get("projekt") and e["quelle"]["art"] == "skills-CLI":
+        return f"cd \"{e['projekt']}\" && npx skills remove {e['name']}"
+    if e.get("projekt"):
+        ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
+        return f"mv \"{ziel}\" ~/.Trash/"
     if e["quelle"]["art"] == "skills-CLI":
         return f"npx skills remove --global {e['name']}"
     if e["typ"] == "Befehl":
@@ -349,6 +468,8 @@ def aktionen(e):
     """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert
     oder deniedMcpServers-Eintrag (`sperren`). Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
+    if eid.startswith("hook:"):
+        return {}
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
         a = {"deinstallieren": {"argv": ["claude", "plugin", "uninstall", pid]}}
@@ -366,6 +487,12 @@ def aktionen(e):
         return a
     if e["typ"] == "Agent":
         return {}
+    if e.get("projekt"):
+        # Overrides gelten global nach Namen und träfen gleichnamige Skills anderswo, deshalb nur deinstallieren
+        if e["quelle"]["art"] == "skills-CLI":
+            return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
+        ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
+        return {"deinstallieren": {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}}
     a = {}
     if not e.get("plugin"):
         if e["quelle"]["art"] == "skills-CLI":
@@ -401,11 +528,16 @@ def claude_version():
 
 
 def main():
-    plugin_liste, plugin_teile = plugins()
+    plugin_liste, plugin_teile, plugin_hooks = plugins()
     skills = persoenliche_skills() + plugin_teile
+    projekte = projekt_skills((CFG.get("projects") or {}).keys())
+    hooks = eigene_hooks(SETTINGS, CLAUDE / "settings.json") + plugin_hooks
+    messen(hooks, hook_ausgaben(transkripte()))
+    for p in plugin_liste:
+        p["tokens"] += sum(h["tokens"] for h in hooks if h.get("plugin") == f"{p['name']}@{p['marktplatz']}")
     live = mcp_live()
     mcp = mcp_server(plugin_liste, live)
-    alle = mcp + plugin_liste + skills
+    alle = mcp + plugin_liste + skills + projekte + hooks
     bewerte(alle)
     for e in alle:
         e["aktionen"] = aktionen(e)
@@ -427,6 +559,9 @@ def main():
         "mcp": mcp,
         "plugins": plugin_liste,
         "skills": skills,
+        "projekt_skills": projekte,
+        "hooks": hooks,
+        "hook_tage": HOOK_TAGE,
         "eingebaut": eingebaut,
         "gruppen": BEWERTUNG.get("gruppen", []),
         "hinweise": BEWERTUNG.get("hinweise", []),
@@ -443,7 +578,8 @@ def main():
     vorlage = (HIER / "template.html").read_text(encoding="utf-8").replace("__LOGO__", logo)
     (HIER / "dashboard.html").write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
-    print(f"dashboard.html geschrieben: {len(mcp)} MCP-Server, {len(plugin_liste)} Plugins, {len(skills)} Skills/Befehle/Agenten")
+    print(f"dashboard.html geschrieben: {len(mcp)} MCP-Server, {len(plugin_liste)} Plugins, {len(skills)} Skills/Befehle/Agenten, "
+          f"{len(projekte)} Projekt-Skills, {len(hooks)} Hooks")
     if live is None:
         print("Hinweis: `claude mcp list` nicht erreichbar, MCP-Status nur aus der Konfiguration.")
     if unbewertet:

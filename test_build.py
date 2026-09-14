@@ -1,3 +1,6 @@
+import json
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -94,6 +97,112 @@ class Aktionen(unittest.TestCase):
     def test_gesperrter_mcp_server_bietet_kein_deaktivieren(self):
         e = {**mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"), "gesperrt": True}
         self.assertEqual(build.aktionen(e), {})
+
+    def test_projekt_skill_nur_deinstallierbar_im_projekt(self):
+        cli = {**skill("seo-audit", pfad="/x/Kit/.claude/skills/seo-audit/SKILL.md"), "id": "skill:Kit/seo-audit", "projekt": "/x/Kit"}
+        self.assertEqual(build.aktionen(cli), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo-audit"], "cwd": "/x/Kit"}})
+        lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "id": "skill:Q/q-lang", "projekt": "/x/Q"}
+        self.assertEqual(build.aktionen(lokal), {"deinstallieren": {"argv": ["mv", "/x/Q/.claude/skills/q-lang", PAPIERKORB + "/"]}})
+
+    def test_hook_ohne_aktionen(self):
+        self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
+
+
+class ProjektSkills(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def schreibe(self, pfad, text):
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        pfad.write_text(text)
+
+    def test_skills_und_befehle_mit_herkunft(self):
+        kit = self.tmp / "Kit"
+        self.schreibe(kit / ".claude/skills/seo-audit/SKILL.md", "---\nname: seo-audit\ndescription: SEO prüfen\n---\n")
+        self.schreibe(kit / ".claude/skills/q-lang/SKILL.md", "---\nname: q-lang\ndescription: Q schreiben\n---\n")
+        self.schreibe(kit / ".claude/commands/bauen.md", "# Bauen\n")
+        self.schreibe(kit / "skills-lock.json", json.dumps({"skills": {"seo-audit": {"source": "coreyhaines31/marketingskills"}}}))
+        eintraege = {e["id"]: e for e in build.projekt_skills([str(kit), str(self.tmp / "gibtsnicht")])}
+        self.assertEqual(sorted(eintraege), ["skill:Kit/bauen", "skill:Kit/q-lang", "skill:Kit/seo-audit"])
+        seo = eintraege["skill:Kit/seo-audit"]
+        self.assertEqual((seo["name"], seo["projekt"], seo["quelle"]["art"], seo["quelle"]["repo"]),
+                         ("seo-audit", str(kit), "skills-CLI", "coreyhaines31/marketingskills"))
+        self.assertGreater(seo["tokens"], 0)
+        self.assertEqual(eintraege["skill:Kit/q-lang"]["quelle"]["art"], "lokal")
+        self.assertEqual(eintraege["skill:Kit/bauen"]["typ"], "Befehl")
+
+    def test_home_ist_kein_projekt(self):
+        self.assertEqual(build.projekt_skills([str(Path.home())]), [])
+
+
+class Hooks(unittest.TestCase):
+    def test_eigene_hooks_und_statuszeile(self):
+        settings = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash ~/.claude/handoff-hook.sh", "timeout": 10}]}]},
+                    "statusLine": {"type": "command", "command": "bash ~/.claude/statusline-command.sh"}}
+        hooks = {e["id"]: e for e in build.eigene_hooks(settings, "/x/settings.json")}
+        self.assertEqual(sorted(hooks), ["hook:einstellungen:Stop", "hook:einstellungen:statusLine"])
+        stop = hooks["hook:einstellungen:Stop"]
+        self.assertEqual((stop["ereignis"], stop["status"], stop["pfad"]), ("Stop", "aktiv", "/x/settings.json"))
+        self.assertEqual(stop["befehle"], [{"befehl": "bash ~/.claude/handoff-hook.sh", "matcher": None, "bedingung": None}])
+        self.assertEqual(hooks["hook:einstellungen:statusLine"]["ereignis"], "Statuszeile")
+
+    def test_ein_eintrag_je_ereignis_mit_allen_befehlen(self):
+        roh = {"PostToolUse": [
+            {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "pruefen"}]},
+            {"hooks": [{"type": "command", "command": "pruefen", "if": "Bash(git commit:*)"}]}]}
+        (e,) = build.hook_eintraege(roh, "sg@m", {"art": "Plugin", "autor": "Anthropic"}, "/p/hooks/hooks.json", "aus")
+        self.assertEqual((e["id"], e["name"], e["status"]), ("hook:sg@m:PostToolUse", "PostToolUse", "aus"))
+        self.assertEqual(e["befehle"], [{"befehl": "pruefen", "matcher": "Edit|Write", "bedingung": None},
+                                        {"befehl": "pruefen", "matcher": None, "bedingung": "Bash(git commit:*)"}])
+
+    def test_ausgaben_aus_transkripten(self):
+        def zeile(zeit, ereignis, befehl, stdout):
+            return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": {
+                "type": "hook_success", "hookEvent": ereignis, "command": befehl, "stdout": stdout}}) + "\n"
+        kontext = lambda text: json.dumps({"hookSpecificOutput": {"additionalContext": text}})
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text(
+            zeile("2026-09-10T08:00:00Z", "SessionStart", "start", kontext("x" * 800))
+            + zeile("2026-09-13T08:00:00Z", "SessionStart", "start", kontext("x" * 400))
+            + zeile("2026-09-12T08:00:00Z", "PostToolUse", "pruefen", json.dumps({"metrics": {"pattern_hits": 0}}))
+            + zeile("2026-09-12T09:00:00Z", "PostToolUse", "pruefen", kontext("y" * 40))
+            + zeile("2026-09-12T10:00:00Z", "Stop", "pruefen", "nur für die Anzeige")
+            + zeile("2026-09-11T08:00:00Z", "UserPromptSubmit", "erinnern", "Denk an die Tests")
+            + "kein json, aber \"hook_success\"\n")
+        self.assertEqual(build.hook_ausgaben([datei, tmp / "fehlt.jsonl"]), {
+            ("SessionStart", "start"): {"zuletzt": "2026-09-13", "tokens": 100, "max": 200, "laeufe": 2},
+            ("PostToolUse", "pruefen"): {"zuletzt": "2026-09-12", "tokens": 10, "max": 10, "laeufe": 1},
+            ("UserPromptSubmit", "erinnern"): {"zuletzt": "2026-09-11", "tokens": 4, "max": 4, "laeufe": 1},
+        })
+
+    def test_messen_zaehlt_nur_sessionstart_je_sitzung(self):
+        hooks = build.hook_eintraege({
+            "SessionStart": [{"hooks": [{"type": "command", "command": "start"}]}],
+            "PostToolUse": [{"hooks": [{"type": "command", "command": "pruefen"}]}],
+            "Stop": [{"hooks": [{"type": "command", "command": "still"}]}]}, "p@m", {"art": "Plugin"}, "/p/hooks.json")
+        build.messen(hooks, {("SessionStart", "start"): {"zuletzt": "2026-09-13", "tokens": 100, "max": 200, "laeufe": 2},
+                             ("PostToolUse", "pruefen"): {"zuletzt": "2026-09-12", "tokens": 10, "max": 10, "laeufe": 1}})
+        h = {e["ereignis"]: e for e in hooks}
+        self.assertEqual((h["SessionStart"]["tokens"], h["SessionStart"]["ausgabe"]["max"]), (100, 200))
+        self.assertEqual((h["PostToolUse"]["tokens"], h["PostToolUse"]["ausgabe"]["laeufe"]), (0, 1))
+        self.assertEqual((h["Stop"]["tokens"], h["Stop"]["ausgabe"]), (0, None))
+
+    def test_befehl_fuer_projekt_skills(self):
+        cli = {**skill("seo-audit"), "projekt": "/x/Kit"}
+        self.assertEqual(build.befehl(cli, "entfernen"), 'cd "/x/Kit" && npx skills remove seo-audit')
+        lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
+        self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
+
+    def test_befehl_fuer_eigene_hooks(self):
+        self.assertEqual(build.befehl({"id": "hook:einstellungen:Stop", "ereignis": "Stop", "quelle": {}}, None),
+                         '~/.claude/settings.json → "hooks" → "Stop" entfernen')
+        self.assertEqual(build.befehl({"id": "hook:einstellungen:statusLine", "ereignis": "Statuszeile", "quelle": {}}, None),
+                         '~/.claude/settings.json → "statusLine" entfernen')
 
 
 class McpStatus(unittest.TestCase):
