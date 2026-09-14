@@ -235,7 +235,7 @@ const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopi
 
 const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
-const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "eingebaut", status: "aktiv", bewertung: { was: b.was }, tokens: 0, quelle: { art: "eingebaut", autor: "Claude Code" } }));
+const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "Harness", status: "aktiv", bewertung: { was: b.was }, tokens: 0, quelle: { art: "eingebaut", autor: "Anthropic" } }));
 EINGEBAUT.forEach(e => INDEX.set(e.id, e));
 /* Tab Skills: installierte und eingebaute Skills in einer Liste */
 const SKILLS = [...D.skills, ...EINGEBAUT];
@@ -255,7 +255,7 @@ function wirksam(e) {
   return p?.bewertung?.empfehlung ? { empfehlung: p.bewertung.empfehlung, geerbt: true } : null;
 }
 function empfBadge(e) {
-  if (e.typ === "eingebaut") return '<span class="tag">eingebaut</span>';
+  if (e.typ === "Harness") return '<span class="leer">–</span>';
   if (!e.bewertung) return '<span class="badge e-neu">neu · unbewertet</span>';
   const w = wirksam(e);
   const k = w && EMPF[w.empfehlung];
@@ -281,11 +281,18 @@ function nutzungText(e) {
 }
 const was = e => e.bewertung?.was ? txt(e.bewertung.was) : `<span class="klein">${esc(e.beschreibung || "")}</span>`;
 function quelleText(e) {
-  if (e.typ === "eingebaut") return "Claude Code";
   if (e.id.startsWith("plugin:")) return esc(e.autor);
   if (e.id.startsWith("mcp:")) return esc(e.art);
   return esc(e.quelle?.autor || "");
 }
+/* Herkunft in den Skill-Tabellen: wie der Skill auf den Rechner kam, also auch, wie er wieder geht. Der Autor steht in der Detailzeile */
+function lieferweg(s) {
+  if (s.plugin) return `Plugin ${s.plugin.split("@")[0]}`;
+  if (s.typ === "Harness") return "Anthropic/Claude Code";
+  /* Besitzer lesbar über `autoren` in bewertung.json, der GitHub-Pfad steht in der Detailzeile */
+  return s.quelle.art === "skills-CLI" ? `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}` : "lokal";
+}
+const autor = s => s.plugin ? INDEX.get("plugin:" + s.plugin)?.autor : s.quelle.autor;
 function typText(e) {
   if (e.id.startsWith("plugin:")) return "Plugin";
   const typ = e.id.startsWith("mcp:") ? "MCP-Server" : e.typ;
@@ -496,7 +503,7 @@ function renderPlugins() {
 /* Skills-Tabelle mit Filter und Sortierung */
 const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", teile: true, sort: "name", richtung: 1 };
 function renderSkillsRahmen() {
-  const quellen = [...new Set(SKILLS.map(s => s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor))].sort();
+  const quellen = [...new Set(SKILLS.map(lieferweg))].sort((a, b) => a.localeCompare(b));
   const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
   const filter = `<div class="filter">
     <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
@@ -515,11 +522,10 @@ function renderSkillsRahmen() {
 function skillsFiltern() {
   const q = F.suche.toLowerCase();
   const liste = SKILLS.filter(s => {
-    const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
     const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
     return (F.teile || !s.plugin)
       && (!q || `${s.name} ${s.beschreibung} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
-      && (!F.quelle || herkunft === F.quelle)
+      && (!F.quelle || lieferweg(s) === F.quelle)
       && (!F.status || s.status === F.status)
       && (!F.aufruf || s.aufruf === F.aufruf)
       && (!F.empf || empf === F.empf);
@@ -528,16 +534,16 @@ function skillsFiltern() {
   liste.sort((a, b) => (wert(a) > wert(b) ? 1 : wert(a) < wert(b) ? -1 : 0) * F.richtung);
   document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
   document.getElementById("skills-body").innerHTML = liste.map(s => {
-    const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
         ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}</td>
-      <td>${esc(herkunft)}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
+      <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
       detailZeile(7 + SP, [
         ["Beschreibung", esc(s.beschreibung)],
         ["Begründung", txt(s.bewertung?.grund || "")],
-        ["Herkunft", s.quelle.url ? link(s.quelle.url, s.quelle.repo || s.quelle.url) : esc(s.quelle.repo || s.quelle.art)],
+        ["Autor", esc(autor(s))],
+        ["Quelle", s.quelle.url ? link(s.quelle.url, s.quelle.repo || s.quelle.url) : esc(s.quelle.repo || s.quelle.art)],
         ["Upstream-Status", s.reife ? esc(s.reife) + " (laut Ordner im Quell-Repo)" : ""],
         ["Installiert", s.installiert ? datum(s.installiert) : ""],
         ["skillOverrides", s.override ? `<code>${esc(s.override)}</code>` : ""],
@@ -556,13 +562,14 @@ function renderProjekte() {
   D.mcp.filter(m => !m.gesperrt).forEach(m => m.aus_in_projekten.forEach(p => zu(p).aus.push(m.name)));
 
   const skillZeile = s => `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong></td><td>${esc(s.typ)}</td>
-      <td>${esc(s.quelle.autor)}</td><td class="nowrap klein">${esc(s.aufruf)}</td>
+      <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${esc(s.aufruf)}</td>
       <td class="zahl">${s.tokens ? "≈ " + zahl(s.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${nutzungText(s)}</td>
       <td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
     detailZeile(8 + SP, [
       ["Beschreibung", esc(s.beschreibung)],
       ["Begründung", txt(s.bewertung?.grund || "")],
-      ["Herkunft", s.quelle.url ? link(s.quelle.url, s.quelle.repo) : esc(s.quelle.art)],
+      ["Autor", esc(autor(s))],
+      ["Quelle", s.quelle.url ? link(s.quelle.url, s.quelle.repo) : esc(s.quelle.art)],
       ["Datei", `<code>${esc(s.pfad)}</code>`],
       ["Umsetzen", befehlZeile(s.befehl)],
     ]);
