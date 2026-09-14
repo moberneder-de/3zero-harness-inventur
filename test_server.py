@@ -108,11 +108,14 @@ class Server(unittest.TestCase):
         self.assertEqual(Path(antwort["ausgabe"].strip()).resolve(), ordner.resolve())
 
     def test_projekt_skills_sind_ausfuehrbar(self):
-        inventar = {"mcp": [], "plugins": [], "skills": [], "projekt_skills": [
-            {"id": "skill:Kit/seo-audit", "name": "seo-audit", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}]}
+        zweiter = self.tmp / "zweiter"
+        inventar = {"mcp": [], "plugins": [], "skills": [],
+                    "projekt_skills": [{"id": "skill:Kit/seo-audit", "name": "seo-audit", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}],
+                    "projekt_mcp": [{"id": "mcp:Q/q", "name": "q", "aktionen": {"deinstallieren": {"argv": ["touch", str(zweiter)]}}}]}
         (self.tmp / "inventar.json").write_text(json.dumps(inventar))
         self.assertTrue(self.ausfuehren("skill:Kit/seo-audit", "deinstallieren")[1]["ok"])
-        self.assertTrue(self.marker.exists())
+        self.assertTrue(self.ausfuehren("mcp:Q/q", "deinstallieren")[1]["ok"])
+        self.assertTrue(self.marker.exists() and zweiter.exists())
 
     def test_nur_aktionen_aus_dem_inventar(self):
         for eid, aktion in (("plugin:x@y", "nur manuell"), ("plugin:gibtsnicht", "deinstallieren")):

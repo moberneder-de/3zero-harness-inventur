@@ -406,9 +406,6 @@ def mcp_server(plugin_liste, live):
             }
     aus_in = {}
     for pfad, p in (CFG.get("projects") or {}).items():
-        for name, c in (p.get("mcpServers") or {}).items():
-            eintrag = server.setdefault(name, {"art": "Projekt", "quelle": pfad, "ziel": ziel_text(c)})
-            eintrag.setdefault("projekte", []).append(pfad)
         for name in p.get("disabledMcpServers") or []:
             aus_in.setdefault(name, []).append(pfad)
 
@@ -419,14 +416,42 @@ def mcp_server(plugin_liste, live):
             s["ziel"] = s["ziel"] or live[name]["ziel"]
         elif s.get("plugin_status") and s["plugin_status"] != "aktiv":
             status = "inaktiv (Plugin aus)"
-        elif s["art"] == "Projekt":
-            status = "nur im Projekt"
         else:
             status = "unbekannt"
         if name in GESPERRT:
             status = "deaktiviert"
         ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": name in GESPERRT,
                          "aus_in_projekten": aus_in.get(name, []), **s})
+    return ergebnis
+
+
+def projekt_mcp(projekte):
+    """MCP-Server, die nur in einem Projekt gelten: aus <Projekt>/.mcp.json und lokal in ~/.claude.json eingetragen.
+    Status nur aus der Konfiguration; ein Verbindungstest bräuchte `claude mcp list` in jedem Projekt."""
+    ergebnis = []
+    for pfad, p in sorted(projekte.items()):
+        ordner = Path(pfad)
+        einstellungen = [p] + [lies_json(ordner / ".claude" / f) for f in ("settings.json", "settings.local.json")]
+        freigegeben = {n for s in einstellungen for n in s.get("enabledMcpjsonServers") or []}
+        abgelehnt = {n for s in einstellungen for n in s.get("disabledMcpjsonServers") or []}
+        alle_frei = any(s.get("enableAllProjectMcpServers") for s in einstellungen)
+        server = [(n, c, ".mcp.json", str(ordner / ".mcp.json")) for n, c in mcp_definitionen(ordner, {}).items()]
+        server += [(n, c, "lokal", "~/.claude.json") for n, c in (p.get("mcpServers") or {}).items()]
+        for name, c, art, quelle in server:
+            if not ordner.is_dir():
+                status = "Ordner fehlt"
+            elif name in GESPERRT or name in (p.get("disabledMcpServers") or []):
+                status = "deaktiviert"
+            elif art == "lokal":
+                status = "eingetragen"
+            elif name in abgelehnt:
+                status = "abgelehnt"
+            elif name in freigegeben or alle_frei:
+                status = "freigegeben"
+            else:
+                status = "wartet auf Freigabe"
+            ergebnis.append({"id": f"mcp:{ordner.name}/{name}", "name": name, "projekt": pfad, "art": art, "quelle": quelle,
+                             "ziel": ziel_text(c), "status": status, "gesperrt": name in GESPERRT, "aus_in_projekten": []})
     return ergebnis
 
 
@@ -443,13 +468,17 @@ def befehl(e, empfehlung):
     if eid.startswith("plugin:"):
         return f"claude plugin uninstall {e['name']}@{e['marktplatz']}"
     if eid.startswith("mcp:"):
+        if e.get("projekt") and e["status"] == "Ordner fehlt":
+            # claude mcp remove -s local braucht den Projektordner als Arbeitsverzeichnis
+            return f'~/.claude.json → "projects" → "{e["projekt"]}" → "mcpServers" → "{e["name"]}" von Hand löschen, während keine Claude-Sitzung läuft'
+        if e.get("projekt"):
+            scope = "project" if e["art"] == ".mcp.json" else "local"
+            return f"cd \"{e['projekt']}\" && claude mcp remove \"{e['name']}\" -s {scope}"
         if e["art"] == "claude.ai-Connector":
             return "claude.ai → Einstellungen → Connectors → trennen"
         if e["art"] == "Plugin":
             return f"claude plugin uninstall {e['quelle']}"
-        if e["art"] == "User":
-            return f"claude mcp remove \"{e['name']}\" -s user"
-        return f"cd \"{e['quelle']}\" && claude mcp remove \"{e['name']}\" -s local"
+        return f"claude mcp remove \"{e['name']}\" -s user"
     if e.get("plugin"):
         return f"claude plugin uninstall {e['plugin']}"
     if e.get("projekt") and e["quelle"]["art"] == "skills-CLI":
@@ -476,12 +505,16 @@ def aktionen(e):
         if e["status"] == "aktiv":
             a["deaktivieren"] = {"argv": ["claude", "plugin", "disable", pid]}
         return a
+    if eid.startswith("mcp:") and e.get("projekt"):
+        # Sperren per deniedMcpServers gilt global nach Namen, deshalb nur deinstallieren; ohne Ordner geht nicht einmal das
+        if e["status"] == "Ordner fehlt":
+            return {}
+        scope = "project" if e["art"] == ".mcp.json" else "local"
+        return {"deinstallieren": {"argv": ["claude", "mcp", "remove", e["name"], "-s", scope], "cwd": e["projekt"]}}
     if eid.startswith("mcp:"):
         a = {}
         if e["art"] == "User":
             a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}
-        if e["art"] == "Projekt":
-            a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "local"], "cwd": e["quelle"]}
         if not e.get("gesperrt"):
             a["deaktivieren"] = {"sperren": {"serverName": e["name"]}}
         return a
@@ -537,7 +570,8 @@ def main():
         p["tokens"] += sum(h["tokens"] for h in hooks if h.get("plugin") == f"{p['name']}@{p['marktplatz']}")
     live = mcp_live()
     mcp = mcp_server(plugin_liste, live)
-    alle = mcp + plugin_liste + skills + projekte + hooks
+    mcp_projekte = projekt_mcp(CFG.get("projects") or {})
+    alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
     bewerte(alle)
     for e in alle:
         e["aktionen"] = aktionen(e)
@@ -560,6 +594,7 @@ def main():
         "plugins": plugin_liste,
         "skills": skills,
         "projekt_skills": projekte,
+        "projekt_mcp": mcp_projekte,
         "hooks": hooks,
         "hook_tage": HOOK_TAGE,
         "eingebaut": eingebaut,
@@ -579,7 +614,7 @@ def main():
     (HIER / "dashboard.html").write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
     print(f"dashboard.html geschrieben: {len(mcp)} MCP-Server, {len(plugin_liste)} Plugins, {len(skills)} Skills/Befehle/Agenten, "
-          f"{len(projekte)} Projekt-Skills, {len(hooks)} Hooks")
+          f"{len(projekte)} Projekt-Skills, {len(mcp_projekte)} Projekt-MCP-Server, {len(hooks)} Hooks")
     if live is None:
         print("Hinweis: `claude mcp list` nicht erreichbar, MCP-Status nur aus der Konfiguration.")
     if unbewertet:

@@ -82,9 +82,6 @@ class Aktionen(unittest.TestCase):
             (mcp("sentry", "User", "~/.claude.json"),
              {"deinstallieren": {"argv": ["claude", "mcp", "remove", "sentry", "-s", "user"]},
               "deaktivieren": {"sperren": {"serverName": "sentry"}}}),
-            (mcp("upnote", "Projekt", "/Users/x/Daten/3zero-Website"),
-             {"deinstallieren": {"argv": ["claude", "mcp", "remove", "upnote", "-s", "local"], "cwd": "/Users/x/Daten/3zero-Website"},
-              "deaktivieren": {"sperren": {"serverName": "upnote"}}}),
             (mcp("plugin:context7:context7", "Plugin", "context7@claude-plugins-official"),
              {"deaktivieren": {"sperren": {"serverName": "plugin:context7:context7"}}}),
             (mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"),
@@ -103,6 +100,15 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(build.aktionen(cli), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo-audit"], "cwd": "/x/Kit"}})
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "id": "skill:Q/q-lang", "projekt": "/x/Q"}
         self.assertEqual(build.aktionen(lokal), {"deinstallieren": {"argv": ["mv", "/x/Q/.claude/skills/q-lang", PAPIERKORB + "/"]}})
+
+    def test_projekt_mcp_nur_deinstallierbar_im_projekt(self):
+        def e(art, status):
+            return {"id": "mcp:Q/q", "name": "q", "projekt": "/x/Q", "art": art, "status": status, "quelle": "/x/Q/.mcp.json"}
+        self.assertEqual(build.aktionen(e(".mcp.json", "freigegeben")),
+                         {"deinstallieren": {"argv": ["claude", "mcp", "remove", "q", "-s", "project"], "cwd": "/x/Q"}})
+        self.assertEqual(build.aktionen(e("lokal", "eingetragen")),
+                         {"deinstallieren": {"argv": ["claude", "mcp", "remove", "q", "-s", "local"], "cwd": "/x/Q"}})
+        self.assertEqual(build.aktionen(e("lokal", "Ordner fehlt")), {})
 
     def test_hook_ohne_aktionen(self):
         self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
@@ -136,6 +142,28 @@ class ProjektSkills(unittest.TestCase):
 
     def test_home_ist_kein_projekt(self):
         self.assertEqual(build.projekt_skills([str(Path.home())]), [])
+
+    def test_projekt_mcp_mit_status_aus_der_konfiguration(self):
+        q = self.tmp / "Q"
+        self.schreibe(q / ".mcp.json", json.dumps({"mcpServers": {
+            "q": {"command": "bun", "args": ["bin/qmcp.ts"]}, "neu": {"command": "neu"}, "nein": {"command": "nein"}, "aus": {"command": "aus"}}}))
+        self.schreibe(q / ".claude/settings.local.json", json.dumps({"enabledMcpjsonServers": ["q", "aus"]}))
+        projekte = {
+            str(q): {"disabledMcpjsonServers": ["nein"], "disabledMcpServers": ["aus"], "mcpServers": {"lokal1": {"command": "x"}}},
+            str(self.tmp / "Alt"): {"mcpServers": {"upnote": {"command": "bun"}}},
+            str(self.tmp / "Leer"): {},
+        }
+        with mock.patch.object(build, "GESPERRT", set()):
+            eintraege = {e["id"]: e for e in build.projekt_mcp(projekte)}
+        self.assertEqual({i: (e["art"], e["status"]) for i, e in eintraege.items()}, {
+            "mcp:Q/q": (".mcp.json", "freigegeben"),
+            "mcp:Q/neu": (".mcp.json", "wartet auf Freigabe"),
+            "mcp:Q/nein": (".mcp.json", "abgelehnt"),
+            "mcp:Q/aus": (".mcp.json", "deaktiviert"),
+            "mcp:Q/lokal1": ("lokal", "eingetragen"),
+            "mcp:Alt/upnote": ("lokal", "Ordner fehlt"),
+        })
+        self.assertEqual((eintraege["mcp:Q/q"]["projekt"], eintraege["mcp:Q/q"]["ziel"]), (str(q), "bun bin/qmcp.ts"))
 
 
 class Hooks(unittest.TestCase):
@@ -198,6 +226,13 @@ class Hooks(unittest.TestCase):
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
         self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
 
+    def test_befehl_fuer_projekt_mcp(self):
+        e = {"id": "mcp:Q/q", "name": "q", "projekt": "/x/Q", "art": ".mcp.json", "status": "freigegeben"}
+        self.assertEqual(build.befehl(e, "entfernen"), 'cd "/x/Q" && claude mcp remove "q" -s project')
+        self.assertEqual(build.befehl({**e, "art": "lokal"}, None), 'cd "/x/Q" && claude mcp remove "q" -s local')
+        self.assertEqual(build.befehl({**e, "art": "lokal", "status": "Ordner fehlt"}, None),
+                         '~/.claude.json → "projects" → "/x/Q" → "mcpServers" → "q" von Hand löschen, während keine Claude-Sitzung läuft')
+
     def test_befehl_fuer_eigene_hooks(self):
         self.assertEqual(build.befehl({"id": "hook:einstellungen:Stop", "ereignis": "Stop", "quelle": {}}, None),
                          '~/.claude/settings.json → "hooks" → "Stop" entfernen')
@@ -212,6 +247,13 @@ class McpStatus(unittest.TestCase):
         with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", {"claude.ai Gmail"}):
             status = {e["name"]: (e["status"], e["gesperrt"]) for e in build.mcp_server([], live)}
         self.assertEqual(status, {"claude.ai Gmail": ("deaktiviert", True), "claude.ai Google Drive": ("verbunden", False)})
+
+    def test_projektserver_stehen_nicht_in_der_globalen_liste(self):
+        cfg = {"mcpServers": {"upnote": {"command": "bun"}}, "projects": {"/x/Alt": {"mcpServers": {"upnote": {"command": "bun"}, "nur-hier": {"command": "x"}}}}}
+        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
+            eintraege = build.mcp_server([], None)
+        self.assertEqual([(e["name"], e["art"]) for e in eintraege], [("upnote", "User")])
+        self.assertNotIn("projekte", eintraege[0])
 
     def test_nur_serverName_eintraege_zaehlen(self):
         self.assertEqual(build.gesperrte_namen({"deniedMcpServers": [

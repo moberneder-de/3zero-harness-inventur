@@ -61,7 +61,7 @@ class Inventarserver(ThreadingHTTPServer):
     def schritt(self, eid, aktion):
         """(Name, Schritt) aus inventar.json, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
         inventar = json.loads((self.ordner / "inventar.json").read_text(encoding="utf-8"))
-        for e in inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", []):
+        for e in inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", []) + inventar.get("projekt_mcp", []):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
                 return e["name"], e["aktionen"][aktion]
         return None
