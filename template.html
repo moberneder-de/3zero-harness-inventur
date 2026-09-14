@@ -209,9 +209,8 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
   <a href="#mcp">MCP-Server</a>
   <a href="#plugins">Plugins</a>
   <a href="#skills">Skills</a>
-  <a href="#projekte">Projekte</a>
   <a href="#hooks">Hooks</a>
-  <a href="#eingebaut">Eingebaut</a>
+  <a href="#projekte">Projekte</a>
   <a href="#hinweise">Hinweise</a>
   <a href="#hilfe">Hilfe</a>
 </div></nav>
@@ -236,7 +235,10 @@ const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopi
 
 const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
-D.eingebaut.forEach(b => INDEX.set("builtin:" + b.name, { ...b, id: "builtin:" + b.name, typ: "eingebaut", status: "aktiv" }));
+const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "eingebaut", status: "aktiv", bewertung: { was: b.was }, tokens: 0, quelle: { art: "eingebaut", autor: "Claude Code" } }));
+EINGEBAUT.forEach(e => INDEX.set(e.id, e));
+/* Tab Skills: installierte und eingebaute Skills in einer Liste */
+const SKILLS = [...D.skills, ...EINGEBAUT];
 
 const EMPF = {
   "entfernen":   { icon: "✕", cls: "e-entfernen" },
@@ -494,7 +496,7 @@ function renderPlugins() {
 /* Skills-Tabelle mit Filter und Sortierung */
 const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", teile: true, sort: "name", richtung: 1 };
 function renderSkillsRahmen() {
-  const quellen = [...new Set(D.skills.map(s => s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor))].sort();
+  const quellen = [...new Set(SKILLS.map(s => s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor))].sort();
   const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
   const filter = `<div class="filter">
     <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
@@ -508,11 +510,11 @@ function renderSkillsRahmen() {
     .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Bestand", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
-    "Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle und alles, was Plugins mitbringen. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst.");
+    `Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`);
 }
 function skillsFiltern() {
   const q = F.suche.toLowerCase();
-  const liste = D.skills.filter(s => {
+  const liste = SKILLS.filter(s => {
     const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
     const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
     return (F.teile || !s.plugin)
@@ -524,13 +526,13 @@ function skillsFiltern() {
   });
   const wert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : s.name.toLowerCase();
   liste.sort((a, b) => (wert(a) > wert(b) ? 1 : wert(a) < wert(b) ? -1 : 0) * F.richtung);
-  document.getElementById("f-anzahl").textContent = `${liste.length} von ${D.skills.length}`;
+  document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const herkunft = s.plugin ? `Plugin ${s.plugin.split("@")[0]}` : s.quelle.autor;
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
         ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}</td>
-      <td>${esc(herkunft)}</td><td class="nowrap klein">${esc(s.aufruf)}</td><td class="zahl">${kontext}</td>
+      <td>${esc(herkunft)}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
       detailZeile(7 + SP, [
         ["Beschreibung", esc(s.beschreibung)],
@@ -539,8 +541,8 @@ function skillsFiltern() {
         ["Upstream-Status", s.reife ? esc(s.reife) + " (laut Ordner im Quell-Repo)" : ""],
         ["Installiert", s.installiert ? datum(s.installiert) : ""],
         ["skillOverrides", s.override ? `<code>${esc(s.override)}</code>` : ""],
-        ["Datei", `<code>${esc(s.pfad)}</code>`],
-        ["Umsetzen", befehlZeile(s.befehl)],
+        ["Datei", s.pfad ? `<code>${esc(s.pfad)}</code>` : ""],
+        ["Umsetzen", s.befehl ? befehlZeile(s.befehl) : ""],
       ]);
   }).join("");
 }
@@ -614,14 +616,6 @@ function renderHooks() {
   return abschnitt("hooks", "Bestand", "Hooks",
     `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an Claude</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
     `Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`);
-}
-
-function renderEingebaut() {
-  const zeilen = D.eingebaut.map(b => `<tr><td class="name"><strong>${esc(b.name)}</strong></td><td>${txt(b.was)}</td>
-    <td class="zahl">${b.nutzung ? `${zahl(b.nutzung.anzahl)}× <span class="klein">· ${datum(b.nutzung.zuletzt)}</span>` : '<span class="leer">nie</span>'}</td></tr>`).join("");
-  return abschnitt("eingebaut", "Zum Vergleich", "In Claude Code eingebaute Skills",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Was er macht</th><th class="zahl">Genutzt</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    `Kommen mit Claude Code, lassen sich nicht deinstallieren und sind hier nur aufgeführt, weil sie sich mit installierten Werkzeugen überschneiden. Liste gepflegt über <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`);
 }
 
 function renderHinweise() {
@@ -762,7 +756,7 @@ document.getElementById("stand").innerHTML =
   `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
   (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderProjekte() + renderHooks() + renderEingebaut() + renderHinweise() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderHilfe();
 skillsFiltern();
 if (TOKEN) zeichne(); else renderEmpfInhalt();
 renderMeldung();
