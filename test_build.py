@@ -140,6 +140,18 @@ class ProjektSkills(unittest.TestCase):
         self.assertEqual(eintraege["skill:Kit/q-lang"]["quelle"]["art"], "lokal")
         self.assertEqual(eintraege["skill:Kit/bauen"]["typ"], "Befehl")
 
+    def test_persoenliche_skills_unterscheiden_symlink_und_kopie(self):
+        repo, claude = self.tmp / "Repo", self.tmp / ".claude"
+        self.schreibe(repo / "skill/SKILL.md", "---\nname: eigen\ndescription: aus dem Repo\n---\n")
+        self.schreibe(repo / "commands/start.md", "# Start\n")
+        self.schreibe(claude / "skills/kopie/SKILL.md", "---\nname: kopie\ndescription: kopiert\n---\n")
+        (claude / "skills/eigen").symlink_to(repo / "skill")
+        (claude / "commands").mkdir()
+        (claude / "commands/start.md").symlink_to(repo / "commands/start.md")
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.object(build, "LOCK", {}):
+            arten = {e["name"]: e["quelle"]["art"] for e in build.persoenliche_skills()}
+        self.assertEqual(arten, {"eigen": "Symlink", "kopie": "lokal", "start": "Symlink"})
+
     def test_home_ist_kein_projekt(self):
         self.assertEqual(build.projekt_skills([str(Path.home())]), [])
 

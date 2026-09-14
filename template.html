@@ -290,7 +290,9 @@ function lieferweg(s) {
   if (s.plugin) return `Plugin ${s.plugin.split("@")[0]}`;
   if (s.typ === "Harness") return "Anthropic/Claude Code";
   /* Besitzer lesbar über `autoren` in bewertung.json, der GitHub-Pfad steht in der Detailzeile */
-  return s.quelle.art === "skills-CLI" ? `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}` : "lokal";
+  if (s.quelle.repo) return `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}`;
+  if (s.projekt) return "im Projekt";
+  return s.quelle.art === "Symlink" ? "eigen" : "unbekannt";
 }
 const autor = s => s.plugin ? INDEX.get("plugin:" + s.plugin)?.autor : s.quelle.autor;
 function typText(e) {

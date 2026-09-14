@@ -159,11 +159,12 @@ def persoenliche_skills():
             elif "/in-progress/" in pfad:
                 e["reife"] = "upstream unfertig"
         else:
-            e["quelle"] = {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"}
+            # Ein Symlink zeigt auf ein Repo, in dem der Skill gepflegt wird; ein Ordner ist eine Kopie
+            e["quelle"] = {"art": "Symlink" if ordner.is_symlink() else "lokal", "autor": e["meta_autor"] or "unbekannt"}
         ergebnis.append(e)
     for datei in sorted((CLAUDE / "commands").glob("*.md")):
         e = skill_eintrag(datei.stem, "Befehl", datei)
-        e["quelle"] = {"art": "lokal", "autor": "unbekannt"}
+        e["quelle"] = {"art": "Symlink" if datei.is_symlink() else "lokal", "autor": "unbekannt"}
         ergebnis.append(e)
     return ergebnis
 
