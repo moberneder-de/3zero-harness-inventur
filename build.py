@@ -16,6 +16,7 @@ import base64
 import json
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -140,6 +141,31 @@ def cli_quelle(repo):
         "repo": repo,
         "url": f"https://github.com/{repo}",
     }
+
+
+def github_baum(repo):
+    """Ordnerstände eines GitHub-Repos auf dem Standardzweig: Pfad → Git-SHA, "" für die Wurzel. None ohne gh oder Netz."""
+    try:
+        r = subprocess.run(["gh", "api", f"repos/{repo}/git/trees/HEAD?recursive=1"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    daten = json.loads(r.stdout)
+    return {"": daten["sha"], **{t["path"]: t["sha"] for t in daten["tree"] if t["type"] == "tree"}}
+
+
+def updates_markieren(skills, lock):
+    """Setzt `update` bei per npx skills installierten Skills: True, wenn ihr Ordner auf GitHub einen anderen Stand hat
+    als bei der Installation (skillFolderHash ist die Git-SHA des Ordners). Ohne Antwort von GitHub bleibt das Feld weg."""
+    cli = [(e, lock[e["name"]]) for e in skills if not e.get("plugin") and e["quelle"]["art"] == "skills-CLI" and e["name"] in lock]
+    repos = sorted({l["source"] for _, l in cli})
+    with ThreadPoolExecutor() as pool:
+        baeume = dict(zip(repos, pool.map(github_baum, repos)))
+    for e, l in cli:
+        stand = (baeume[l["source"]] or {}).get(l["skillPath"].rpartition("/")[0])
+        if stand:
+            e["update"] = stand != l["skillFolderHash"]
 
 
 def persoenliche_skills():
@@ -529,6 +555,8 @@ def aktionen(e):
         return {"deinstallieren": {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}}
     a = {}
     if not e.get("plugin"):
+        if e.get("update"):
+            a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
         if e["quelle"]["art"] == "skills-CLI":
             a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]]}
         else:
@@ -564,6 +592,7 @@ def claude_version():
 def main():
     plugin_liste, plugin_teile, plugin_hooks = plugins()
     skills = persoenliche_skills() + plugin_teile
+    updates_markieren(skills, LOCK)
     projekte = projekt_skills((CFG.get("projects") or {}).keys())
     hooks = eigene_hooks(SETTINGS, CLAUDE / "settings.json") + plugin_hooks
     messen(hooks, hook_ausgaben(transkripte()))
@@ -624,6 +653,9 @@ def main():
         print(f"Noch nicht bewertet ({len(unbewertet)}): " + ", ".join(unbewertet))
     if entfallen:
         print(f"Bewertet, aber nicht mehr installiert ({len(entfallen)}): " + ", ".join(entfallen))
+    updates = [e["name"] for e in skills if e.get("update")]
+    if updates:
+        print(f"Update verfügbar ({len(updates)}): " + ", ".join(updates))
 
 
 if __name__ == "__main__":

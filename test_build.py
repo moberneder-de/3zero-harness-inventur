@@ -110,6 +110,12 @@ class Aktionen(unittest.TestCase):
                          {"deinstallieren": {"argv": ["claude", "mcp", "remove", "q", "-s", "local"], "cwd": "/x/Q"}})
         self.assertEqual(build.aktionen(e("lokal", "Ordner fehlt")), {})
 
+    def test_update_nur_fuer_skills_cli_mit_neuerem_stand(self):
+        self.assertEqual(build.aktionen({**skill("grilling"), "update": True})["aktualisieren"],
+                         {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]})
+        self.assertNotIn("aktualisieren", build.aktionen({**skill("grilling"), "update": False}))
+        self.assertNotIn("aktualisieren", build.aktionen(skill("grilling")))
+
     def test_hook_ohne_aktionen(self):
         self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
 
@@ -250,6 +256,40 @@ class Hooks(unittest.TestCase):
                          '~/.claude/settings.json → "hooks" → "Stop" entfernen')
         self.assertEqual(build.befehl({"id": "hook:einstellungen:statusLine", "ereignis": "Statuszeile", "quelle": {}}, None),
                          '~/.claude/settings.json → "statusLine" entfernen')
+
+
+class Updates(unittest.TestCase):
+    LOCK = {
+        "grilling": {"source": "mattpocock/skills", "skillPath": "skills/productivity/grilling/SKILL.md", "skillFolderHash": "alt"},
+        "code-review": {"source": "mattpocock/skills", "skillPath": "skills/engineering/code-review/SKILL.md", "skillFolderHash": "c1"},
+        "archify": {"source": "tt-a1i/archify", "skillPath": "archify/SKILL.md", "skillFolderHash": "a1"},
+        "weg": {"source": "mattpocock/skills", "skillPath": "skills/weg/SKILL.md", "skillFolderHash": "w1"},
+        "offline": {"source": "x/offline", "skillPath": "SKILL.md", "skillFolderHash": "o1"},
+    }
+
+    def test_github_baum_mit_wurzel(self):
+        antwort = json.dumps({"sha": "wurzel", "tree": [{"path": "archify", "type": "tree", "sha": "a1"},
+                                                        {"path": "archify/SKILL.md", "type": "blob", "sha": "b"}]})
+        with mock.patch.object(build.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=antwort)) as run:
+            self.assertEqual(build.github_baum("tt-a1i/archify"), {"": "wurzel", "archify": "a1"})
+        self.assertEqual(run.call_args.args[0], ["gh", "api", "repos/tt-a1i/archify/git/trees/HEAD?recursive=1"])
+
+    def test_github_baum_ohne_gh_oder_netz(self):
+        with mock.patch.object(build.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(build.github_baum("x/y"))
+        with mock.patch.object(build.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
+            self.assertIsNone(build.github_baum("x/y"))
+
+    def test_update_je_skill_aus_dem_ordnerstand(self):
+        skills = [skill(n) for n in self.LOCK] + [skill("3zero-style", quelle_art="lokal"), skill("superpowers:brainstorming", plugin_id="superpowers@x")]
+        baeume = {"mattpocock/skills": {"skills/productivity/grilling": "neu", "skills/engineering/code-review": "c1"},
+                  "tt-a1i/archify": {"": "r", "archify": "a1"}}
+        with mock.patch.object(build, "github_baum", side_effect=lambda repo: baeume.get(repo)) as abruf:
+            build.updates_markieren(skills, self.LOCK)
+        self.assertEqual({e["name"]: e.get("update") for e in skills},
+                         {"grilling": True, "code-review": False, "archify": False, "weg": None, "offline": None,
+                          "3zero-style": None, "superpowers:brainstorming": None})
+        self.assertEqual(sorted(c.args[0] for c in abruf.call_args_list), ["mattpocock/skills", "tt-a1i/archify", "x/offline"])
 
 
 class McpStatus(unittest.TestCase):

@@ -313,7 +313,7 @@ const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlu
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
-const REIHENFOLGE = ["deinstallieren", "deaktivieren", "nur manuell"];
+const REIHENFOLGE = ["aktualisieren", "deinstallieren", "deaktivieren", "nur manuell"];
 const SPEICHER = "3zero-harness-inventur:auswahl";
 let abweichung = {};
 try { abweichung = JSON.parse(localStorage.getItem(SPEICHER)) || {}; } catch (_) { /* ohne Speicher gilt die Vorbelegung */ }
@@ -511,7 +511,7 @@ function renderSkillsRahmen() {
   const filter = `<div class="filter">
     <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
     <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
-    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus"], "jeder Status")}</select>
+    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar"], "jeder Status")}</select>
     <select id="f-aufruf" aria-label="Aufruf">${opt(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], "jeder Aufruf")}</select>
     <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
@@ -529,7 +529,7 @@ function skillsFiltern() {
     return (F.teile || !s.plugin)
       && (!q || `${s.name} ${s.beschreibung} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
       && (!F.quelle || lieferweg(s) === F.quelle)
-      && (!F.status || s.status === F.status)
+      && (!F.status || (F.status === "Update verfügbar" ? s.update : s.status === F.status))
       && (!F.aufruf || s.aufruf === F.aufruf)
       && (!F.empf || empf === F.empf);
   });
@@ -539,7 +539,7 @@ function skillsFiltern() {
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
-        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}</td>
+        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}</td>
       <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
       detailZeile(7 + SP, [
@@ -724,6 +724,7 @@ function renderHilfe() {
       <li>Mit dem Server erledigen das die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab Empfehlungen oder alles über „alle … ausführen“ im Kopf.</li>
+      <li><b>aktualisieren</b>: nur bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Ob ein Update bereitsteht, vergleicht <code>build.py</code> über <code>gh</code> mit dem Stand auf GitHub; ohne <code>gh</code> oder Netz fehlt die Markierung. Plugins sind nicht dabei.</li>
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
