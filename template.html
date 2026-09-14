@@ -164,10 +164,9 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .hinweis { margin-top: 16px; }
 .hinweis .befehl { margin-top: 10px; }
 
-footer { margin-top: 56px; background: var(--bg-gray); border-top: 1px solid var(--border-light); padding: 24px 30px 40px; font-size: 14px; }
-footer h3 { margin-bottom: 8px; }
-footer ul { margin: 6px 0 0; padding-left: 18px; }
-footer li { margin: 4px 0; }
+.hilfe h3 { margin: 26px 0 8px; }
+.hilfe ul { margin: 6px 0 0; padding-left: 18px; max-width: 760px; font-size: 14.5px; }
+.hilfe li { margin: 5px 0; }
 
 @media (max-width: 640px) {
   .hero { padding: 12px 20px; }
@@ -175,7 +174,6 @@ footer li { margin: 4px 0; }
   nav, main { padding-inline: 20px; }
   nav .wrap { flex-wrap: nowrap; overflow-x: auto; }
   nav a { white-space: nowrap; }
-  footer { padding: 24px 20px 36px; }
   .balken .zeile { grid-template-columns: 110px 1fr 70px; }
   .detail dl { grid-template-columns: 1fr; }
   .detail dt { margin-top: 6px; }
@@ -209,10 +207,10 @@ footer li { margin: 4px 0; }
   <a href="#hooks">Hooks</a>
   <a href="#eingebaut">Eingebaut</a>
   <a href="#hinweise">Hinweise</a>
+  <a href="#hilfe">Hilfe</a>
 </div></nav>
 </div>
 <main><div id="meldung-bereich"></div><div id="app"></div></main>
-<footer id="fuss"></footer>
 
 <script id="daten" type="application/json">__DATEN__</script>
 <script id="token" type="application/json">null</script>
@@ -713,21 +711,37 @@ async function fuehreAus(e) {
   ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion: gewaehlt(e) }));
 }
 
-function renderFuss() {
-  document.getElementById("fuss").innerHTML = `<div class="wrap">
+function renderHilfe() {
+  const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
+  return abschnitt("hilfe", "Hilfe", "So funktioniert das Dashboard", `<div class="hilfe">
     <h3>Aktualisieren</h3>
     <ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
-      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard so, dass sich die Aktionen im Tab „Empfehlungen“ direkt starten lassen.</li>
-      <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json). Denselben Lauf startet der Knopf „Bewertung nachziehen“ im Tab Empfehlungen.</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und der Spalte „Aktion“. Als Datei geöffnet bleibt es nur lesbar.</li>
+      <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
+      <li>Mit dem Server erledigen das die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf.</li>
     </ul>
-    <h3 style="margin-top:18px">Woher die Zahlen kommen</h3>
+    <h3>Aktionen ausführen</h3>
     <ul>
-      <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten und MCP-Server gibt es keine Zähler.</li>
+      <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab Empfehlungen oder alles über „alle … ausführen“ im Kopf.</li>
+      <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
+      <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
+      <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
+      <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server <code>settings.json.bak</code> an. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
+    </ul>
+    <h3>Empfehlungen lesen</h3>
+    <ul>
+      <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
+      <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
+    </ul>
+    <h3>Woher die Zahlen kommen</h3>
+    <ul>
+      <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten, Hooks und MCP-Server gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
       <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4.</li>
+      <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills.</li>
-    </ul></div>`;
+    </ul></div>`);
 }
 
 function kopiere(text, knopf) {
@@ -746,8 +760,7 @@ document.getElementById("stand").innerHTML =
   `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
   (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderProjekte() + renderHooks() + renderEingebaut() + renderHinweise();
-renderFuss();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderProjekte() + renderHooks() + renderEingebaut() + renderHinweise() + renderHilfe();
 skillsFiltern();
 if (TOKEN) zeichne(); else renderEmpfInhalt();
 renderMeldung();
