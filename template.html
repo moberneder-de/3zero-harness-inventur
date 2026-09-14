@@ -89,7 +89,8 @@ tr.haupt { cursor: pointer; }
 tr.haupt:hover td { background: #fafafa; }
 tr.offen td { background: var(--bg-gray); border-bottom-color: transparent; }
 tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
-.detail dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; font-size: 13.5px; }
+/* contain: der Inhalt der aufgeklappten Zeile zählt nicht zur Spaltenbreite, sonst verschieben sich beim Aufklappen die Spalten */
+.detail dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 16px; margin: 0; font-size: 13.5px; contain: inline-size; }
 .detail dt { color: var(--text-light); }
 .detail dd { margin: 0; overflow-wrap: anywhere; }
 .nowrap { white-space: nowrap; }
