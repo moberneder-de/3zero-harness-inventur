@@ -166,10 +166,23 @@ class Server(unittest.TestCase):
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertEqual(self.settings.read_text(), "{ kaputt")
 
+    def bewerten(self):
+        """Startet die Bewertung und wartet, bis der Server sie abgeschlossen hat; liefert (Status beim Start, Stand am Ende)."""
+        status, inhalt = self.anfrage("POST", "/api/bewerten")
+        if status != 200:
+            return status, inhalt
+        self.assertEqual(json.loads(inhalt), {"ok": True, "laeuft": True})
+        for _ in range(100):
+            stand = json.loads(self.anfrage("POST", "/api/bewertung")[1])
+            if not stand["laeuft"]:
+                return status, stand
+            time.sleep(0.1)
+        self.fail("Bewertung wurde nicht fertig")
+
     def test_bewerten_startet_claude_eng_begrenzt(self):
         self.claude_ersatz('{"type":"result","is_error":false,"result":"2 neu, 1 weg."}')
-        status, inhalt = self.anfrage("POST", "/api/bewerten")
-        self.assertEqual((status, json.loads(inhalt)), (200, {"ok": True, "ausgabe": "2 neu, 1 weg."}))
+        status, stand = self.bewerten()
+        self.assertEqual((status, stand), (200, {"laeuft": False, "ok": True, "ausgabe": "2 neu, 1 weg."}))
         argv = (self.tmp / "argv").read_text().split("\n")
         self.assertEqual(argv[:3], ["-p", "/3zero-harness-inventur", "--model"])
         for erwartet in ("opus", "Read", "Edit", "Write", "Bash(python3 *)"):
@@ -181,14 +194,34 @@ class Server(unittest.TestCase):
         self.claude_ersatz('{"result":"egal"}')
         status, _ = self.anfrage("POST", "/api/bewerten", token=None)
         self.assertEqual(status, 403)
+        self.assertEqual(self.anfrage("POST", "/api/bewertung", token=None)[0], 403)
+        time.sleep(0.3)
         self.assertFalse((self.tmp / "argv").exists())
 
     def test_bewerten_meldet_fehler_im_klartext(self):
         self.claude_ersatz("Credit balance too low", code=2)
-        status, inhalt = self.anfrage("POST", "/api/bewerten")
-        antwort = json.loads(inhalt)
-        self.assertEqual((status, antwort["ok"]), (200, False))
-        self.assertIn("Credit balance too low", antwort["ausgabe"])
+        status, stand = self.bewerten()
+        self.assertEqual((status, stand["ok"]), (200, False))
+        self.assertIn("Credit balance too low", stand["ausgabe"])
+
+    def test_bewertung_bleibt_bis_zum_verwerfen(self):
+        self.claude_ersatz('{"result":"fertig"}')
+        self.bewerten()
+        self.assertEqual(json.loads(self.anfrage("POST", "/api/bewertung")[1])["ausgabe"], "fertig")
+        self.assertEqual(json.loads(self.anfrage("POST", "/api/bewertung", {"verwerfen": True})[1]), {"laeuft": False})
+        self.assertEqual(json.loads(self.anfrage("POST", "/api/bewertung")[1]), {"laeuft": False})
+
+    def test_laufende_bewertung_blockiert_weder_start_der_suche_noch_zweiten_start(self):
+        (self.tmp / "build.py").write_text("")
+        self.claude_ersatz('{"result":"fertig"}')
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace("cat <<", "sleep 1\ncat <<"))
+        self.assertEqual(self.anfrage("POST", "/api/bewerten")[0], 200)
+        time.sleep(0.2)
+        beginn = time.time()
+        self.assertFalse(json.loads(self.anfrage("POST", "/api/bewerten")[1])["ok"])
+        self.assertEqual(self.suchen("Folien", warten=False)[1], {"ok": True, "laeuft": True})
+        self.assertLess(time.time() - beginn, 0.5)
 
     KANDIDATEN = [
         {"art": "skill", "name": "frontend-slides", "was": "HTML-Folien", "repo": "zarazhangrui/frontend-slides", "skill": "frontend-slides", "befehl": "npx skills add …"},

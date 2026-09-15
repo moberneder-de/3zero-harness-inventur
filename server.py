@@ -117,7 +117,9 @@ class Inventarserver(ThreadingHTTPServer):
         self.sperre = threading.Lock()  # Aktionen schreiben teils dieselbe settings.json, also nacheinander
         self.gesichert = False
         self.kandidaten = []  # aus der letzten Suche; nur sie lassen sich installieren
-        self.suche = None  # Stand der letzten Suche; sie läuft im Hintergrund, der Browser fragt ihn ab
+        # Stand der Claude-Läufe „suche“ und „bewertung“: Sie laufen im Hintergrund, der Browser fragt ihn ab.
+        # Eigene Sperre, weil self.sperre während einer Bewertung minutenlang belegt ist.
+        self.laeufe, self.laeufe_sperre = {}, threading.Lock()
 
     def schritt(self, eid, aktion):
         """(Name, Schritt) aus inventar.json, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
@@ -170,6 +172,7 @@ class Inventarserver(ThreadingHTTPServer):
         return {"ok": r["ok"], "ausgabe": claude_text(r["ausgabe"])}
 
     def suchen(self, bedarf):
+        self.kandidaten = []
         argv = ["claude", "-p", f"/3zero-harness-inventur suche {bedarf}", "--model", "opus", "--output-format", "json",
                 "--json-schema", json.dumps(SUCHEN_SCHEMA), "--allowedTools", *SUCHEN_WERKZEUGE, "--append-system-prompt", SUCHEN_HINWEIS]
         with self.sperre:
@@ -184,30 +187,35 @@ class Inventarserver(ThreadingHTTPServer):
         self.kandidaten = [{**k, "installierbar": installierbar(k)} for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
         return {"ok": True, "ausgabe": str(ergebnis.get("bericht", "")), "kandidaten": self.kandidaten}
 
-    def suche_starten(self, bedarf):
-        """Eine Suche dauert Minuten; eine so lange offene Anfrage reißt ab, wenn der Browser neu lädt oder aufgibt."""
-        with self.sperre:
-            if self.suche and self.suche["laeuft"]:
-                return {"ok": False, "ausgabe": "Es läuft schon eine Suche."}
-            self.suche, self.kandidaten = {"laeuft": True, "bedarf": bedarf, "beginn": time.time()}, []
+    def im_hintergrund(self, art, arbeit, **angaben):
+        """Startet einen minutenlangen Claude-Lauf. Eine so lange offene Anfrage riss ab, wenn der Browser neu lud,
+        und das Ergebnis war verloren; jetzt bleibt es in self.laeufe, bis der Browser es verwirft."""
+        with self.laeufe_sperre:
+            if (self.laeufe.get(art) or {}).get("laeuft"):
+                return {"ok": False, "ausgabe": "Das läuft schon."}
+            self.laeufe[art] = {"laeuft": True, "beginn": time.time(), **angaben}
 
-        def im_hintergrund():
+        def los():
             try:
-                ergebnis = self.suchen(bedarf)
-            except Exception as fehler:  # sonst bliebe die Suche für immer „läuft“ und sperrte jede weitere
+                ergebnis = arbeit()
+            except Exception as fehler:  # sonst bliebe der Lauf für immer „läuft“ und sperrte jeden weiteren
                 ergebnis = {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"}
-            self.suche = {"laeuft": False, "bedarf": bedarf, **ergebnis}
-        threading.Thread(target=im_hintergrund, daemon=True).start()
+            self.laeufe[art] = {"laeuft": False, **angaben, **ergebnis}
+        threading.Thread(target=los, daemon=True).start()
         return {"ok": True, "laeuft": True}
 
-    def suche_stand(self, verwerfen=False):
-        if verwerfen and self.suche and not self.suche["laeuft"]:
-            self.suche, self.kandidaten = None, []
-        if not self.suche:
+    def stand(self, art, verwerfen=False):
+        with self.laeufe_sperre:
+            lauf_ = self.laeufe.get(art)
+            if verwerfen and lauf_ and not lauf_["laeuft"]:
+                lauf_ = self.laeufe[art] = None
+                if art == "suche":
+                    self.kandidaten = []
+        if not lauf_:
             return {"laeuft": False}
-        if self.suche["laeuft"]:
-            return {"laeuft": True, "bedarf": self.suche["bedarf"], "sekunden": round(time.time() - self.suche["beginn"])}
-        return self.suche
+        if lauf_["laeuft"]:
+            return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
+        return lauf_
 
     def installieren(self, nr, nur_manuell):
         k = self.kandidaten[nr]
@@ -253,21 +261,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(403, {"ok": False, "ausgabe": "nicht erlaubt"})
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
-        if self.path == "/api/bewerten":
-            return self.antworte(200, self.server.bewerten())
-        if self.path not in ("/api/ausfuehren", "/api/suchen", "/api/suche", "/api/installieren"):
+        if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren"):
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:
             anfrage = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         except ValueError:
             anfrage = None
+        if self.path == "/api/bewerten":
+            return self.antworte(200, self.server.im_hintergrund("bewertung", self.server.bewerten))
         if self.path == "/api/suchen":
             bedarf = anfrage.get("bedarf") if isinstance(anfrage, dict) else None
             if not isinstance(bedarf, str) or not 0 < len(bedarf.strip()) <= 300:
                 return self.antworte(400, {"ok": False, "ausgabe": "Bedarf fehlt oder ist länger als 300 Zeichen."})
-            return self.antworte(200, self.server.suche_starten(bedarf.strip()))
-        if self.path == "/api/suche":
-            return self.antworte(200, self.server.suche_stand(isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
+            bedarf = bedarf.strip()
+            return self.antworte(200, self.server.im_hintergrund("suche", lambda: self.server.suchen(bedarf), bedarf=bedarf))
+        if self.path in ("/api/suche", "/api/bewertung"):
+            art = self.path.removeprefix("/api/")
+            return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
         if self.path == "/api/installieren":
             nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
             if type(nr) is not int or not 0 <= nr < len(self.server.kandidaten) or not self.server.kandidaten[nr]["installierbar"]:
