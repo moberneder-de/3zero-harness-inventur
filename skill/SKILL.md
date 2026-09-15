@@ -32,7 +32,7 @@ Beginnt die Anfrage mit **suche** (etwa `/3zero-harness-inventur suche Mermaid-D
 python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness>
 ```
 
-Die Ausgabe nennt bis zu zwei Listen: „Noch nicht bewertet“ (neu installiert) und „Bewertet, aber nicht mehr installiert“ (inzwischen entfernt).
+Die Ausgabe nennt bis zu zwei Listen: „Noch nicht bewertet“ (neu installiert) und „Bewertet, aber nicht mehr installiert“ (inzwischen entfernt). Unter Codex schreibt `build.py` damit außerhalb des Arbeitsordners und braucht für die Update-Prüfung (`gh api`) Netz; Codex fragt dann nach Freigabe. Ohne Netz fehlt nur die Update-Angabe.
 
 Fertig, wenn: das Skript ohne Fehler durchlief. Sind beide Listen leer und will der Benutzer keine Neubewertung, weiter mit Schritt 4.
 

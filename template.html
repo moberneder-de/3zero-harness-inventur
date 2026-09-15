@@ -297,7 +297,7 @@ function statusBadge(s) {
 }
 function nutzungText(e) {
   if (e.typ === "Agent" || e.typ === "Hook") return '<span class="leer">nicht erfasst</span>';
-  if (e.id.startsWith("mcp:") && !CODEX) return '<span class="leer">nicht erfasst</span>';
+  if (e.id.startsWith("mcp:") && (!CODEX || !("nutzung" in e))) return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
   const n = e.nutzung;
   return n ? `${zahl(n.anzahl)}× <span class="klein">· ${datum(n.zuletzt)}</span>` : '<span class="leer">nie</span>';
@@ -806,7 +806,7 @@ function renderHilfe() {
       <li><code>python3 build.py --harness codex</code> im Projektordner 3zero-Harness-Inventur: liest den Codex-Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Codex. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness claude-code</code> zeigt das Dashboard wieder Claude Code; ohne Angabe gilt der zuletzt genannte.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“.</li>
       <li><code>$3zero-harness-inventur</code> in Codex: macht dasselbe wie <code>build.py --harness codex</code> und lässt Codex zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-codex.json).</li>
-      <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: schreiben nur im Projektordner, kein Netz, ohne deine eigenen Plugins, MCP-Server und Regeln. Den Bestand liest der Server davor und danach selbst ein.</li>
+      <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: Codex schreibt nur in eine Arbeitskopie von bewertung-codex.json in einem Temp-Ordner, ohne Netz, ohne deine eigenen Plugins, MCP-Server und Regeln; der Server prüft die Kopie und übernimmt sie. Den Bestand liest der Server davor und danach selbst ein.</li>
       <li>Codex-Läufe aus dem Dashboard nutzen die Anmeldung von Codex (<code>codex login status</code>). Solange die über dein ChatGPT-Konto läuft, verbrauchen sie Kontingent deines Abos.</li>
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
