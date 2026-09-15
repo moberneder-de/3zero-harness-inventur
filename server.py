@@ -92,7 +92,8 @@ CODEX_BEWERTEN_HINWEIS = (
 # npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur über den Codex-Proxy zu diesen Domains und nur lesend (limited).
 SUCHEN_DOMAINS = ("skills.sh", "registry.npmjs.org", "github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com")
 GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json",
-                   ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials")
+                   ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials",
+                   ".codex/sessions", ".codex/archived_sessions", ".codex/history.jsonl", ".claude/projects")
 CODEX_SUCHEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Bestand ist frisch eingelesen "
     "(inventar-codex.json), führe build.py nicht aus. Stelle keine Rückfragen: Ist der Bedarf vage, lege die naheliegende Deutung fest "
@@ -139,7 +140,11 @@ def codex_modell(config):
 
 def codex_bewerten(ordner, arbeitsordner, ergebnis, build_ausgabe, modell):
     hinweis = CODEX_BEWERTEN_HINWEIS.format(ordner=ordner, arbeitsordner=arbeitsordner)
-    return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(arbeitsordner), "-c", 'web_search="disabled"', *modell, "-o", str(ergebnis),
+    # workspace-write macht sonst auch $TMPDIR und /tmp beschreibbar; ein injizierter Lauf könnte dort etwas
+    # ablegen, das installieren() oder die Claude-Suche später ohne Sandbox ausführen.
+    return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(arbeitsordner), "-c", 'web_search="disabled"',
+            "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+            *modell, "-o", str(ergebnis),
             f"$3zero-harness-inventur\n\n{hinweis}\n\nAusgabe von build.py:\n{build_ausgabe}"]
 
 
@@ -290,10 +295,13 @@ class Inventarserver(ThreadingHTTPServer):
                 text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
                 if not c["ok"]:
                     return {"ok": False, "ausgabe": text}
-                try:
-                    bewertung = json.loads((arbeitsordner / "bewertung-codex.json").read_text(encoding="utf-8"))
-                except (OSError, ValueError):
-                    bewertung = None
+                kopie = arbeitsordner / "bewertung-codex.json"
+                bewertung = None
+                if kopie.is_file() and not kopie.is_symlink():  # ein Symlink könnte auf eine Datei außerhalb zeigen
+                    try:
+                        bewertung = json.loads(kopie.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        bewertung = None
                 if not isinstance(bewertung, dict):
                     return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
                 neu = bewertung_datei.with_name(bewertung_datei.name + ".neu")
@@ -312,8 +320,11 @@ class Inventarserver(ThreadingHTTPServer):
             return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
         if self.harness() == "codex":
             return self.suchen_codex(bedarf)
-        # Claude ändert nichts, also ohne Sperre: Aktionen im Dashboard warten nicht minutenlang auf die Suche
-        r = lauf(argv, tempfile.gettempdir(), 1200)  # die Suchbefehle laufen außerhalb von ~
+        # Claude ändert nichts, also ohne Sperre: Aktionen im Dashboard warten nicht minutenlang auf die Suche.
+        # Ein frischer Ordner statt direkt $TMPDIR: eine Codex-Bewertung darf $TMPDIR beschreiben, ein injizierter
+        # Lauf könnte dort also etwas ablegen, das dieser ungesicherte Claude-Lauf sonst mit ausführen würde.
+        with tempfile.TemporaryDirectory() as tmp:
+            r = lauf(argv, tmp, 1200)
         ergebnis = (claude_json(r["ausgabe"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
@@ -374,7 +385,8 @@ class Inventarserver(ThreadingHTTPServer):
         else:
             argv = ["claude", "plugin", "install", f"{k['plugin']}@{k['marktplatz']}"]
         with self.sperre:
-            r = lauf(argv, tempfile.gettempdir(), 300)
+            with tempfile.TemporaryDirectory() as tmp:  # frischer Ordner statt $TMPDIR direkt, siehe suchen()
+                r = lauf(argv, tmp, 300)
         if r["ok"] and nur_manuell and k["art"] == "skill":
             with self.sperre:
                 r["ausgabe"] += "\n" + self.override_setzen(k["skill"], "user-invocable-only")["ausgabe"]

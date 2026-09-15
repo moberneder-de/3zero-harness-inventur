@@ -284,7 +284,9 @@ class Server(unittest.TestCase):
             self.assertIn(erwartet, argv)
         for verboten in ("Edit", "Write", "Bash(python3 *)", "Bash(gh api *)", "--dangerously-skip-permissions"):
             self.assertNotIn(verboten, argv)
-        self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
+        cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertFalse(cwd.is_relative_to(Path.home()))
+        self.assertNotEqual(cwd, Path(tempfile.gettempdir()).resolve())
 
     def test_suchen_prueft_die_kandidaten(self):
         _, antwort = self.suchen()
@@ -341,7 +343,9 @@ class Server(unittest.TestCase):
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
                          ["-y", "skills", "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
-        self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
+        cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertFalse(cwd.is_relative_to(Path.home()))
+        self.assertNotEqual(cwd, Path(tempfile.gettempdir()).resolve())
         self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"]["frontend-slides"], "user-invocable-only")
         self.assertEqual([k.get("installiert", False) for k in self.stand()["kandidaten"]], [True, False, False, False])
 
@@ -388,6 +392,7 @@ class Server(unittest.TestCase):
         argv = (self.tmp / "argv").read_text().split("\n")
         self.assertEqual(argv[0], "exec")
         for erwartet in ("--ignore-user-config", "--ignore-rules", "--ephemeral", "workspace-write", 'web_search="disabled"',
+                         "sandbox_workspace_write.exclude_tmpdir_env_var=true", "sandbox_workspace_write.exclude_slash_tmp=true",
                          "gpt-test", 'model_reasoning_effort="high"', "$3zero-harness-inventur", "apps", "computer_use"):
             self.assertIn(erwartet, argv)
         for verboten in ("danger-full-access", "--dangerously-bypass-approvals-and-sandbox", "--full-auto"):
@@ -406,6 +411,25 @@ class Server(unittest.TestCase):
         (self.tmp / "build.py").write_text(
             f"from pathlib import Path\np = Path({str(laeufe)!r})\np.write_text(p.read_text() + 'x' if p.exists() else 'x')\n")
         self.codex_ersatz("## Bewertung\n2 neu", bewertung="{ kaputt")
+        status, stand = self.bewerten()
+        self.assertFalse(stand["ok"])
+        self.assertIn("bewertung-codex.json", stand["ausgabe"])
+        self.assertEqual((self.tmp / "bewertung-codex.json").read_text(), '{"alt": true}\n')
+        self.assertEqual(laeufe.read_text(), "x")  # nur der Lauf vor Codex, kein zweiter Build danach
+
+    def test_codex_bewertung_mit_symlink_wird_nicht_zurueckgeschrieben(self):
+        self.auf_codex()
+        (self.tmp / "bewertung-codex.json").write_text('{"alt": true}\n')
+        ziel = self.tmp / "ausserhalb.json"
+        ziel.write_text('{"boese": true}\n')
+        laeufe = self.tmp / "build-laeufe"
+        (self.tmp / "build.py").write_text(
+            f"from pathlib import Path\np = Path({str(laeufe)!r})\np.write_text(p.read_text() + 'x' if p.exists() else 'x')\n")
+        self.codex_ersatz("## Bewertung\n2 neu")
+        skript = self.tmp / "bin" / "codex"
+        # Statt der Arbeitskopie eine Datei zu ändern, ersetzt der Lauf sie durch einen Symlink nach draußen.
+        skript.write_text(skript.read_text().replace(
+            "cat <<", f'rm -f bewertung-codex.json; ln -s "{ziel}" bewertung-codex.json\ncat <<', 1))
         status, stand = self.bewerten()
         self.assertFalse(stand["ok"])
         self.assertIn("bewertung-codex.json", stand["ausgabe"])
@@ -460,6 +484,7 @@ class Server(unittest.TestCase):
         self.assertEqual(set(server.GESPERRT_LESEN), {
             ".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json",
             ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials",
+            ".codex/sessions", ".codex/archived_sessions", ".codex/history.jsonl", ".claude/projects",
         })
 
     def test_codex_suchen_setzt_npm_config_userconfig_ausserhalb_des_zwischenspeichers(self):
