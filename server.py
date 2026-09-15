@@ -9,6 +9,9 @@ Installieren geht nur für Kandidaten der letzten Suche: Der Browser schickt der
 den Befehl baut der Server aus den geprüften Feldern repo, skill, plugin und marktplatz.
 
 Aufruf: python3 server.py   (beenden mit Ctrl+C)
+
+Welcher Harness gilt (Claude Code oder Codex), steht in harness.json: Der Skill setzt ihn beim Start, der
+letzte Start zählt. Danach richten sich Dashboard, Inventar und die Läufe für Bewertung und Suche.
 """
 
 import json
@@ -20,9 +23,12 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import harness
 
 HIER = Path(__file__).resolve().parent
 PORT = 8765
@@ -72,6 +78,85 @@ SUCHEN_SCHEMA = {
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 
+# Codex-Läufe ohne eigene Plugins, MCP-Server, Regeln, Apps, Browser- und Computer-Steuerung aus ~/.codex.
+# Sitzungsprotokolle schreibt der Lauf nicht (--ephemeral), damit er die Nutzungszahlen nicht verfälscht.
+CODEX_BASIS = ["codex", "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
+               *[x for f in ("apps", "plugins", "remote_plugin", "computer_use", "browser_use", "hooks") for x in ("--disable", f)]]
+CODEX_BEWERTEN_HINWEIS = (
+    "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Server hat build.py gerade ausgeführt, "
+    "die Ausgabe steht unten, und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus "
+    "und öffne nichts. Ändere nichts außer bewertung-codex.json. Stelle keine Rückfragen."
+)
+# Codex kennt keine Befehlsliste wie --allowedTools. Die Grenze zieht die Sandbox: nur lesen, schreiben nur in den
+# npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur über den Codex-Proxy zu diesen Domains und nur lesend (limited).
+SUCHEN_DOMAINS = ("skills.sh", "registry.npmjs.org", "github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com")
+GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json")
+CODEX_SUCHEN_HINWEIS = (
+    "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Bestand ist frisch eingelesen "
+    "(inventar-codex.json), führe build.py nicht aus. Stelle keine Rückfragen: Ist der Bedarf vage, lege die naheliegende Deutung fest "
+    "und nenne sie im Bericht; deckt der Bestand ihn ab, sage das. Installiere nichts und ändere keine Dateien. "
+    "Shell-Befehle erreichen nur skills.sh, npm und GitHub, und nur lesend. Scheitert npx skills am Netz, suche Skills über die "
+    "Websuche (skills.sh, GitHub) und schreibe in den Bericht, dass npx skills nicht erreichbar war. "
+    "GitHub-Daten (Sterne, letzter Push) holst du mit curl -s https://api.github.com/repos/<owner>/<repo>. "
+    "bericht ist dein Bericht aus S1 bis S5 auf Deutsch in Markdown mit Überschriften (##), Absätzen, Listen, **fett** und `code`, ohne Tabellen. "
+    "kandidaten sind höchstens die drei aus S5: art skill mit repo (owner/repo) und skill (Name im Repo), "
+    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters; nicht zutreffende Felder sind null."
+)
+# Codex prüft Schemas strikt: jedes Feld required, additionalProperties false, Optionales als null
+SUCHEN_SCHEMA_CODEX = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["bericht", "kandidaten"],
+    "properties": {
+        "bericht": {"type": "string"},
+        "kandidaten": {"type": "array", "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["art", "name", "was", "befehl", "repo", "skill", "plugin", "marktplatz"],
+            "properties": {
+                "art": {"type": "string", "enum": ["skill", "plugin", "mcp"]},
+                "name": {"type": "string"}, "was": {"type": "string"}, "befehl": {"type": "string"},
+                **{f: {"type": ["string", "null"]} for f in ("repo", "skill", "plugin", "marktplatz")},
+            },
+        }},
+    },
+}
+
+
+def codex_modell(config):
+    """Modell und Denktiefe aus ~/.codex/config.toml: --ignore-user-config ließe sie sonst weg."""
+    try:
+        cfg = tomllib.loads(Path(config).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    argv = ["-m", cfg["model"]] if isinstance(cfg.get("model"), str) else []
+    if isinstance(cfg.get("model_reasoning_effort"), str):
+        argv += ["-c", f"model_reasoning_effort={json.dumps(cfg['model_reasoning_effort'])}"]
+    return argv
+
+
+def codex_bewerten(ordner, ergebnis, build_ausgabe, modell):
+    return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(ordner), "-c", 'web_search="disabled"', *modell, "-o", str(ergebnis),
+            f"$3zero-harness-inventur\n\n{CODEX_BEWERTEN_HINWEIS}\n\nAusgabe von build.py:\n{build_ausgabe}"]
+
+
+def codex_suchen(bedarf, arbeitsordner, schema, ergebnis, modell):
+    toml = lambda d: "{" + ",".join(f"{json.dumps(k)}={json.dumps(v)}" for k, v in d.items()) + "}"
+    cache = Path(arbeitsordner) / "npm-cache"
+    dateisystem = {str(cache): "write", **{str(Path.home() / p): "deny" for p in GESPERRT_LESEN if (Path.home() / p).exists()}}
+    return [*CODEX_BASIS, "-C", str(arbeitsordner), *modell,
+            "-c", 'web_search="live"',
+            "-c", "features.network_proxy=true",
+            "-c", 'permissions.suche.extends=":read-only"',
+            "-c", f"permissions.suche.filesystem={toml(dateisystem)}",
+            "-c", "permissions.suche.network.enabled=true",
+            "-c", 'permissions.suche.network.mode="limited"',
+            "-c", f"permissions.suche.network.domains={toml({d: 'allow' for d in SUCHEN_DOMAINS})}",
+            "-c", 'default_permissions="suche"',
+            "-c", f"shell_environment_policy.set.npm_config_cache={json.dumps(str(cache))}",
+            "--output-schema", str(schema), "-o", str(ergebnis),
+            f"$3zero-harness-inventur suche {bedarf}\n\n{CODEX_SUCHEN_HINWEIS}"]
+
 
 def claude_json(ausgabe):
     """Das JSON-Objekt aus `claude --output-format json`, auch wenn Warnungen davor stehen; None, wenn keins darin ist."""
@@ -120,10 +205,18 @@ class Inventarserver(ThreadingHTTPServer):
         # Stand der Claude-Läufe „suche“ und „bewertung“: Sie laufen im Hintergrund, der Browser fragt ihn ab.
         # Eigene Sperre, weil self.sperre während einer Bewertung minutenlang belegt ist.
         self.laeufe, self.laeufe_sperre = {}, threading.Lock()
+        self.codex_config = Path.home() / ".codex" / "config.toml"
+
+    def harness(self):
+        return harness.aktuell(self.ordner)
+
+    def datei(self, art):
+        """inventar oder dashboard des Harness, in dem der Skill zuletzt gestartet wurde."""
+        return self.ordner / harness.HARNESSE[self.harness()][art]
 
     def schritt(self, eid, aktion):
         """(Name, Schritt) aus inventar.json, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
-        inventar = json.loads((self.ordner / "inventar.json").read_text(encoding="utf-8"))
+        inventar = json.loads(self.datei("inventar").read_text(encoding="utf-8"))
         for e in inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", []) + inventar.get("projekt_mcp", []):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
                 return e["name"], e["aktionen"][aktion]
@@ -167,9 +260,26 @@ class Inventarserver(ThreadingHTTPServer):
             return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
 
     def bewerten(self):
+        if self.harness() == "codex":
+            return self.bewerten_codex()
         with self.sperre:
             r = lauf(BEWERTEN, self.ordner, 1200)
         return {"ok": r["ok"], "ausgabe": claude_text(r["ausgabe"])}
+
+    def bewerten_codex(self):
+        """build.py liest mit Netz ein (claude mcp list, gh); Codex läuft ohne Netz, deshalb baut der Server davor und danach."""
+        with self.sperre:
+            r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+            if not r["ok"]:
+                return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
+            with tempfile.TemporaryDirectory() as tmp:
+                ergebnis = Path(tmp) / "ergebnis.md"
+                c = lauf(codex_bewerten(self.ordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)), self.ordner, 1200)
+                text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
+            if not c["ok"]:
+                return {"ok": False, "ausgabe": text}
+            n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+        return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def suchen(self, bedarf):
         self.kandidaten = []
@@ -179,6 +289,8 @@ class Inventarserver(ThreadingHTTPServer):
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         if not r["ok"]:
             return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
+        if self.harness() == "codex":
+            return self.suchen_codex(bedarf)
         # Claude ändert nichts, also ohne Sperre: Aktionen im Dashboard warten nicht minutenlang auf die Suche
         r = lauf(argv, tempfile.gettempdir(), 1200)  # die Suchbefehle laufen außerhalb von ~
         ergebnis = (claude_json(r["ausgabe"]) or {}).get("structured_output")
@@ -186,6 +298,23 @@ class Inventarserver(ThreadingHTTPServer):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
         self.kandidaten = [{**k, "installierbar": installierbar(k)} for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
         return {"ok": True, "ausgabe": str(ergebnis.get("bericht", "")), "kandidaten": self.kandidaten}
+
+    def suchen_codex(self, bedarf):
+        with tempfile.TemporaryDirectory() as tmp:  # außerhalb von ~, wie bei Claude
+            schema, ergebnis = Path(tmp) / "schema.json", Path(tmp) / "ergebnis.json"
+            schema.write_text(json.dumps(SUCHEN_SCHEMA_CODEX), encoding="utf-8")
+            (Path(tmp) / "npm-cache").mkdir()
+            r = lauf(codex_suchen(bedarf, tmp, schema, ergebnis, codex_modell(self.codex_config)), tmp, 1200)
+            try:
+                daten = json.loads(ergebnis.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                daten = None
+        if not r["ok"] or not isinstance(daten, dict):
+            return {"ok": False, "ausgabe": r["ausgabe"]}
+        kandidaten = [{f: w for f, w in k.items() if w is not None} for k in daten.get("kandidaten", []) if isinstance(k, dict)][:3]
+        # Installieren unter Codex kommt erst mit Teil B; bis dahin nur zum Kopieren
+        self.kandidaten = [{**k, "installierbar": False} for k in kandidaten]
+        return {"ok": True, "ausgabe": str(daten.get("bericht", "")), "kandidaten": self.kandidaten}
 
     def im_hintergrund(self, art, arbeit, **angaben):
         """Startet einen minutenlangen Claude-Lauf. Eine so lange offene Anfrage riss ab, wenn der Browser neu lud,
@@ -251,7 +380,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(403, "fremder Host", "text/plain")
         if self.path != "/":
             return self.antworte(404, "nicht gefunden", "text/plain")
-        html = (self.server.ordner / "dashboard.html").read_text(encoding="utf-8")
+        html = self.server.datei("dashboard").read_text(encoding="utf-8")
         html = html.replace(TOKEN_PLATZHALTER, TOKEN_PLATZHALTER.replace("null", json.dumps(self.server.token)), 1)
         self.antworte(200, html, "text/html")
 

@@ -51,6 +51,22 @@ class Server(unittest.TestCase):
             self.pfad_vorher = os.environ["PATH"]
             os.environ["PATH"] = f"{ordner}:{self.pfad_vorher}"
 
+    def codex_ersatz(self, ergebnis, code=0):
+        """Ersatz für codex: protokolliert Argumente und Ordner und schreibt `ergebnis` in die Datei hinter -o."""
+        self.claude_ersatz("codex-protokoll", code=code, name="codex")
+        skript = self.tmp / "bin" / "codex"
+        skript.write_text(skript.read_text().replace(
+            "cat <<", f'while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then shift; cat > "$1" <<\'ERGEBNIS\'\n{ergebnis}\nERGEBNIS\nfi; shift; done\ncat <<', 1))
+
+    def auf_codex(self):
+        (self.tmp / "harness.json").write_text('{"harness": "codex"}')
+        (self.tmp / "dashboard-codex.html").write_text('<html>Codex<script id="token" type="application/json">null</script></html>')
+        (self.tmp / "inventar-codex.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": []}))
+        (self.tmp / "build.py").write_text("")
+        config = self.tmp / "codex-config.toml"
+        config.write_text('model = "gpt-test"\nmodel_reasoning_effort = "high"\n')
+        self.srv.codex_config = config
+
     def schreibe_inventar(self, plugins, skills=(), mcp=()):
         inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills)}
         (self.tmp / "inventar.json").write_text(json.dumps(inventar))
@@ -347,6 +363,68 @@ class Server(unittest.TestCase):
         self.assertEqual((status, json.loads(inhalt)["ok"]), (200, True))
         self.assertTrue(self.ausfuehren("skill:neu", "deinstallieren")[1]["ok"])
         self.assertTrue(self.marker.exists())
+
+    def test_codex_bekommt_sein_dashboard_und_keine_claude_aktionen(self):
+        self.auf_codex()
+        status, html = self.anfrage("GET", "/", token=None)
+        self.assertEqual(status, 200)
+        self.assertIn("Codex", html)
+        self.assertIn('"geheim"', html)
+        self.assertEqual(self.ausfuehren("plugin:x@y", "deinstallieren")[0], 400)
+        self.assertFalse(self.marker.exists())
+
+    def test_codex_bewertet_in_sandbox_im_projektordner(self):
+        self.auf_codex()
+        self.codex_ersatz("## Bewertung\n2 neu")
+        status, stand = self.bewerten()
+        self.assertEqual((status, stand["ok"], stand["ausgabe"]), (200, True, "## Bewertung\n2 neu"))
+        argv = (self.tmp / "argv").read_text().split("\n")
+        self.assertEqual(argv[0], "exec")
+        for erwartet in ("--ignore-user-config", "--ignore-rules", "--ephemeral", "workspace-write", 'web_search="disabled"',
+                         "gpt-test", 'model_reasoning_effort="high"', "$3zero-harness-inventur", "apps", "computer_use"):
+            self.assertIn(erwartet, argv)
+        for verboten in ("danger-full-access", "--dangerously-bypass-approvals-and-sandbox", "--full-auto"):
+            self.assertNotIn(verboten, argv)
+        self.assertEqual(argv[argv.index("-C") + 1], str(self.tmp))
+        self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), self.tmp.resolve())
+
+    def test_codex_bewertung_meldet_fehler(self):
+        self.auf_codex()
+        self.codex_ersatz("", code=1)
+        (self.tmp / "bin" / "codex").write_text('#!/bin/sh\necho "Not logged in" >&2\nexit 1\n')
+        _, stand = self.bewerten()
+        self.assertFalse(stand["ok"])
+        self.assertIn("Not logged in", stand["ausgabe"])
+
+    def test_codex_sucht_nur_lesend_mit_domain_liste(self):
+        self.auf_codex()
+        self.codex_ersatz(json.dumps({"bericht": "## Bedarf\nFolien", "kandidaten": [
+            {**{f: None for f in ("repo", "skill", "plugin", "marktplatz")}, **k} for k in self.KANDIDATEN]}))
+        status, stand = self.suchen()
+        self.assertEqual((status, stand["ok"], stand["ausgabe"]), (200, True, "## Bedarf\nFolien"))
+        self.assertEqual(len(stand["kandidaten"]), 3)
+        self.assertEqual([k["installierbar"] for k in stand["kandidaten"]], [False, False, False])
+        self.assertNotIn("plugin", stand["kandidaten"][0])
+        argv = (self.tmp / "argv").read_text().split("\n")
+        for erwartet in ('permissions.suche.extends=":read-only"', "permissions.suche.network.enabled=true",
+                         'permissions.suche.network.mode="limited"', 'default_permissions="suche"', "features.network_proxy=true",
+                         'web_search="live"', "--output-schema", "$3zero-harness-inventur suche Präsentationen als HTML"):
+            self.assertIn(erwartet, argv)
+        domains = next(a for a in argv if a.startswith("permissions.suche.network.domains="))
+        self.assertIn('"skills.sh"="allow"', domains)
+        self.assertNotIn("*", domains)
+        dateisystem = next(a for a in argv if a.startswith("permissions.suche.filesystem="))
+        self.assertIn('npm-cache"="write"', dateisystem)
+        for verboten in ("workspace-write", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox"):
+            self.assertNotIn(verboten, argv)
+        self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
+        self.assertEqual(self.installieren({"nr": 0})[0], 400)
+
+    def test_codex_modell_aus_der_konfiguration(self):
+        config = self.tmp / "c.toml"
+        config.write_text('model = "gpt-6-astra"\nmodel_reasoning_effort = "high"\n')
+        self.assertEqual(server.codex_modell(config), ["-m", "gpt-6-astra", "-c", 'model_reasoning_effort="high"'])
+        self.assertEqual(server.codex_modell(self.tmp / "fehlt.toml"), [])
 
 
 if __name__ == "__main__":
