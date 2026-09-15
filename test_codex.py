@@ -90,6 +90,29 @@ class Nutzung(CodexOrdner):
         self.assertEqual(codex.nutzung(server.get("node_repl")), {"anzahl": 2, "zuletzt": "2026-09-03"})
         self.assertIsNone(codex.nutzung(None))
 
+    def test_sitzung_die_den_inventur_skill_waehlt_zaehlt_nicht(self):
+        """Interaktive Läufe von $3zero-harness-inventur lesen selbst viele SKILL.md; das darf nicht als Nutzung zählen."""
+        skill = self.skill(self.home / ".agents/skills", "archify")
+        gewaehlt = {"type": "message", "role": "user", "content": [{"type": "input_text",
+                    "text": f"<skill>\n<name>3zero-harness-inventur</name>\n<path>{self.home}/.codex/skills/3zero-harness-inventur/SKILL.md</path>\n---"}],
+                    "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["skills.selected_skill_instructions"]}}
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": f"['/bin/zsh', '-lc', \"sed -n '1,240p' {skill}\"]"}}
+        mcp = {"type": "item_completed", "item": {"type": "McpToolCall", "server": "node_repl", "tool": "js"}}
+        eins = self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl",
+                             "\n".join([self.zeile("2026-09-01", gewaehlt), self.zeile("2026-09-01", lesen), self.zeile("2026-09-01", mcp)]))
+        skills, server = codex.nutzung_zaehlen([eins])
+        self.assertEqual((skills, server), ({}, {}))
+
+    def test_sitzung_im_projektordner_zaehlt_nicht(self):
+        """session_meta mit payload.cwd = Projektordner heißt: der Lauf war eine Bewertung, keine echte Nutzung."""
+        skill = self.skill(self.home / ".agents/skills", "archify")
+        meta = json.dumps({"type": "session_meta", "payload": {"cwd": str(codex.HIER)}})
+        lesen = self.zeile("2026-09-02", {"type": "item_completed", "item": {"type": "CommandExecution",
+                           "command": f"['/bin/zsh', '-lc', \"sed -n '1,240p' {skill}\"]"}})
+        eins = self.schreibe(self.home / ".codex/sessions/2026/09/02/rollout-2.jsonl", "\n".join([meta, lesen]))
+        skills, server = codex.nutzung_zaehlen([eins])
+        self.assertEqual((skills, server), ({}, {}))
+
 
 GEHEIM = "sk-geheim-1234"
 
@@ -135,6 +158,15 @@ class Plugins(CodexOrdner):
         cfg = {"plugins": {"github@openai-curated": {"enabled": True}}, "features": {"remote_plugin": False}}
         self.assertEqual(codex.plugins(cfg, (set(), set()), {})[0][0]["status"], "aktiv")
 
+    def test_kaputte_manifeste_brechen_plugins_nicht_ab(self):
+        wurzel = self.home / ".codex/plugins/cache/mkt/kaputt/1.0"
+        self.schreibe(wurzel / "plugin.json", json.dumps([]))
+        self.schreibe(wurzel / ".mcp.json", json.dumps([1]))
+        self.schreibe(wurzel / "hooks/hooks.json", json.dumps("x"))
+        liste, teile, hooks = codex.plugins({}, (set(), set()), {})
+        self.assertEqual([p["id"] for p in liste], ["plugin:kaputt@mkt"])
+        self.assertEqual((teile, hooks), ([], []))
+
 
 class Mcp(CodexOrdner):
     def test_eigene_und_plugin_server_ohne_geheimnisse(self):
@@ -153,6 +185,9 @@ class Mcp(CodexOrdner):
                          ("https://example.org/mcp", "User", "a@m"))
         self.assertEqual((server["mcp:node_repl"]["gesperrt"], server["mcp:node_repl"]["aus_in_projekten"]), (False, []))
         self.assertNotIn(GEHEIM, json.dumps(list(server.values())))
+
+    def test_kaputte_mcp_servers_bricht_nicht_ab(self):
+        self.assertEqual(codex.mcp_server({"mcp_servers": ["x"]}, [], {}), [])
 
 
 class Befehle(unittest.TestCase):
@@ -202,6 +237,10 @@ class HooksUndProjekte(CodexOrdner):
         self.assertEqual(hooks["hook:config:notify"]["befehle"][0]["befehl"], "/x/client turn-ended")
         self.assertEqual(hooks["hook:config:PreToolUse"]["befehle"][0]["matcher"], "Bash")
 
+    def test_kaputte_hooks_json_bricht_eigene_hooks_nicht_ab(self):
+        self.schreibe(self.home / ".codex/hooks.json", json.dumps([1]))
+        self.assertEqual(codex.eigene_hooks({}), [])
+
     def test_projekte_mit_vertrauen(self):
         kit, fremd = self.tmp / "Kit", self.tmp / "Fremd"
         self.skill(kit / ".agents/skills", "seo-audit")
@@ -217,3 +256,6 @@ class HooksUndProjekte(CodexOrdner):
                          [("skill:Kit/q-lang", "lokal", str(kit)), ("skill:Kit/seo-audit", "skills-CLI", str(kit))])
         self.assertEqual(sorted((m["id"], m["status"]) for m in mcp), [("mcp:Fremd/f", "nicht vertraut"), ("mcp:Kit/q", "eingetragen")])
         self.assertNotIn(GEHEIM, json.dumps(mcp))
+
+    def test_kaputte_projects_bricht_nicht_ab(self):
+        self.assertEqual(codex.projekte({"mcp_servers": ["x"], "projects": ["y"]}, (set(), set()), {}), ([], []))

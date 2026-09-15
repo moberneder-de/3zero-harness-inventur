@@ -124,16 +124,28 @@ def sitzungen():
 
 def nutzung_zaehlen(dateien):
     """Skills zählen je Sitzung einmal: per $name gewählt oder ihre SKILL.md gelesen. MCP-Server zählen je Aufruf.
-    Ergebnis: ({aufgelöster SKILL.md-Pfad: [Tag, …]}, {Server: [Tag, …]})."""
+    Eine Sitzung zählt ganz nicht mit, wenn sie selbst diesen Skill wählt oder im Projektordner lief: sonst zählte
+    jede Bewertung ihre eigenen SKILL.md-Lesezugriffe als Nutzung. Ergebnis: ({aufgelöster SKILL.md-Pfad: [Tag, …]}, {Server: [Tag, …]})."""
+    hier = str(HIER.resolve())
     skills, mcp = {}, {}
     for datei in dateien:
-        gelesen = {}
+        gelesen, mcp_gelesen, ueberspringen = {}, {}, False
         try:
             f = open(datei, encoding="utf-8", errors="replace")
         except OSError:
             continue
         with f:
             for zeile in f:
+                if "skills.selected_skill_instructions" in zeile and "<name>3zero-harness-inventur</name>" in zeile:
+                    ueberspringen = True
+                if '"session_meta"' in zeile and '"cwd"' in zeile:
+                    try:
+                        meta = json.loads(zeile)
+                    except ValueError:
+                        meta = {}
+                    cwd = (meta.get("payload") or {}).get("cwd") if meta.get("type") == "session_meta" else None
+                    if isinstance(cwd, str) and str(Path(cwd).resolve()) == hier:
+                        ueberspringen = True
                 if "SKILL.md" not in zeile and '"McpToolCall"' not in zeile:
                     continue
                 try:
@@ -144,7 +156,7 @@ def nutzung_zaehlen(dateien):
                 payload = d.get("payload") if isinstance(d.get("payload"), dict) else {}
                 item = payload.get("item") if isinstance(payload.get("item"), dict) else {}
                 if payload.get("type") == "item_completed" and item.get("type") == "McpToolCall" and item.get("server"):
-                    mcp.setdefault(item["server"], []).append(tag)
+                    mcp_gelesen.setdefault(item["server"], []).append(tag)
                     continue
                 if payload.get("type") == "item_completed" and item.get("type") == "CommandExecution":
                     pfade = SKILL_PFAD.findall(str(item.get("command")))
@@ -154,8 +166,12 @@ def nutzung_zaehlen(dateien):
                     pfade = []
                 for pfad in pfade:
                     gelesen[pfad] = max(tag, gelesen.get(pfad, ""))
+        if ueberspringen:
+            continue
         for pfad, tag in gelesen.items():
             skills.setdefault(str(Path(pfad).resolve()), []).append(tag)
+        for server, tage in mcp_gelesen.items():
+            mcp.setdefault(server, []).extend(tage)
     return skills, mcp
 
 
@@ -170,7 +186,7 @@ MCP_FELDER = ("command", "args", "url", "cwd")  # alles andere kann Zugangsdaten
 def manifest(wurzel):
     for rel in ("plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json"):
         m = lies_json(wurzel / rel)
-        if m:
+        if isinstance(m, dict) and m:
             return m
     return {}
 
@@ -187,7 +203,8 @@ def teil(wurzel, m, schluessel, standard):
     wert = m.get(schluessel)
     if isinstance(wert, dict):
         return wert
-    return lies_json(wurzel / (wert if isinstance(wert, str) else standard))
+    ergebnis = lies_json(wurzel / (wert if isinstance(wert, str) else standard))
+    return ergebnis if isinstance(ergebnis, dict) else {}
 
 
 def lesbare_hooks(roh):
@@ -196,8 +213,9 @@ def lesbare_hooks(roh):
         if isinstance(h, dict) and h.get("type") == "mcp_tool":
             return {**h, "command": f"MCP {h.get('server')}.{h.get('tool')}"}
         return h
+    roh = roh if isinstance(roh, dict) else {}
     return {ereignis: [{**g, "hooks": [handler(h) for h in g.get("hooks", [])]} for g in gruppen if isinstance(g, dict)]
-            for ereignis, gruppen in (roh or {}).items() if isinstance(gruppen, list)}
+            for ereignis, gruppen in roh.items() if isinstance(gruppen, list)}
 
 
 def plugin_status(pid, marktplatz, cfg, remote):
@@ -240,6 +258,7 @@ def plugins(cfg, aus, autoren):
 
         mcp_roh = teil(wurzel, m, "mcpServers", ".mcp.json")
         mcp_roh = mcp_roh.get("mcpServers", mcp_roh)
+        mcp_roh = mcp_roh if isinstance(mcp_roh, dict) else {}
         mcp = {n: {k: c[k] for k in MCP_FELDER if k in c} for n, c in mcp_roh.items() if isinstance(c, dict)}
         apps = teil(wurzel, m, "apps", ".app.json").get("apps")
         hooks_roh = lesbare_hooks(teil(wurzel, m, "hooks", "hooks/hooks.json").get("hooks"))
@@ -277,7 +296,9 @@ def eigene_hooks(cfg):
     quelle = {"art": "Einstellungen", "autor": "eigene Einstellungen"}
     roh = {k: v for k, v in (cfg.get("hooks") or {}).items() if k != "state"}
     hooks = hook_eintraege(lesbare_hooks(roh), "config", quelle, CODEX / "config.toml")
-    hooks += hook_eintraege(lesbare_hooks(lies_json(CODEX / "hooks.json").get("hooks")), "hooks.json", quelle, CODEX / "hooks.json")
+    hooks_json = lies_json(CODEX / "hooks.json")
+    hooks_roh = hooks_json.get("hooks") if isinstance(hooks_json, dict) else None
+    hooks += hook_eintraege(lesbare_hooks(hooks_roh), "hooks.json", quelle, CODEX / "hooks.json")
     if isinstance(cfg.get("notify"), list) and cfg["notify"]:
         befehl = " ".join(str(t) for t in cfg["notify"])
         (notify,) = hook_eintraege({"notify": [{"hooks": [{"command": befehl}]}]}, "config", quelle, CODEX / "config.toml")
@@ -291,8 +312,10 @@ def mcp_server(cfg, plugin_liste, mcp_tage):
         return {"id": eid, "name": name, "art": art, "quelle": quelle, "ziel": ziel_text(c), "status": status,
                 "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname))}
 
+    mcp_servers = cfg.get("mcp_servers")
+    mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
     ergebnis = []
-    for name, c in sorted((cfg.get("mcp_servers") or {}).items()):
+    for name, c in sorted(mcp_servers.items()):
         if isinstance(c, dict):
             status = "aktiv" if c.get("enabled", True) is not False else "deaktiviert"
             ergebnis.append(eintrag(f"mcp:{name}", name, "User", "~/.codex/config.toml", c, status, name))
@@ -314,7 +337,9 @@ def projekte(cfg, aus, autoren):
     """Was nur in Projekten aus [projects] gilt: Skills aus .agents/skills und .codex/skills laden immer,
     MCP-Server aus .codex/config.toml nur in vertrauten Projekten."""
     skills, mcp = [], []
-    for pfad, p in sorted((cfg.get("projects") or {}).items()):
+    projekte_cfg = cfg.get("projects")
+    projekte_cfg = projekte_cfg if isinstance(projekte_cfg, dict) else {}
+    for pfad, p in sorted(projekte_cfg.items()):
         ordner = Path(pfad)
         if not ordner.is_dir() or ordner.resolve() == HOME.resolve():
             continue
@@ -329,7 +354,9 @@ def projekte(cfg, aus, autoren):
                          quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
                 skills.append(e)
         datei = ordner / ".codex" / "config.toml"
-        for name, c in sorted((lies_toml(datei).get("mcp_servers") or {}).items()):
+        mcp_servers = lies_toml(datei).get("mcp_servers")
+        mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
+        for name, c in sorted(mcp_servers.items()):
             if not isinstance(c, dict):
                 continue
             if not vertraut:
