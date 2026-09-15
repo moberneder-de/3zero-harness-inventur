@@ -85,12 +85,14 @@ CODEX_BASIS = ["codex", "exec", "--ignore-user-config", "--ignore-rules", "--eph
 CODEX_BEWERTEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Server hat build.py gerade ausgeführt, "
     "die Ausgabe steht unten, und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus "
-    "und öffne nichts. Ändere nichts außer bewertung-codex.json. Stelle keine Rückfragen."
+    "und öffne nichts. Du arbeitest in einer Arbeitskopie ({arbeitsordner}), nicht im Projektordner ({ordner}): Ändere nur "
+    "{arbeitsordner}/bewertung-codex.json, lies alles andere (inventar-codex.json, Skill-Dateien) aus {ordner}. Stelle keine Rückfragen."
 )
 # Codex kennt keine Befehlsliste wie --allowedTools. Die Grenze zieht die Sandbox: nur lesen, schreiben nur in den
 # npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur über den Codex-Proxy zu diesen Domains und nur lesend (limited).
 SUCHEN_DOMAINS = ("skills.sh", "registry.npmjs.org", "github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com")
-GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json")
+GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json",
+                   ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials")
 CODEX_SUCHEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Bestand ist frisch eingelesen "
     "(inventar-codex.json), führe build.py nicht aus. Stelle keine Rückfragen: Ist der Bedarf vage, lege die naheliegende Deutung fest "
@@ -135,13 +137,14 @@ def codex_modell(config):
     return argv
 
 
-def codex_bewerten(ordner, ergebnis, build_ausgabe, modell):
-    return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(ordner), "-c", 'web_search="disabled"', *modell, "-o", str(ergebnis),
-            f"$3zero-harness-inventur\n\n{CODEX_BEWERTEN_HINWEIS}\n\nAusgabe von build.py:\n{build_ausgabe}"]
+def codex_bewerten(ordner, arbeitsordner, ergebnis, build_ausgabe, modell):
+    hinweis = CODEX_BEWERTEN_HINWEIS.format(ordner=ordner, arbeitsordner=arbeitsordner)
+    return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(arbeitsordner), "-c", 'web_search="disabled"', *modell, "-o", str(ergebnis),
+            f"$3zero-harness-inventur\n\n{hinweis}\n\nAusgabe von build.py:\n{build_ausgabe}"]
 
 
 def codex_suchen(bedarf, arbeitsordner, schema, ergebnis, modell):
-    toml = lambda d: "{" + ",".join(f"{json.dumps(k)}={json.dumps(v)}" for k, v in d.items()) + "}"
+    toml = lambda d: "{" + ",".join(f"{json.dumps(k, ensure_ascii=False)}={json.dumps(v, ensure_ascii=False)}" for k, v in d.items()) + "}"
     cache = Path(arbeitsordner) / "npm-cache"
     dateisystem = {str(cache): "write", **{str(Path.home() / p): "deny" for p in GESPERRT_LESEN if (Path.home() / p).exists()}}
     return [*CODEX_BASIS, "-C", str(arbeitsordner), *modell,
@@ -154,6 +157,8 @@ def codex_suchen(bedarf, arbeitsordner, schema, ergebnis, modell):
             "-c", f"permissions.suche.network.domains={toml({d: 'allow' for d in SUCHEN_DOMAINS})}",
             "-c", 'default_permissions="suche"',
             "-c", f"shell_environment_policy.set.npm_config_cache={json.dumps(str(cache))}",
+            # ~/.npmrc steht in GESPERRT_LESEN; ohne eigenen Pfad würde npm dort scheitern statt die Datei nur zu vermissen.
+            "-c", f"shell_environment_policy.set.npm_config_userconfig={json.dumps(str(Path(arbeitsordner) / 'npmrc'))}",
             "--output-schema", str(schema), "-o", str(ergebnis),
             f"$3zero-harness-inventur suche {bedarf}\n\n{CODEX_SUCHEN_HINWEIS}"]
 
@@ -215,7 +220,7 @@ class Inventarserver(ThreadingHTTPServer):
         return self.ordner / harness.HARNESSE[self.harness()][art]
 
     def schritt(self, eid, aktion):
-        """(Name, Schritt) aus inventar.json, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
+        """(Name, Schritt) aus dem Inventar des aktuellen Harness, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
         inventar = json.loads(self.datei("inventar").read_text(encoding="utf-8"))
         for e in inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", []) + inventar.get("projekt_mcp", []):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
@@ -267,17 +272,33 @@ class Inventarserver(ThreadingHTTPServer):
         return {"ok": r["ok"], "ausgabe": claude_text(r["ausgabe"])}
 
     def bewerten_codex(self):
-        """build.py liest mit Netz ein (claude mcp list, gh); Codex läuft ohne Netz, deshalb baut der Server davor und danach."""
+        """build.py liest mit Netz ein (claude mcp list, gh); Codex läuft ohne Netz, deshalb baut der Server davor und danach.
+        Codex bekommt keinen Schreibzugriff auf den Projektordner (die Bewertung liest Skill-Texte, die Prompt-Injection enthalten
+        könnten), sondern arbeitet auf einer Arbeitskopie von bewertung-codex.json; nur ein gültiges JSON-Objekt geht zurück."""
         with self.sperre:
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
             if not r["ok"]:
                 return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
+            bewertung_datei = self.ordner / harness.HARNESSE["codex"]["bewertung"]
             with tempfile.TemporaryDirectory() as tmp:
-                ergebnis = Path(tmp) / "ergebnis.md"
-                c = lauf(codex_bewerten(self.ordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)), self.ordner, 1200)
+                arbeitsordner = Path(tmp)
+                (arbeitsordner / "bewertung-codex.json").write_text(
+                    bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
+                ergebnis = arbeitsordner / "ergebnis.md"
+                c = lauf(codex_bewerten(self.ordner, arbeitsordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)),
+                         arbeitsordner, 1200)
                 text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
-            if not c["ok"]:
-                return {"ok": False, "ausgabe": text}
+                if not c["ok"]:
+                    return {"ok": False, "ausgabe": text}
+                try:
+                    bewertung = json.loads((arbeitsordner / "bewertung-codex.json").read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    bewertung = None
+                if not isinstance(bewertung, dict):
+                    return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
+                neu = bewertung_datei.with_name(bewertung_datei.name + ".neu")
+                neu.write_text(json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                os.replace(neu, bewertung_datei)
             n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
@@ -409,7 +430,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
         if self.path == "/api/installieren":
             nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
-            if type(nr) is not int or not 0 <= nr < len(self.server.kandidaten) or not self.server.kandidaten[nr]["installierbar"]:
+            # Installieren gibt es erst mit Teil B; unter Codex kämen sonst noch Kandidaten aus einer Claude-Suche vor dem Wechsel durch.
+            if (self.server.harness() == "codex" or type(nr) is not int or not 0 <= nr < len(self.server.kandidaten)
+                    or not self.server.kandidaten[nr]["installierbar"]):
                 return self.antworte(400, {"ok": False, "ausgabe": "Diesen Kandidaten kann das Dashboard nicht installieren."})
             return self.antworte(200, self.server.installieren(nr, anfrage.get("nur_manuell") is True))
         try:

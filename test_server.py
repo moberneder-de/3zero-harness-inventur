@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import threading
 import time
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -51,12 +52,17 @@ class Server(unittest.TestCase):
             self.pfad_vorher = os.environ["PATH"]
             os.environ["PATH"] = f"{ordner}:{self.pfad_vorher}"
 
-    def codex_ersatz(self, ergebnis, code=0):
-        """Ersatz für codex: protokolliert Argumente und Ordner und schreibt `ergebnis` in die Datei hinter -o."""
+    def codex_ersatz(self, ergebnis, code=0, bewertung=None):
+        """Ersatz für codex: protokolliert Argumente und Ordner, schreibt `ergebnis` in die Datei hinter -o und, wenn
+        angegeben, `bewertung` in bewertung-codex.json im aktuellen Ordner (der Arbeitskopie bei -C)."""
         self.claude_ersatz("codex-protokoll", code=code, name="codex")
         skript = self.tmp / "bin" / "codex"
-        skript.write_text(skript.read_text().replace(
-            "cat <<", f'while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then shift; cat > "$1" <<\'ERGEBNIS\'\n{ergebnis}\nERGEBNIS\nfi; shift; done\ncat <<', 1))
+        text = skript.read_text().replace(
+            "cat <<", f'while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then shift; cat > "$1" <<\'ERGEBNIS\'\n{ergebnis}\nERGEBNIS\nfi; shift; done\ncat <<', 1)
+        if bewertung is not None:
+            text = text.replace(
+                "cat <<", f'cat > bewertung-codex.json <<\'BEWERTUNG\'\n{bewertung}\nBEWERTUNG\ncat <<', 1)
+        skript.write_text(text)
 
     def auf_codex(self):
         (self.tmp / "harness.json").write_text('{"harness": "codex"}')
@@ -373,9 +379,10 @@ class Server(unittest.TestCase):
         self.assertEqual(self.ausfuehren("plugin:x@y", "deinstallieren")[0], 400)
         self.assertFalse(self.marker.exists())
 
-    def test_codex_bewertet_in_sandbox_im_projektordner(self):
+    def test_codex_bewertet_auf_arbeitskopie_nicht_im_projektordner(self):
         self.auf_codex()
-        self.codex_ersatz("## Bewertung\n2 neu")
+        (self.tmp / "bewertung-codex.json").write_text('{"alt": true}\n')
+        self.codex_ersatz("## Bewertung\n2 neu", bewertung=json.dumps({"neu": True}))
         status, stand = self.bewerten()
         self.assertEqual((status, stand["ok"], stand["ausgabe"]), (200, True, "## Bewertung\n2 neu"))
         argv = (self.tmp / "argv").read_text().split("\n")
@@ -385,8 +392,25 @@ class Server(unittest.TestCase):
             self.assertIn(erwartet, argv)
         for verboten in ("danger-full-access", "--dangerously-bypass-approvals-and-sandbox", "--full-auto"):
             self.assertNotIn(verboten, argv)
-        self.assertEqual(argv[argv.index("-C") + 1], str(self.tmp))
-        self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), self.tmp.resolve())
+        cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertEqual(Path(argv[argv.index("-C") + 1]).resolve(), cwd)
+        self.assertNotEqual(cwd, self.tmp.resolve())
+        self.assertFalse(cwd.is_relative_to(self.tmp.resolve()))
+        # Codex hat nur die Arbeitskopie geändert; der Server hat sie zurück in den Projektordner geschrieben.
+        self.assertEqual(json.loads((self.tmp / "bewertung-codex.json").read_text()), {"neu": True})
+
+    def test_codex_bewertung_mit_kaputtem_json_wird_nicht_zurueckgeschrieben(self):
+        self.auf_codex()
+        (self.tmp / "bewertung-codex.json").write_text('{"alt": true}\n')
+        laeufe = self.tmp / "build-laeufe"
+        (self.tmp / "build.py").write_text(
+            f"from pathlib import Path\np = Path({str(laeufe)!r})\np.write_text(p.read_text() + 'x' if p.exists() else 'x')\n")
+        self.codex_ersatz("## Bewertung\n2 neu", bewertung="{ kaputt")
+        status, stand = self.bewerten()
+        self.assertFalse(stand["ok"])
+        self.assertIn("bewertung-codex.json", stand["ausgabe"])
+        self.assertEqual((self.tmp / "bewertung-codex.json").read_text(), '{"alt": true}\n')
+        self.assertEqual(laeufe.read_text(), "x")  # nur der Lauf vor Codex, kein zweiter Build danach
 
     def test_codex_bewertung_meldet_fehler(self):
         self.auf_codex()
@@ -411,10 +435,16 @@ class Server(unittest.TestCase):
                          'web_search="live"', "--output-schema", "$3zero-harness-inventur suche Präsentationen als HTML"):
             self.assertIn(erwartet, argv)
         domains = next(a for a in argv if a.startswith("permissions.suche.network.domains="))
-        self.assertIn('"skills.sh"="allow"', domains)
-        self.assertNotIn("*", domains)
+        self.assertEqual(tomllib.loads("x=" + domains.split("=", 1)[1])["x"], {d: "allow" for d in server.SUCHEN_DOMAINS})
         dateisystem = next(a for a in argv if a.startswith("permissions.suche.filesystem="))
-        self.assertIn('npm-cache"="write"', dateisystem)
+        rechte = tomllib.loads("x=" + dateisystem.split("=", 1)[1])["x"]
+        schreibbar = [pfad for pfad, recht in rechte.items() if recht == "write"]
+        self.assertEqual(len(schreibbar), 1)
+        self.assertTrue(schreibbar[0].endswith("npm-cache"))
+        self.assertTrue(all(recht == "deny" for pfad, recht in rechte.items() if pfad != schreibbar[0]))
+        for f in ("apps", "plugins", "remote_plugin", "computer_use", "browser_use", "hooks"):
+            self.assertEqual(argv[argv.index(f) - 1], "--disable")
+        self.assertIn("--skip-git-repo-check", argv)
         for verboten in ("workspace-write", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox"):
             self.assertNotIn(verboten, argv)
         self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
@@ -425,6 +455,26 @@ class Server(unittest.TestCase):
         config.write_text('model = "gpt-6-astra"\nmodel_reasoning_effort = "high"\n')
         self.assertEqual(server.codex_modell(config), ["-m", "gpt-6-astra", "-c", 'model_reasoning_effort="high"'])
         self.assertEqual(server.codex_modell(self.tmp / "fehlt.toml"), [])
+
+    def test_gesperrt_lesen_deckt_bekannte_zugangsdaten_ab(self):
+        self.assertEqual(set(server.GESPERRT_LESEN), {
+            ".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json",
+            ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials",
+        })
+
+    def test_codex_suchen_setzt_npm_config_userconfig_ausserhalb_des_zwischenspeichers(self):
+        argv = server.codex_suchen("x", "/tmp/beispiel", "/tmp/schema.json", "/tmp/ergebnis.json", [])
+        wert = next(a for a in argv if a.startswith("shell_environment_policy.set.npm_config_userconfig="))
+        self.assertEqual(json.loads(wert.split("=", 1)[1]), "/tmp/beispiel/npmrc")
+
+    def test_installieren_unter_codex_immer_abgelehnt(self):
+        self.suchen()  # Claude-Suche, Kandidat 0 ist installierbar
+        vor = (self.tmp / "argv").read_text()
+        (self.tmp / "harness.json").write_text('{"harness": "codex"}')
+        self.claude_ersatz("sollte nicht laufen", name="npx")
+        status, _ = self.installieren({"nr": 0})
+        self.assertEqual(status, 400)
+        self.assertEqual((self.tmp / "argv").read_text(), vor)  # npx wurde nicht aufgerufen
 
 
 if __name__ == "__main__":
