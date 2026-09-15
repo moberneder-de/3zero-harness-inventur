@@ -134,6 +134,9 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .meldung ul { margin: 0 0 8px; padding-left: 18px; }
 .meldung li { margin: 3px 0; }
 .meldung > :last-child { margin-bottom: 0; }
+.meldung h4 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+.kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
+.kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: #fff; }
 select.wahl.gesetzt { border-color: var(--cyan); font-weight: 600; }
 td details summary { white-space: nowrap; cursor: pointer; }
@@ -655,18 +658,22 @@ function renderAktionen() {
   document.getElementById("aktionen").innerHTML = `
     <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>
     <button type="button" class="btn btn-outline" id="neu-einlesen" title="Bestand neu einlesen (build.py)"${beschaeftigt ? " disabled" : ""}>neu einlesen</button>
-    <button type="button" class="btn btn-outline" id="bewerten" title="Claude zieht die Bewertung nach (/3zero-harness-inventur)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>`;
+    <button type="button" class="btn btn-outline" id="bewerten" title="Claude zieht die Bewertung nach (/3zero-harness-inventur)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>
+    <button type="button" class="btn btn-outline" id="suchen" title="Claude sucht Skills, Plugins und MCP-Server (/3zero-harness-inventur suche)"${beschaeftigt ? " disabled" : ""}>suchen</button>`;
 }
 /* Claudes Zusammenfassung kommt als Markdown: Absätze, Listen, **fett**, `code` */
 function markdown(text) {
-  const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const teile = [];
   let absatz = [], punkte = [];
   const absatzZu = () => { if (absatz.length) teile.push(`<p>${inline(absatz.join(" "))}</p>`); absatz = []; };
   const listeZu = () => { if (punkte.length) teile.push(`<ul>${punkte.map(p => `<li>${inline(p)}</li>`).join("")}</ul>`); punkte = []; };
   for (const zeile of esc(text).split("\n")) {
     const punkt = zeile.match(/^\s*[-*]\s+(.*)$/);
-    if (punkt) { absatzZu(); punkte.push(punkt[1]); }
+    const titel = zeile.match(/^#{1,4}\s+(.*)$/);
+    if (titel) { absatzZu(); listeZu(); teile.push(`<h4>${inline(titel[1])}</h4>`); }
+    else if (punkt) { absatzZu(); punkte.push(punkt[1]); }
     else if (!zeile.trim()) { absatzZu(); listeZu(); }
     else { listeZu(); absatz.push(zeile.trim()); }
   }
@@ -676,7 +683,7 @@ function markdown(text) {
 function renderMeldung() {
   document.getElementById("meldung-bereich").innerHTML = meldung
     ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
-       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>${markdown(meldung)}</div>`
+       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>${markdown(meldung)}${kandidatenBlock()}</div>`
     : "";
 }
 function setMeldung(text, titel = meldungTitel) {
@@ -684,9 +691,28 @@ function setMeldung(text, titel = meldungTitel) {
   meldungTitel = titel;
   renderMeldung();
 }
+/* Kandidaten der letzten Suche: Skills und Plugins installiert der Server mit selbst gebautem Befehl, MCP-Server nur zum Kopieren */
+let kandidaten = [];
+const INSTALLATION = new Map();
+const ART = { skill: "Skill", plugin: "Plugin", mcp: "MCP-Server" };
+function kandidatenBlock() {
+  return kandidaten.map((k, nr) => {
+    const r = INSTALLATION.get(nr) || (k.installiert ? { ok: true } : null);
+    const status = !r ? "" : r.laeuft ? '<span class="status">läuft …</span>'
+      : r.ok ? '<span class="status st-an"><span aria-hidden="true">●</span> installiert</span><span class="klein">erscheint als „neu · unbewertet“, „neu bewerten“ zieht die Bewertung nach</span>'
+      : `<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span><details open><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>`;
+    const aus = beschaeftigt || r?.ok ? " disabled" : "";
+    const knoepfe = !k.installierbar ? '<span class="klein">Installation nur von Hand mit dem Befehl oben.</span>'
+      : `<button type="button" class="zeilenknopf" data-installieren="${nr}"${aus}>installieren</button>` +
+        (k.art === "skill" ? `<button type="button" class="zeilenknopf" data-installieren="${nr}" data-manuell="1"${aus}>installieren, nur manuell</button>` : "");
+    return `<div class="kandidat"><strong>${esc(k.name)}</strong> <span class="tag">${ART[k.art] || esc(k.art)}</span>
+      <p>${txt(k.was)}</p>${befehlZeile(k.befehl)}<div class="knoepfe">${knoepfe}${status}</div></div>`;
+  }).join("");
+}
 function zeichne() {
   renderAktionen();
   renderEmpfInhalt();
+  if (kandidaten.length) renderMeldung();
 }
 function ausfuehrZelle(e) {
   if (!gewaehlt(e)) return '<span class="leer">–</span>';
@@ -721,7 +747,8 @@ function renderHilfe() {
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status und Nutzung neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und der Spalte „Aktion“. Als Datei geöffnet bleibt es nur lesbar.</li>
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, Überschneidungen und Empfehlungen nachziehen (bewertung.json).</li>
-      <li>Mit dem Server erledigen das die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf.</li>
+      <li><code>/3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Claude Code: sucht Skills, Plugins und MCP-Server, prüft vorher, ob der Bestand den Bedarf schon abdeckt, schlägt höchstens drei Kandidaten mit Herkunft vor und installiert nur nach deinem Ja.</li>
+      <li>Mit dem Server erledigen das die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf, „suchen“ die Suche. Die Suche läuft ohne Rückfragen und nur mit Lese- und Suchrechten; Skills und Plugins aus dem Ergebnis installiert der Server per Knopf mit einem Befehl, den er selbst aus Repo und Name baut. MCP-Server bleiben zum Kopieren.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab Empfehlungen oder alles über „alle … ausführen“ im Kopf.</li>
       <li><b>aktualisieren</b>: nur bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Ob ein Update bereitsteht, vergleicht <code>build.py</code> über <code>gh</code> mit dem Stand auf GitHub; ohne <code>gh</code> oder Netz fehlt die Markierung. Plugins sind nicht dabei.</li>
@@ -828,9 +855,12 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, [data-ausfuehren]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #suchen, #meldung-zu, [data-ausfuehren], [data-installieren]");
     if (!knopf) return;
-    if (knopf.id === "meldung-zu") return setMeldung("");
+    if (knopf.id === "meldung-zu") {
+      if (meldungTitel.startsWith("Suche: ")) api("/api/suche", { verwerfen: true });
+      kandidaten = []; INSTALLATION.clear(); return setMeldung("");
+    }
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
       if (confirm(`${offen.length} Aktionen nacheinander ausführen?`)) mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
@@ -853,10 +883,50 @@ if (TOKEN) {
         try { sessionStorage.setItem(MELDUNG, r.ausgabe); } catch (_) { /* ohne Speicher geht die Meldung verloren */ }
         location.reload();
       });
+    } else if (knopf.id === "suchen") {
+      const bedarf = prompt("Wonach suchst du?\n\nClaude prüft, ob dein Bestand das schon kann, sucht Skills, Plugins und MCP-Server und schlägt höchstens drei Kandidaten vor. Installiert wird erst, wenn du es hier bestätigst.\n\nDas dauert einige Minuten und ist ein echter Claude-Lauf auf deinem Konto.")?.trim();
+      if (!bedarf) return;
+      kandidaten = []; INSTALLATION.clear();
+      mitSperre(async () => {
+        const r = await api("/api/suchen", { bedarf });
+        if (!r.ok) return setMeldung("Suche nicht gestartet:\n\n" + r.ausgabe, "Fehler");
+        await sucheVerfolgen();
+      });
+    } else if (knopf.dataset.installieren !== undefined) {
+      const nr = Number(knopf.dataset.installieren), k = kandidaten[nr], manuell = !!knopf.dataset.manuell;
+      if (!confirm(`${k.name} installieren${manuell ? " und auf „nur manuell“ stellen" : ""}?\n\nEr läuft danach mit deinen vollen Rechten. Wirksam ab der nächsten Claude-Code-Sitzung.`)) return;
+      mitSperre(async () => {
+        INSTALLATION.set(nr, { laeuft: true }); renderMeldung();
+        const r = await api("/api/installieren", { nr, nur_manuell: manuell });
+        INSTALLATION.set(nr, r);
+        if (!r.ok) return;
+        const neu = await api("/api/neu");
+        if (!neu.ok) return setMeldung(meldung + "\n\nNeu einlesen fehlgeschlagen:\n\n" + neu.ausgabe);
+        location.reload(); /* die Suche holt sich die Seite danach vom Server zurück, mit „installiert“ am Kandidaten */
+      });
     } else {
       mitSperre(() => fuehreAus(INDEX.get(knopf.dataset.ausfuehren)));
     }
   });
+
+  /* Eine laufende oder fertige Suche liegt auf dem Server und übersteht so das Neuladen der Seite */
+  if (!meldung) api("/api/suche").then(s => {
+    if (s.laeuft) mitSperre(sucheVerfolgen);
+    else if (s.bedarf) sucheZeigen(s);
+  });
+}
+async function sucheVerfolgen() {
+  for (;;) {
+    const s = await api("/api/suche");
+    if (!s.laeuft) return sucheZeigen(s);
+    setMeldung(`Claude gleicht „${s.bedarf}“ mit dem Bestand ab und sucht … (${s.sekunden} s)`, "Suche läuft");
+    await new Promise(fertig => setTimeout(fertig, 2000));
+  }
+}
+function sucheZeigen(s) {
+  if (!s.ok) return setMeldung("Suche fehlgeschlagen:\n\n" + s.ausgabe, s.bedarf ? `Suche: ${s.bedarf}` : "Fehler");
+  kandidaten = s.kandidaten || [];
+  setMeldung(s.ausgabe + (kandidaten.length ? "" : "\n\nKeine Kandidaten."), `Suche: ${s.bedarf}`);
 }
 </script>
 </body>

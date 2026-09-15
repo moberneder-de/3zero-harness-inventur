@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -38,16 +39,17 @@ class Server(unittest.TestCase):
 
     pfad_vorher = None
 
-    def claude_ersatz(self, ausgabe, code=0):
-        """Legt ein Skript namens claude in den PATH, das seine Argumente protokolliert."""
+    def claude_ersatz(self, ausgabe, code=0, name="claude"):
+        """Legt ein Skript in den PATH, das seine Argumente in <tmp>/argv und seinen Ordner in <tmp>/cwd protokolliert."""
         ordner = self.tmp / "bin"
-        ordner.mkdir()
-        skript = ordner / "claude"
+        ordner.mkdir(exist_ok=True)
+        skript = ordner / name
         skript.write_text(f'#!/bin/sh\nfor a in "$@"; do echo "$a"; done > "{self.tmp}/argv"\npwd > "{self.tmp}/cwd"\n'
                           f'cat <<\'ENDE\'\n{ausgabe}\nENDE\nexit {code}\n')
         skript.chmod(0o755)
-        self.pfad_vorher = os.environ["PATH"]
-        os.environ["PATH"] = f"{ordner}:{self.pfad_vorher}"
+        if self.pfad_vorher is None:
+            self.pfad_vorher = os.environ["PATH"]
+            os.environ["PATH"] = f"{ordner}:{self.pfad_vorher}"
 
     def schreibe_inventar(self, plugins, skills=(), mcp=()):
         inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills)}
@@ -187,6 +189,122 @@ class Server(unittest.TestCase):
         antwort = json.loads(inhalt)
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertIn("Credit balance too low", antwort["ausgabe"])
+
+    KANDIDATEN = [
+        {"art": "skill", "name": "frontend-slides", "was": "HTML-Folien", "repo": "zarazhangrui/frontend-slides", "skill": "frontend-slides", "befehl": "npx skills add …"},
+        {"art": "plugin", "name": "slides", "was": "Plugin", "plugin": "slides", "marktplatz": "claude-plugins-official", "befehl": "claude plugin install …"},
+        {"art": "mcp", "name": "gamma", "was": "MCP", "befehl": "claude mcp add gamma …"},
+        {"art": "skill", "name": "boese", "was": "untergeschoben", "repo": "x/y; rm -rf ~", "skill": "boese", "befehl": "…"},
+    ]
+
+    def suchen(self, bedarf="Präsentationen als HTML", warten=True):
+        """Startet die Suche und wartet, bis der Server sie abgeschlossen hat; liefert (Status, Stand der Suche)."""
+        (self.tmp / "build.py").write_text("")
+        antwort = {"type": "result", "result": "…", "structured_output": {"bericht": "## Bedarf\nHTML-Folien", "kandidaten": self.KANDIDATEN}}
+        if not (self.tmp / "bin" / "claude").exists():
+            self.claude_ersatz("Warning: irgendwas\n" + json.dumps(antwort))
+        status, inhalt = self.anfrage("POST", "/api/suchen", {"bedarf": bedarf})
+        if status != 200 or not warten:
+            return status, (json.loads(inhalt) if status == 200 else inhalt)
+        for _ in range(100):
+            stand = self.stand()
+            if not stand["laeuft"]:
+                return status, stand
+            time.sleep(0.1)
+        self.fail("Suche wurde nicht fertig")
+
+    def stand(self, daten=None):
+        return json.loads(self.anfrage("POST", "/api/suche", daten)[1])
+
+    def installieren(self, daten, **kw):
+        status, inhalt = self.anfrage("POST", "/api/installieren", daten, **kw)
+        return status, (json.loads(inhalt) if status == 200 else inhalt)
+
+    def test_suchen_startet_claude_nur_mit_lese_und_suchrechten(self):
+        status, antwort = self.suchen()
+        self.assertEqual((status, antwort["ok"], antwort["ausgabe"]), (200, True, "## Bedarf\nHTML-Folien"))
+        argv = (self.tmp / "argv").read_text().split("\n")
+        self.assertEqual(argv[:2], ["-p", "/3zero-harness-inventur suche Präsentationen als HTML"])
+        for erwartet in ("--json-schema", "WebSearch", "WebFetch", "Bash(npx skills find *)"):
+            self.assertIn(erwartet, argv)
+        for verboten in ("Edit", "Write", "Bash(python3 *)", "Bash(gh api *)", "--dangerously-skip-permissions"):
+            self.assertNotIn(verboten, argv)
+        self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
+
+    def test_suchen_prueft_die_kandidaten(self):
+        _, antwort = self.suchen()
+        self.assertEqual([(k["name"], k["installierbar"]) for k in antwort["kandidaten"]],
+                         [("frontend-slides", True), ("slides", True), ("gamma", False), ("boese", False)])
+
+    def test_suche_laeuft_im_hintergrund_und_bleibt_abrufbar(self):
+        (self.tmp / "build.py").write_text("")
+        antwort = {"structured_output": {"bericht": "fertig", "kandidaten": []}}
+        self.claude_ersatz(json.dumps(antwort))
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace("cat <<", "sleep 1\ncat <<"))
+        beginn = time.time()
+        status, gestartet = self.suchen("Folien", warten=False)
+        self.assertLess(time.time() - beginn, 0.9)
+        self.assertEqual((status, gestartet), (200, {"ok": True, "laeuft": True}))
+        stand = self.stand()
+        self.assertEqual((stand["laeuft"], stand["bedarf"]), (True, "Folien"))
+        self.assertFalse(self.suchen("zweite", warten=False)[1]["ok"])
+        self.assertEqual(self.ausfuehren("plugin:x@y", "deinstallieren")[1]["ok"], True)  # Aktionen warten nicht auf Claude
+        for _ in range(50):
+            if not self.stand()["laeuft"]:
+                break
+            time.sleep(0.1)
+        self.assertEqual({k: v for k, v in self.stand().items() if k != "kandidaten"},
+                         {"laeuft": False, "bedarf": "Folien", "ok": True, "ausgabe": "fertig"})
+
+    def test_verworfene_suche_ist_weg(self):
+        self.suchen()
+        self.assertEqual(self.stand({"verwerfen": True}), {"laeuft": False})
+        self.assertEqual(self.stand(), {"laeuft": False})
+        self.assertEqual(self.installieren({"nr": 0})[0], 400)
+
+    def test_suchen_braucht_bedarf_und_token(self):
+        for bedarf in ("", "   ", "x" * 301):
+            with self.subTest(bedarf=bedarf[:10]):
+                self.assertEqual(self.suchen(bedarf)[0], 400)
+        self.assertEqual(self.anfrage("POST", "/api/suchen", "kein json")[0], 400)
+        self.assertEqual(self.anfrage("POST", "/api/suchen", {"bedarf": "x"}, token=None)[0], 403)
+        self.assertEqual(self.anfrage("POST", "/api/suche", token=None)[0], 403)
+
+    def test_installieren_nur_geprueften_kandidaten_der_letzten_suche(self):
+        self.assertEqual(self.installieren({"nr": 0})[0], 400)
+        self.suchen()
+        for daten in ({"nr": 2}, {"nr": 3}, {"nr": 9}, {"nr": "0"}, {"nr": True}, {}):
+            with self.subTest(daten=daten):
+                self.assertEqual(self.installieren(daten)[0], 400)
+        self.assertEqual(self.installieren({"nr": 0}, token=None)[0], 403)
+
+    def test_installieren_skill_mit_eigenem_befehl_und_nur_manuell(self):
+        self.suchen()
+        self.claude_ersatz("installiert", name="npx")
+        status, antwort = self.installieren({"nr": 0, "nur_manuell": True})
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
+                         ["-y", "skills", "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
+        self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
+        self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"]["frontend-slides"], "user-invocable-only")
+        self.assertEqual([k.get("installiert", False) for k in self.stand()["kandidaten"]], [True, False, False, False])
+
+    def test_installieren_plugin(self):
+        self.suchen()
+        self.claude_ersatz("installiert")
+        status, antwort = self.installieren({"nr": 1})
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1], ["plugin", "install", "slides@claude-plugins-official"])
+        self.assertEqual(self.settings.read_text(), SETTINGS_VORHER)
+
+    def test_fehlgeschlagene_installation_setzt_keinen_override(self):
+        self.suchen()
+        self.claude_ersatz("Repository not found", code=1, name="npx")
+        status, antwort = self.installieren({"nr": 0, "nur_manuell": True})
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("Repository not found", antwort["ausgabe"])
+        self.assertEqual(self.settings.read_text(), SETTINGS_VORHER)
 
     def test_neu_einlesen_liest_frisches_inventar(self):
         neu = {"mcp": [], "plugins": [], "skills": [

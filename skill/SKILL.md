@@ -1,7 +1,8 @@
 ---
 name: 3zero-harness-inventur
-description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen).
+description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen). Mit „suche <Bedarf>“ sucht er neue Skills, Plugins und MCP-Server, gleicht sie mit dem Bestand ab und installiert nach Bestätigung.
 disable-model-invocation: true
+argument-hint: "[suche <Bedarf>]"
 ---
 
 Das Dashboard hat zwei Schichten. `build.py` liest den Bestand ohne Urteil aus der Konfiguration: was installiert ist, ob es aktiv ist, woher es stammt, wie oft es genutzt wurde. `bewertung.json` enthält, was Urteil braucht: deutsche Kurzbeschreibung, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise. Dieser Skill bringt die zweite Schicht auf den Stand der ersten.
@@ -9,6 +10,8 @@ Das Dashboard hat zwei Schichten. `build.py` liest den Bestand ohne Urteil aus d
 Ordner: `/Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur`
 
 Verlangt der Benutzer eine **komplette Neubewertung**, gehst du in Schritt 2 alle Einträge durch, nicht nur die neuen.
+
+Beginnt die Anfrage mit **suche** (etwa `/3zero-harness-inventur suche Mermaid-Diagramme`), folgst du stattdessen dem Abschnitt „Suchen und installieren“ am Ende.
 
 ## 1. Bestand einlesen
 
@@ -67,3 +70,64 @@ Fertig, wenn: die Ausgabe weder unbewertete noch entfallene Einträge nennt.
 ## 6. Melden
 
 Drei kurze Punkte an den Benutzer: was neu ist, was weggefallen ist, welche Empfehlungen sich geändert haben. Deinstalliere nichts selbst. Das Dashboard empfiehlt, der Benutzer entscheidet.
+
+## Suchen und installieren
+
+Der Wert liegt im Abgleich: Nichts soll dazukommen, was ein installierter Eintrag schon kann. Skills und MCP-Server laufen mit den vollen Rechten des Benutzers, deshalb installierst du nur nach seinem ausdrücklichen Ja in dieser Sitzung. Läufst du ohne Benutzer (`claude -p`), schlägst du nur vor.
+
+### S1. Bestand und Bedarf
+
+Führe `build.py` aus (Schritt 1) und fasse den Bedarf in einem Satz. Ist er zu vage für eine Suche, stelle eine Rückfrage.
+
+Fertig, wenn: der Bedarf in einem Satz feststeht.
+
+### S2. Abgleich vorab
+
+Durchsuche `inventar.json` (`bewertung.was`, `beschreibung`, auch Plugin-Bestandteile, Projekt-Skills, MCP-Server und `eingebaut`) und die `gruppen` in `bewertung.json` nach Einträgen, die den Bedarf ganz oder teilweise abdecken. Deckt ein Eintrag ihn ab, nenne ihn mit ID und Beleg und frage, ob trotzdem gesucht werden soll.
+
+Fertig, wenn: feststeht, was der Bestand schon abdeckt und was fehlt.
+
+### S3. Suchen
+
+- Skills: `npx skills find <Stichwörter>` (zeigt Installationen je Skill), mehrere Formulierungen. Was ein Repo sonst enthält: `npx skills add <owner/repo> -l`.
+- Plugins: `claude plugin list --json --available` und in `available` nach Name und Beschreibung filtern.
+- MCP-Server: Die CLI hat keine Suche. Suche im Web nach einem offiziellen Server des Anbieters und nimm den Installationsbefehl aus dessen Doku.
+
+Führe die Suchbefehle aus einem Ordner außerhalb von `~` aus.
+
+Fertig, wenn: je Art gesucht ist oder feststeht, dass es sie für den Bedarf nicht gibt.
+
+### S4. Kandidaten prüfen
+
+Belege je Kandidat, bevor du ihn nennst:
+
+- Herkunft: Original statt Kopie. Dieselbe Datei liegt oft in vielen Repos; nimm das Repo, aus dem sie stammt.
+- Verbreitung: ab 1.000 Installationen, unter 100 skeptisch. Bekannte Quellen (`anthropics`, `vercel-labs`, `microsoft`, offizielle Marktplätze, Anbieter selbst) vor unbekannten.
+- Pflege: `gh api repos/<owner>/<repo> -q '.stargazers_count, .pushed_at'`. Unter 100 Sternen oder ohne Commit seit Monaten skeptisch.
+- Reife: liegt der Skill in `in-progress`, `experimental` oder `deprecated`?
+- Kosten: Beschreibung ÷ 4 Tokens je Sitzung, `disable-model-invocation` kostet nichts. Bei MCP-Servern: worauf sie zugreifen und welche Anmeldung sie brauchen.
+- Überschneidung: mit welchen IDs aus dem Bestand.
+
+Fertig, wenn: höchstens drei Kandidaten mit Belegen übrig sind, oder keiner.
+
+### S5. Vorschlagen
+
+Nenne je Kandidat: was er tut, die Belege aus S4, die Überschneidung mit dem Bestand, den Installationsbefehl. Gib eine Empfehlung; „nichts installieren“ ist eine gültige. Dann warte auf die Antwort.
+
+Fertig, wenn: der Benutzer entschieden hat.
+
+### S6. Installieren
+
+Nur, was der Benutzer bestätigt hat:
+
+- Skill: `npx skills add <owner/repo> --skill <name> -g -y --agent claude-code`
+- Plugin: `claude plugin install <name>@<marktplatz>`
+- MCP-Server: den Befehl aus der Doku des Anbieters mit `-s user`
+
+Fertig, wenn: der Eintrag in `npx skills list -g`, `claude plugin list` oder `claude mcp list` erscheint.
+
+### S7. Inventur nachziehen
+
+Gehe die Schritte 1 bis 6 oben durch: Der neue Eintrag erscheint als unbewertet, bekommt `was`, Empfehlung und, wo nötig, eine Gruppe. Neue Plugins und Skills wirken ab der nächsten Sitzung.
+
+Fertig, wenn: Schritt 5 weder unbewertete noch entfallene Einträge nennt.
