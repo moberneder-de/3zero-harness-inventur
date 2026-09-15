@@ -240,6 +240,13 @@ const D = JSON.parse(document.getElementById("daten").textContent);
 /* Setzt server.py beim Ausliefern; als Datei geöffnet bleibt es null und das Dashboard nur lesbar */
 const TOKEN = JSON.parse(document.getElementById("token").textContent);
 
+/* Welcher Harness inventarisiert ist: bestimmt Texte, Pfade und ob es Aktionen gibt. Unter Claude Code bleibt alles wie gehabt */
+const CODEX = D.harness === "codex";
+const je = (claude, codex) => CODEX ? codex : claude;
+const NUR_MANUELL = je("nur /", "nur $");
+/* Aktionen gibt es nur mit server.py und nur für Claude Code; unter Codex stehen die Befehle zum Kopieren da */
+const AKTIONEN = TOKEN && !CODEX;
+
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 const datum = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : "–";
@@ -250,7 +257,7 @@ const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopi
 
 const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
-const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "Harness", status: "aktiv", bewertung: { was: b.was }, tokens: 0, quelle: { art: "eingebaut", autor: "Anthropic" } }));
+const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "Harness", status: "aktiv", bewertung: { was: b.was }, tokens: b.tokens || 0, quelle: { art: "eingebaut", autor: je("Anthropic", "OpenAI") } }));
 EINGEBAUT.forEach(e => INDEX.set(e.id, e));
 /* Tab Skills: installierte und eingebaute Skills in einer Liste */
 const SKILLS = [...D.skills, ...EINGEBAUT];
@@ -282,6 +289,7 @@ const STATUS = {
   "aus": ["○", "aus"], "deaktiviert": ["○", "aus"], "nicht aktiviert": ["○", "aus"], "inaktiv (Plugin aus)": ["○", "aus"],
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
+  "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
 };
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
@@ -289,7 +297,7 @@ function statusBadge(s) {
 }
 function nutzungText(e) {
   if (e.typ === "Agent" || e.typ === "Hook") return '<span class="leer">nicht erfasst</span>';
-  if (e.id.startsWith("mcp:")) return '<span class="leer">nicht erfasst</span>';
+  if (e.id.startsWith("mcp:") && !CODEX) return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
   const n = e.nutzung;
   return n ? `${zahl(n.anzahl)}× <span class="klein">· ${datum(n.zuletzt)}</span>` : '<span class="leer">nie</span>';
@@ -303,7 +311,7 @@ function quelleText(e) {
 /* Herkunft in den Skill-Tabellen: wie der Skill auf den Rechner kam, also auch, wie er wieder geht. Der Autor steht in der Detailzeile */
 function lieferweg(s) {
   if (s.plugin) return `Plugin ${s.plugin.split("@")[0]}`;
-  if (s.typ === "Harness") return "Anthropic/Claude Code";
+  if (s.typ === "Harness") return je("Anthropic/Claude Code", "OpenAI/Codex");
   /* Besitzer lesbar über `autoren` in bewertung.json, der GitHub-Pfad steht in der Detailzeile */
   if (s.quelle.repo) return `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}`;
   if (s.projekt) return "im Projekt";
@@ -320,8 +328,8 @@ function typText(e) {
    Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Dazu, was wegfällt, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 /* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand */
-const umgesetzt = e => ({ "abschalten": e.override === "off", "nur manuell": e.aufruf === "nur /" })[e.bewertung?.empfehlung] || false;
-const JE_SITZUNG = [...D.skills, ...D.hooks];
+const umgesetzt = e => ({ "abschalten": e.override === "off" || (CODEX && e.status === "aus"), "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
+const JE_SITZUNG = [...D.skills, ...D.hooks, ...EINGEBAUT];
 const tokensGesamt = JE_SITZUNG.reduce((s, e) => s + e.tokens, 0);
 const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt ? s + (e.tokens || 0) : s, 0);
 
@@ -348,8 +356,8 @@ function befehlText(e, a) {
   const argv = s.argv.map(x => /^[\w@%+=:,./-]+$/.test(x) ? x : `"${x}"`).join(" ");
   return s.cwd ? `cd "${s.cwd}" && ${argv}` : argv;
 }
-const SP = TOKEN ? 1 : 0; /* zusätzliche Spalte „Aktion“ */
-const WAHL_KOPF = TOKEN ? "<th>Aktion</th>" : "";
+const SP = AKTIONEN ? 1 : 0; /* zusätzliche Spalte „Aktion“ */
+const WAHL_KOPF = AKTIONEN ? "<th>Aktion</th>" : "";
 function wahlFeld(e) {
   const namen = Object.keys(e.aktionen || {});
   if (!namen.length) return '<span class="leer">–</span>';
@@ -357,25 +365,25 @@ function wahlFeld(e) {
   return `<select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}">
     <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${a}</option>`).join("")}</select>`;
 }
-const wahlZelle = e => TOKEN ? `<td>${wahlFeld(e)}</td>` : "";
+const wahlZelle = e => AKTIONEN ? `<td>${wahlFeld(e)}</td>` : "";
 
 function abschnitt(id, titel, inhalt, intro) {
   return `<section id="${id}"><div class="wrap"><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
 }
 
 function renderUeberblick() {
-  const mcpAn = D.mcp.filter(m => m.status === "verbunden").length;
+  const mcpAn = D.mcp.filter(m => m.status === je("verbunden", "aktiv")).length;
   const plAn = D.plugins.filter(p => p.status === "aktiv").length;
   const skAn = D.skills.filter(s => s.status === "aktiv").length;
   const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !umgesetzt(e)).length;
   const banner = [];
   if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong> ${D.unbewertet.map(esc).join(", ")}.`);
   if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong> ${D.entfallen.map(esc).join(", ")}.`);
-  if (!D.live_status) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
-  const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in Claude Code <code>/3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
+  if (D.live_status === false) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
+  const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in ${esc(D.harness_name)} <code>${je("/", "$")}3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
   const kpis = `<div class="kpis">
-    <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server verbunden / eingetragen</div></div>
+    <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server ${je("verbunden", "aktiv")} / eingetragen</div></div>
     <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
     <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
     <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen und SessionStart-Hooks</div></div>
@@ -392,7 +400,7 @@ function renderUeberblick() {
   const reihen = [...summen.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
   const max = reihen.length ? reihen[0][1].tokens : 1;
   const balken = `<div class="balken"><h3>Kontextlast nach Herkunft</h3>
-    <p class="klein" style="margin:0 0 10px">Beschreibungen, die Claude Code in jede Sitzung lädt, und Text, den SessionStart-Hooks einspielen (grob geschätzt: Zeichen ÷ 4). Skills mit „nur /“ kosten nichts.</p>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, und Text, den SessionStart-Hooks einspielen (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
@@ -404,8 +412,10 @@ function renderUeberblick() {
 /* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
 const GRUPPEN_TEXT = {
   "entfernen": "Deinstallieren. Alles lässt sich bei Bedarf wieder installieren.",
-  "abschalten": "Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
-  "nur manuell": "Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
+  "abschalten": je("Einzelne Skills aus einem Plugin, das bleibt. Abschalten per skillOverrides in ~/.claude/settings.json.",
+    "Einzelne Skills, die bleiben, aber nicht laden sollen. Abschalten per [[skills.config]] in ~/.codex/config.toml."),
+  "nur manuell": je("Bleiben per /name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung.",
+    "Bleiben per $name erreichbar, laden ihre Beschreibung aber nicht mehr in jede Sitzung (agents/openai.yaml)."),
   "prüfen": "Hier fehlt deine Entscheidung. Der Befehl zeigt, wie das Entfernen ginge.",
   "selbst gewählt": "Ohne offene Empfehlung, von dir in den Bestandstabellen gewählt.",
 };
@@ -413,8 +423,9 @@ function renderEmpfehlungen() {
   return abschnitt("empfehlungen", "Was weg kann und was du entscheiden solltest",
     '<div id="empf-inhalt"></div>',
     "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills." +
-    (TOKEN ? " Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten Claude-Code-Sitzung."
-           : " Nichts wird automatisch geändert."));
+    (AKTIONEN ? ` Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
+      : CODEX ? " Unter Codex gibt es noch keine Knöpfe: Die Befehle zum Umsetzen stehen zum Kopieren in jeder Zeile."
+      : " Nichts wird automatisch geändert."));
 }
 function empfZeile(e) {
   const a = gewaehlt(e);
@@ -422,8 +433,8 @@ function empfZeile(e) {
   return `<tr><td class="name" style="min-width:170px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
     <td style="min-width:220px">${was(e)}</td>
     <td style="min-width:220px">${txt(e.bewertung?.grund || "")}</td>
-    <td style="min-width:250px">${TOKEN ? wahlFeld(e) + befehl : befehlZeile(e.befehl)}</td>
-    ${TOKEN ? `<td>${ausfuehrZelle(e)}</td>` : ""}</tr>`;
+    <td style="min-width:250px">${AKTIONEN ? wahlFeld(e) + befehl : befehlZeile(e.befehl)}</td>
+    ${AKTIONEN ? `<td>${ausfuehrZelle(e)}</td>` : ""}</tr>`;
 }
 function renderEmpfInhalt() {
   let html = "";
@@ -440,7 +451,7 @@ function renderEmpfInhalt() {
       ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
     html += `<div class="empf-gruppe"><div class="kopf"><h3>${typ === "selbst gewählt" ? '<span class="badge e-neu">selbst gewählt</span>' : empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
       <p>${GRUPPEN_TEXT[typ]}</p>
-      <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${TOKEN ? "Aktion" : "Befehl"}</th>${TOKEN ? "<th>Ausführen</th>" : ""}</tr></thead>
+      <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${AKTIONEN ? "Aktion" : "Befehl"}</th>${AKTIONEN ? "<th>Ausführen</th>" : ""}</tr></thead>
       <tbody>${liste.map(empfZeile).join("")}</tbody></table></div></div>`;
   }
   const erledigt = ALLE.filter(umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
@@ -479,14 +490,17 @@ function renderMcp() {
     detailZeile(5 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
+      ["Genutzt", CODEX ? nutzungText(m) : ""],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
       ["Begründung", txt(m.bewertung?.grund || "")],
       ["Entfernen", befehlZeile(m.befehl)],
     ])).join("");
   return abschnitt("mcp", "Global eingetragene Server und ihr Status",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    "Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. " +
-    "„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.");
+    je("Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. " +
+      "„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.",
+      "Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins; was nur in einem Projekt gilt, steht unter Projekte. Status aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest. " +
+      "„Genutzt“ in den Details zählt MCP-Aufrufe in den Codex-Sitzungen. Zeile anklicken für Details."));
 }
 
 function renderPlugins() {
@@ -495,6 +509,7 @@ function renderPlugins() {
     const teile = [
       anzahl(p.skills.length, "Skill", "Skills"), anzahl(p.befehle.length, "Befehl", "Befehle"),
       anzahl(p.agenten.length, "Agent", "Agenten"), Object.keys(p.mcp).length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"),
+      anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
     return `<tr class="haupt"><td class="name"><strong>${esc(p.name)}</strong><div class="klein">${esc(p.marktplatz)}</div></td>
@@ -504,17 +519,19 @@ function renderPlugins() {
         ["Beschreibung", esc(p.beschreibung)],
         ["Begründung", txt(p.bewertung?.grund || "")],
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
+        ["Apps", namen(p.apps || [])],
         ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")],
         ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}`],
         ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
         ["Homepage", p.homepage ? link(p.homepage) : ""],
-        ["Aktivität", p.aktivitaet != null ? `${zahl(p.aktivitaet)} laut Claude Code (zählt auch Hook-Läufe und MCP-Aufrufe)` : ""],
+        ["Aktivität", p.aktivitaet != null ? `${zahl(p.aktivitaet)} laut ${esc(D.harness_name)} (zählt auch Hook-Läufe und MCP-Aufrufe)` : ""],
         ["Entfernen", befehlZeile(p.befehl)],
       ]);
   }).join("");
   return abschnitt("plugins", "Installierte Plugins, ihre Nutzung und Kontextkosten",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    "„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen.");
+    je("„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen.",
+      "Plugins aus <code>~/.codex/plugins/cache</code> mit ihrem Schalter in <code>~/.codex/config.toml</code>. „im Konto“: kommt aus deinem ChatGPT-Konto, geschaltet wird dort. „wirkungslos“: steht in config.toml, aber Codex lädt openai-curated-Plugins aus dem Online-Katalog. „Genutzt“ zählt Codex-Sitzungen, in denen Skills des Plugins liefen. „Kontext“ ist die geschätzte Tokenzahl seiner Skill-Beschreibungen je Sitzung."));
 }
 
 /* Skills-Tabelle mit Filter und Sortierung */
@@ -526,7 +543,7 @@ function renderSkillsRahmen() {
     <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
     <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
     <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar"], "jeder Status")}</select>
-    <select id="f-aufruf" aria-label="Aufruf">${opt(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], "jeder Aufruf")}</select>
+    <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $"]), "jeder Aufruf")}</select>
     <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl" id="f-anzahl"></span></div>`;
@@ -534,7 +551,8 @@ function renderSkillsRahmen() {
     .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
-    `Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`);
+    je(`Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`,
+      `Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system. „nur $“ heißt: lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>). „Genutzt“ zählt Codex-Sitzungen. Eingebaute lassen sich nicht deinstallieren.`));
 }
 function skillsFiltern() {
   const q = F.suche.toLowerCase();
@@ -619,7 +637,8 @@ function renderProjekte() {
   }).join("");
   return abschnitt("projekte", "Was nur in einzelnen Projekten gilt",
     gruppen || '<p class="leer">Keine projektbezogenen Skills, Befehle oder MCP-Server gefunden.</p>',
-    "Alle übrigen Tabs zeigen, was global gilt. Hier steht je Projekt aus ~/.claude.json, was dort zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.");
+    je("Alle übrigen Tabs zeigen, was global gilt. Hier steht je Projekt aus ~/.claude.json, was dort zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.",
+      "Alle übrigen Tabs zeigen, was global gilt. Hier steht je Projekt aus ~/.codex/config.toml, was dort zusätzlich lädt (<code>.agents/skills</code>, <code>.codex/skills</code>, MCP-Server aus <code>.codex/config.toml</code>). Skills laden in jedem Projekt, MCP-Server nur in vertrauten (<code>trust_level = \"trusted\"</code>). Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest."));
 }
 
 function renderHooks() {
@@ -632,14 +651,15 @@ function renderHooks() {
       <td>${was(h)}</td><td>${empfBadge(h)}</td></tr>` +
     detailZeile(8, [
       ["Befehle", befehle(h)],
-      ["Ausgabe an Claude", h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
+      ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
       ["Begründung", txt(h.bewertung?.grund || "")],
       ["Datei", `<code>${esc(h.pfad)}</code>`],
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an Claude</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    `Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`);
+    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
+      "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben, misst das Dashboard noch nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
 
 function renderHinweise() {
@@ -663,9 +683,9 @@ function warteschlange() {
 function renderAktionen() {
   const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
   document.getElementById("aktionen").innerHTML = `
-    <button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>
+    ${AKTIONEN ? `<button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>` : ""}
     <button type="button" class="btn btn-outline" id="neu-einlesen" title="Bestand neu einlesen (build.py)"${beschaeftigt ? " disabled" : ""}>neu einlesen</button>
-    <button type="button" class="btn btn-outline" id="bewerten" title="Claude zieht die Bewertung nach (/3zero-harness-inventur)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>`;
+    <button type="button" class="btn btn-outline" id="bewerten" title="${je("Claude", esc(D.harness_name))} zieht die Bewertung nach (${je("/", "$")}3zero-harness-inventur)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>`;
 }
 /* Claudes Zusammenfassung kommt als Markdown: Absätze, Listen, **fett**, `code` */
 function markdown(text) {
@@ -738,7 +758,7 @@ function renderSuche() {
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
     : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten, dann http://127.0.0.1:8765 öffnen.</p>';
   return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
-    "Beschreibe, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines Claude-Abos. Installiert wird erst, wenn du es bestätigst.");
+    `Beschreibe, wofür du ein Werkzeug suchst. ${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos. ${je("Installiert wird erst, wenn du es bestätigst.", "Installieren geht unter Codex noch von Hand mit dem Befehl am Kandidaten.")}`);
 }
 function renderSuchInhalt() {
   if (!TOKEN) return;
@@ -746,7 +766,7 @@ function renderSuchInhalt() {
   document.getElementById("suchen").disabled = !!s.laeuft;
   document.getElementById("such-stand").textContent = s.laeuft ? " (läuft)" : "";
   let html = "";
-  if (s.laeuft) html = `<p class="status">Claude gleicht „${esc(s.bedarf)}“ mit dem Bestand ab und sucht … (${s.sekunden} s)</p>`;
+  if (s.laeuft) html = `<p class="status">${je("Claude", esc(D.harness_name))} gleicht „${esc(s.bedarf)}“ mit dem Bestand ab und sucht … (${s.sekunden} s)</p>`;
   else if (s.verbindung === false) html = `<div class="meldung">${markdown(s.ausgabe)}</div>`;
   else if (s.bedarf) html = `<div class="meldung"><div class="zeile"><p class="label">Ergebnis: ${esc(s.bedarf)}</p>
       <button type="button" class="kopieren" id="suche-verwerfen">verwerfen</button></div>
@@ -782,7 +802,32 @@ async function fuehreAus(e) {
 
 function renderHilfe() {
   const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
-  const teile = [["Aktualisieren", `<ul>
+  const teile = CODEX ? [["Aktualisieren", `<ul>
+      <li><code>python3 build.py --harness codex</code> im Projektordner 3zero-Harness-Inventur: liest den Codex-Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Codex. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness claude-code</code> zeigt das Dashboard wieder Claude Code; ohne Angabe gilt der zuletzt genannte.</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“.</li>
+      <li><code>$3zero-harness-inventur</code> in Codex: macht dasselbe wie <code>build.py --harness codex</code> und lässt Codex zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-codex.json).</li>
+      <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: schreiben nur im Projektordner, kein Netz, ohne deine eigenen Plugins, MCP-Server und Regeln. Den Bestand liest der Server davor und danach selbst ein.</li>
+      <li>Codex-Läufe aus dem Dashboard nutzen die Anmeldung von Codex (<code>codex login status</code>). Solange die über dein ChatGPT-Konto läuft, verbrauchen sie Kontingent deines Abos.</li>
+    </ul>`], ["Bestand lesen", `<ul>
+      <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
+      <li>Herkunft zeigt, wie ein Skill auf den Rechner kam: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>OpenAI/Codex</b> ist in Codex eingebaut.</li>
+      <li>Plugin-Status: <b>aktiv</b> und <b>deaktiviert</b> nach <code>enabled</code> in config.toml, <b>im Konto</b> für Plugins aus dem ChatGPT-Konto, <b>wirkungslos</b> für openai-curated-Einträge, die Codex wegen des Online-Katalogs ignoriert, <b>nicht aktiviert</b> für Plugins ohne Eintrag.</li>
+      <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
+    </ul>`], ["Empfehlungen lesen", `<ul>
+      <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
+      <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
+      <li>Unter Codex gibt es noch keine Knöpfe. Jede Empfehlung zeigt den Befehl oder die Stelle in der Konfiguration zum Kopieren.</li>
+    </ul>`], ["Suchen", `<ul>
+      <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
+      <li>Die Suche läuft in einer Sandbox: nichts schreiben außer dem npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur zu skills.sh, npm und GitHub und nur lesend. Mit eingeschaltetem VPN kommt dieses Netz nicht durch; Codex sucht dann nur über seine Websuche und sagt das im Bericht.</li>
+      <li>Installieren geht unter Codex noch von Hand mit dem Befehl am Kandidaten.</li>
+    </ul>`], ["Woher die Zahlen kommen", `<ul>
+      <li>Nutzung: gezählt in den Codex-Sitzungsprotokollen unter ~/.codex/sessions und ~/.codex/archived_sessions. Ein Skill zählt je Sitzung einmal, wenn du ihn per $name wählst oder Codex seine SKILL.md liest; MCP-Server zählen je Aufruf.</li>
+      <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Skills, die Codex automatisch in den Katalog lädt. Grobe Schätzung.</li>
+      <li>MCP-Status: aus <code>enabled</code> in ~/.codex/config.toml und den Plugin-Schaltern, ohne Verbindungstest. Umgebungswerte und Tokens der Server übernimmt das Inventar nicht.</li>
+      <li>Herkunft: plugin.json im Plugin-Ordner, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills. Klarnamen und belegte Quellen stehen in bewertung-codex.json.</li>
+      <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
+    </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar.</li>
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung.json).</li>
@@ -847,8 +892,8 @@ function kopiere(text, knopf) {
 }
 
 document.getElementById("stand").innerHTML =
-  `Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
-  (D.claude_version ? ` · ${esc(D.claude_version)}` : "");
+  `${esc(D.harness_name)} · Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
+  (D.version ? ` · ${esc(D.version)}` : "");
 document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();
 skillsFiltern();
@@ -933,7 +978,7 @@ if (TOKEN) {
         else setMeldung("Neu einlesen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
       });
     } else if (knopf.id === "bewerten") {
-      if (!await frage("Bewertung nachziehen", "Claude liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und verbraucht Kontingent deines Claude-Abos.", "starten")) return;
+      if (!await frage("Bewertung nachziehen", `${je("Claude", D.harness_name)} liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos.`, "starten")) return;
       mitSperre(async () => {
         const r = await api("/api/bewerten");
         if (!r.ok) return setMeldung("Bewertung nicht gestartet:\n\n" + r.ausgabe, "Fehler");
@@ -980,7 +1025,7 @@ async function bewertungVerfolgen() {
     const b = await api("/api/bewertung");
     if (b.verbindung === false) return setMeldung(b.ausgabe, "Fehler");
     if (!b.laeuft) return location.reload(); /* bewertung.json und dashboard.html sind neu; die Karte zeigt die Seite danach */
-    setMeldung(`Claude liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
+    setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
     await warte(2000);
   }
 }
