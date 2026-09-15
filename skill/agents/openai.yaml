@@ -1,0 +1,5 @@
+interface:
+  display_name: "3zero Harness-Inventur"
+  short_description: "Dashboard der installierten Skills, Plugins, MCP-Server und Hooks aktualisieren und bewerten"
+policy:
+  allow_implicit_invocation: false
