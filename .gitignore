@@ -8,3 +8,6 @@ node_modules/
 # Erzeugt von build.py aus der lokalen Konfiguration
 dashboard.html
 inventar.json
+dashboard-codex.html
+inventar-codex.json
+harness.json

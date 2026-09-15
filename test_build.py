@@ -312,5 +312,56 @@ class McpStatus(unittest.TestCase):
             {"serverName": "claude.ai Gmail"}, {"serverUrl": "https://example.org/*"}, "kaputt"]}), {"claude.ai Gmail"})
 
 
+class HarnessWahl(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        (self.tmp / "template.html").write_text("<script>__DATEN__</script>")
+        self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "LOGO", self.tmp / "logo.svg")]
+        (self.tmp / "logo.svg").write_text(f'<svg {build.LOGO_MASSE[0]}></svg>')
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        shutil.rmtree(self.tmp)
+
+    def leeres_inventar(self, **extra):
+        return {"live_status": None, "bewertung_stand": None, "overrides_verwaist": [], "mcp": [], "plugins": [], "skills": [],
+                "projekt_skills": [], "projekt_mcp": [], "hooks": [], "hook_tage": None, "eingebaut": [], "gruppen": [],
+                "hinweise": [], "unbewertet": [], "entfallen": [], **extra}
+
+    def test_codex_schreibt_eigene_dateien_und_merkt_sich_den_harness(self):
+        import codex
+        with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value="codex-cli 0.154.0"):
+            build.main(["--harness", "codex"])
+        daten = json.loads((self.tmp / "inventar-codex.json").read_text())
+        self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("codex", "Codex", "codex-cli 0.154.0"))
+        self.assertTrue((self.tmp / "dashboard-codex.html").exists())
+        self.assertFalse((self.tmp / "inventar.json").exists())
+        self.assertEqual(json.loads((self.tmp / "harness.json").read_text()), {"harness": "codex"})
+
+    def test_ohne_angabe_gilt_der_gemerkte_harness(self):
+        import codex
+        (self.tmp / "harness.json").write_text('{"harness": "codex"}')
+        with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()) as lesen, \
+                mock.patch.object(build, "claude_inventar") as claude, mock.patch.object(build, "version", return_value=None):
+            build.main([])
+        lesen.assert_called_once()
+        claude.assert_not_called()
+
+    def test_claude_code_behaelt_seine_dateien(self):
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(live_status=True)), \
+                mock.patch.object(build, "version", return_value="2.1.272 (Claude Code)"):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.tmp / "inventar.json").read_text())
+        self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("claude-code", "Claude Code", "2.1.272 (Claude Code)"))
+        self.assertTrue((self.tmp / "dashboard.html").exists())
+
+    def test_abgleich(self):
+        alle = [{"id": "a", "bewertung": {"was": "x"}}, {"id": "b", "bewertung": None}]
+        self.assertEqual(build.abgleich(alle, {"eintraege": {"a": {}, "c": {}}}), (["b"], ["c"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,8 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
-from build import frontmatter, hook_eintraege, lies_json, ziel_text
+import harness
+from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -338,3 +339,72 @@ def projekte(cfg, aus, autoren):
             mcp.append({"id": f"mcp:{ordner.name}/{name}", "name": name, "projekt": pfad, "art": ".codex/config.toml",
                         "quelle": str(datei), "ziel": ziel_text(c), "status": status, "gesperrt": False, "aus_in_projekten": []})
     return skills, mcp
+
+
+def befehl(e, empfehlung):
+    """Wie sich eine Empfehlung in Codex umsetzen ließe. Nur zum Kopieren: Knöpfe gibt es für Codex noch nicht."""
+    eid = e["id"]
+    if eid.startswith("hook:"):
+        return f"codex plugin remove {e['plugin']}" if e.get("plugin") else f'{e["pfad"]} → "{e["ereignis"]}" entfernen'
+    if eid.startswith("plugin:"):
+        return f"codex plugin remove {e['name']}@{e['marktplatz']}"
+    if eid.startswith("mcp:"):
+        if e.get("projekt"):
+            return f'{e["quelle"]} → [mcp_servers.{e["name"]}] entfernen'
+        return f"codex plugin remove {e['quelle']}" if e["art"] == "Plugin" else f"codex mcp remove {e['name']}"
+    if empfehlung == "nur manuell":
+        return f"{Path(e['pfad']).parent}/agents/openai.yaml → policy: allow_implicit_invocation: false"
+    if empfehlung == "abschalten":
+        return f'~/.codex/config.toml → [[skills.config]] path = "{e["pfad"]}", enabled = false'
+    if e.get("plugin"):
+        return f"codex plugin remove {e['plugin']}"
+    if e["quelle"]["art"] == "skills-CLI":
+        return f"cd \"{e['projekt']}\" && npx skills remove {e['name']}" if e.get("projekt") else f"npx skills remove --global {e['name']}"
+    return f"mv \"{Path(e['pfad']).parent}\" ~/.Trash/"
+
+
+def inventar():
+    """Der Codex-Bestand in der Form, die template.html erwartet. build.main ergänzt Zeitpunkt, Harness und Version."""
+    cfg = lies_toml(CODEX / "config.toml")
+    bewertung = lies_json(HIER / harness.HARNESSE["codex"]["bewertung"])
+    autoren = bewertung.get("autoren", {})
+    aus = abgeschaltete(cfg)
+    lock = lies_json(AGENTS / ".skill-lock.json").get("skills", {})
+
+    plugin_liste, plugin_teile, plugin_hooks = plugins(cfg, aus, autoren)
+    skills = eigene_skills(aus, lock, autoren) + plugin_teile
+    updates_markieren(skills, lock)
+    projekt_skills, projekt_mcp = projekte(cfg, aus, autoren)
+    eingebaut = eingebaute(aus, bewertung)
+    skill_tage, mcp_tage = nutzung_zaehlen(sitzungen())
+    for e in skills + projekt_skills + eingebaut:
+        e["nutzung"] = nutzung(skill_tage.get(str(Path(e["pfad"]).resolve())))
+    for p in plugin_liste:
+        genutzt = [t["nutzung"] for t in plugin_teile if t["plugin"] == f"{p['name']}@{p['marktplatz']}" and t["nutzung"]]
+        if genutzt:
+            p["nutzung"] = {"anzahl": sum(n["anzahl"] for n in genutzt), "zuletzt": max(n["zuletzt"] or "" for n in genutzt) or None}
+    hooks = eigene_hooks(cfg) + plugin_hooks
+    mcp = mcp_server(cfg, plugin_liste, mcp_tage)
+
+    alle = mcp + plugin_liste + skills + projekt_skills + projekt_mcp + hooks
+    bewerte(alle, bewertung, befehl)
+    for e in alle:
+        e["aktionen"] = {}
+    unbewertet, entfallen = abgleich(alle, bewertung)
+    return {
+        "live_status": None,
+        "bewertung_stand": bewertung.get("stand"),
+        "overrides_verwaist": [],
+        "mcp": mcp,
+        "plugins": plugin_liste,
+        "skills": skills,
+        "projekt_skills": projekt_skills,
+        "projekt_mcp": projekt_mcp,
+        "hooks": hooks,
+        "hook_tage": None,
+        "eingebaut": eingebaut,
+        "gruppen": bewertung.get("gruppen", []),
+        "hinweise": bewertung.get("hinweise", []),
+        "unbewertet": unbewertet,
+        "entfallen": entfallen,
+    }

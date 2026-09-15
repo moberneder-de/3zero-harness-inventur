@@ -155,6 +155,43 @@ class Mcp(CodexOrdner):
         self.assertNotIn(GEHEIM, json.dumps(list(server.values())))
 
 
+class Befehle(unittest.TestCase):
+    def test_texte_je_art(self):
+        skill = {"id": "skill:grilling", "name": "grilling", "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
+        self.assertEqual(codex.befehl(skill, "entfernen"), "npx skills remove --global grilling")
+        self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
+        self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
+        self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv "/h/.agents/skills/grilling" ~/.Trash/')
+        self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd "/x/Kit" && npx skills remove grilling')
+        self.assertEqual(codex.befehl({**skill, "plugin": "documents@m"}, "entfernen"), "codex plugin remove documents@m")
+        self.assertEqual(codex.befehl({"id": "plugin:documents@m", "name": "documents", "marktplatz": "m"}, None), "codex plugin remove documents@m")
+        self.assertEqual(codex.befehl({"id": "mcp:node_repl", "name": "node_repl", "art": "User"}, None), "codex mcp remove node_repl")
+        self.assertEqual(codex.befehl({"id": "mcp:plugin:a:x", "name": "plugin:a:x", "art": "Plugin", "quelle": "a@m"}, None), "codex plugin remove a@m")
+        self.assertEqual(codex.befehl({"id": "mcp:Kit/q", "name": "q", "projekt": "/x/Kit", "quelle": "/x/Kit/.codex/config.toml"}, None),
+                         "/x/Kit/.codex/config.toml → [mcp_servers.q] entfernen")
+        self.assertEqual(codex.befehl({"id": "hook:config:notify", "ereignis": "notify", "pfad": "/h/.codex/config.toml"}, None),
+                         '/h/.codex/config.toml → "notify" entfernen')
+        self.assertEqual(codex.befehl({"id": "hook:b@m:Stop", "ereignis": "Stop", "pfad": "/c", "plugin": "b@m"}, None), "codex plugin remove b@m")
+
+
+class Inventar(CodexOrdner):
+    def test_ganzer_bestand_ohne_aktionen(self):
+        self.skill(self.home / ".agents/skills", "grilling")
+        self.skill(self.home / ".codex/skills/.system", "imagegen")
+        self.schreibe(self.home / ".codex/config.toml", '[mcp_servers.node_repl]\ncommand = "n"\n')
+        self.schreibe(self.tmp / "bewertung-codex.json", json.dumps({"stand": "2026-09-15", "eintraege": {
+            "skill:grilling": {"was": "Fragt nach.", "empfehlung": "behalten"}, "skill:weg": {"was": "alt"}}}))
+        with mock.patch.object(codex, "updates_markieren"):
+            daten = codex.inventar()
+        self.assertEqual(sorted(daten), ["bewertung_stand", "eingebaut", "entfallen", "gruppen", "hinweise", "hook_tage", "hooks",
+                                         "live_status", "mcp", "overrides_verwaist", "plugins", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
+        self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
+                         (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))
+        g = daten["skills"][0]
+        self.assertEqual((g["bewertung"]["was"], g["aktionen"], g["befehl"]), ("Fragt nach.", {}, "mv \"%s\" ~/.Trash/" % (self.home / ".agents/skills/grilling")))
+        self.assertEqual([b["name"] for b in daten["eingebaut"]], ["imagegen"])
+
+
 class HooksUndProjekte(CodexOrdner):
     def test_eigene_hooks_und_notify(self):
         cfg = {"notify": ["/x/client", "turn-ended"],

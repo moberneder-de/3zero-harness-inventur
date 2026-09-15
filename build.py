@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Harness-Inventur für Claude Code.
+"""Harness-Inventur für Claude Code und Codex.
 
-Liest MCP-Server, Plugins und Skills aus ~/.claude, ~/.claude.json und
-~/.agents, holt den Live-Status der MCP-Server über `claude mcp list` und
-schreibt dashboard.html sowie inventar.json.
+Liest MCP-Server, Plugins und Skills des Harness, in dem der Skill zuletzt gestartet wurde:
+bei Claude Code aus ~/.claude, ~/.claude.json und ~/.agents (mit Live-Status über `claude mcp list`),
+bei Codex über codex.py aus ~/.codex und ~/.agents. Schreibt inventar.json und dashboard.html,
+für Codex inventar-codex.json und dashboard-codex.html.
 
-Die fachliche Bewertung (Beschreibung auf Deutsch, Überschneidungen,
-Empfehlungen) steht in bewertung.json. Die pflegt Claude über den Skill
-/3zero-harness-inventur, dieses Skript liest sie nur.
+Die fachliche Bewertung (Beschreibung auf Deutsch, Überschneidungen, Empfehlungen) steht in
+bewertung.json bzw. bewertung-codex.json. Die pflegt der Skill /3zero-harness-inventur, dieses Skript liest sie nur.
 
-Aufruf: python3 build.py
+Aufruf: python3 build.py [--harness claude-code|codex]   (ohne Angabe gilt der zuletzt genannte)
 """
 
+import argparse
 import base64
 import json
 import re
@@ -19,6 +20,8 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+
+import harness
 
 HOME = Path.home()
 CLAUDE = HOME / ".claude"
@@ -569,8 +572,10 @@ def aktionen(e):
     return a
 
 
-def bewerte(eintraege):
-    bewertungen = BEWERTUNG.get("eintraege", {})
+def bewerte(eintraege, bewertung=None, befehl_fuer=None):
+    """Hängt Bewertung und Umsetzungsbefehl an. Ohne Angaben: bewertung.json und die Befehle für Claude Code."""
+    bewertungen = (BEWERTUNG if bewertung is None else bewertung).get("eintraege", {})
+    befehl_fuer = befehl_fuer or befehl
     for e in eintraege:
         b = bewertungen.get(e["id"])
         e["bewertung"] = b
@@ -579,17 +584,23 @@ def bewerte(eintraege):
                 if b.get(feld):
                     e["quelle"][feld] = b[feld]
         b = b or {}
-        e["befehl"] = b.get("befehl") or befehl(e, b.get("empfehlung"))
+        e["befehl"] = b.get("befehl") or befehl_fuer(e, b.get("empfehlung"))
 
 
-def claude_version():
+def abgleich(alle, bewertung):
+    """(unbewertet, entfallen): IDs ohne Bewertung und bewertete IDs, die nicht mehr installiert sind."""
+    ids = {e["id"] for e in alle}
+    return [e["id"] for e in alle if not e["bewertung"]], sorted(set(bewertung.get("eintraege", {})) - ids)
+
+
+def version(cli):
     try:
-        return subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+        return subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() or None
     except (OSError, subprocess.TimeoutExpired):
         return None
 
 
-def main():
+def claude_inventar():
     plugin_liste, plugin_teile, plugin_hooks = plugins()
     skills = persoenliche_skills() + plugin_teile
     updates_markieren(skills, LOCK)
@@ -610,15 +621,10 @@ def main():
     for b in BEWERTUNG.get("eingebaut", []):
         eingebaut.append({**b, "nutzung": nutzung(b["name"])})
 
-    ids = {e["id"] for e in alle}
-    unbewertet = [e["id"] for e in alle if not e["bewertung"]]
-    entfallen = sorted(set(BEWERTUNG.get("eintraege", {})) - ids)
+    unbewertet, entfallen = abgleich(alle, BEWERTUNG)
     # Overrides gelten nach Namen, auch für Projekt- und eingebaute Skills
     verwaist = sorted(set(OVERRIDES) - {e["name"] for e in skills + projekte + eingebaut})
-
-    daten = {
-        "erstellt": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "claude_version": claude_version(),
+    return {
         "live_status": live is not None,
         "bewertung_stand": BEWERTUNG.get("stand"),
         "overrides_verwaist": verwaist,
@@ -635,7 +641,24 @@ def main():
         "unbewertet": unbewertet,
         "entfallen": entfallen,
     }
-    (HIER / "inventar.json").write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Harness-Inventur für Claude Code oder Codex")
+    parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
+    wahl = parser.parse_args(argv).harness
+    if wahl:
+        harness.merken(HIER, wahl)
+    h = wahl or harness.aktuell(HIER)
+    angaben = harness.HARNESSE[h]
+    if h == "codex":
+        import codex  # erst hier: codex.py importiert selbst aus build
+        inhalt = codex.inventar()
+    else:
+        inhalt = claude_inventar()
+    daten = {"erstellt": datetime.now().strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
+             "version": version(angaben["cli"]), **inhalt}
+    (HIER / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
     svg = LOGO.read_text(encoding="utf-8")
@@ -643,17 +666,18 @@ def main():
         raise SystemExit(f"{LOGO} hat andere Maße als erwartet, Zuschnitt in LOGO_MASSE prüfen.")
     logo = "data:image/svg+xml;base64," + base64.b64encode(svg.replace(*LOGO_MASSE).encode()).decode()
     vorlage = (HIER / "template.html").read_text(encoding="utf-8").replace("__LOGO__", logo)
-    (HIER / "dashboard.html").write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
+    (HIER / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
-    print(f"dashboard.html geschrieben: {len(mcp)} MCP-Server, {len(plugin_liste)} Plugins, {len(skills)} Skills/Befehle/Agenten, "
-          f"{len(projekte)} Projekt-Skills, {len(mcp_projekte)} Projekt-MCP-Server, {len(hooks)} Hooks")
-    if live is None:
+    print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "
+          f"{len(daten['skills'])} Skills/Befehle/Agenten, {len(daten['projekt_skills'])} Projekt-Skills, "
+          f"{len(daten['projekt_mcp'])} Projekt-MCP-Server, {len(daten['hooks'])} Hooks")
+    if daten["live_status"] is False:
         print("Hinweis: `claude mcp list` nicht erreichbar, MCP-Status nur aus der Konfiguration.")
-    if unbewertet:
-        print(f"Noch nicht bewertet ({len(unbewertet)}): " + ", ".join(unbewertet))
-    if entfallen:
-        print(f"Bewertet, aber nicht mehr installiert ({len(entfallen)}): " + ", ".join(entfallen))
-    updates = [e["name"] for e in skills if e.get("update")]
+    if daten["unbewertet"]:
+        print(f"Noch nicht bewertet ({len(daten['unbewertet'])}): " + ", ".join(daten["unbewertet"]))
+    if daten["entfallen"]:
+        print(f"Bewertet, aber nicht mehr installiert ({len(daten['entfallen'])}): " + ", ".join(daten["entfallen"]))
+    updates = [e["name"] for e in daten["skills"] if e.get("update")]
     if updates:
         print(f"Update verfügbar ({len(updates)}): " + ", ".join(updates))
 
