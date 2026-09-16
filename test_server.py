@@ -9,6 +9,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+import harness
 import server
 
 SETTINGS_VORHER = '{\n  "env": {\n    "A": "1"\n  },\n  "skillOverrides": {\n    "alt": "off"\n  }\n}\n'
@@ -74,8 +75,10 @@ class Server(unittest.TestCase):
         self.srv.codex_config = config
 
     def schreibe_inventar(self, plugins, skills=(), mcp=()):
+        """Schreibt die Inventar-Datei des gerade aktiven Harness (inventar.json oder inventar-codex.json)."""
         inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills)}
-        (self.tmp / "inventar.json").write_text(json.dumps(inventar))
+        datei = self.tmp / harness.HARNESSE[harness.aktuell(self.tmp)]["inventar"]
+        datei.write_text(json.dumps(inventar))
 
     def anfrage(self, methode, pfad, daten=None, token="geheim", host=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
@@ -500,6 +503,95 @@ class Server(unittest.TestCase):
         status, _ = self.installieren({"nr": 0})
         self.assertEqual(status, 400)
         self.assertEqual((self.tmp / "argv").read_text(), vor)  # npx wurde nicht aufgerufen
+
+    CONFIG = '''# eigene Einstellungen
+model = "gpt-test"
+
+[mcp_servers.node_repl]
+command = "/x/node_repl"   # Kommentar bleibt
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+'''
+
+    def mit_config(self):
+        """Legt eine Beispiel-config.toml an und hängt den Server daran."""
+        config = self.tmp / "config.toml"
+        config.write_text(self.CONFIG)
+        self.auf_codex()
+        self.srv.codex_config = config
+        return config
+
+    def test_toml_text_setzen_aendert_nur_die_zeile(self):
+        text = server.toml_text_setzen(self.CONFIG, 'plugins."documents@openai-primary-runtime"', "enabled", "false")
+        self.assertIn("enabled = false", text)
+        self.assertIn("# Kommentar bleibt", text)
+        self.assertIn("# eigene Einstellungen", text)
+        self.assertNotIn("enabled = true", text)
+        # fehlender Schlüssel wird in die Tabelle eingefügt, fehlende Tabelle angehängt
+        text = server.toml_text_setzen(self.CONFIG, "mcp_servers.node_repl", "enabled", "false")
+        self.assertIn('[mcp_servers.node_repl]\nenabled = false\ncommand', text)
+        text = server.toml_text_setzen(self.CONFIG, 'mcp_servers."neu"', "enabled", "false")
+        self.assertTrue(text.rstrip().endswith('[mcp_servers."neu"]\nenabled = false'))
+
+    def test_toml_pfad(self):
+        self.assertEqual(server.toml_pfad('plugins."a@b".mcp_servers.c'), ["plugins", "a@b", "mcp_servers", "c"])
+        self.assertEqual(server.toml_pfad("mcp_servers.node_repl"), ["mcp_servers", "node_repl"])
+
+    def test_deaktivieren_schreibt_config_und_sichert(self):
+        config = self.mit_config()
+        self.schreibe_inventar([{"id": "plugin:documents@openai-primary-runtime", "name": "documents", "aktionen": {
+            "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}}}])
+        status, antwort = self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertIn("enabled = false", config.read_text())
+        self.assertEqual((self.tmp / "config.toml.bak").read_text(), self.CONFIG)
+
+    def test_kaputte_config_bleibt_unangetastet(self):
+        config = self.mit_config()
+        config.write_text("[kaputt\n")
+        self.schreibe_inventar([{"id": "plugin:x@y", "name": "x", "aktionen": {
+            "deaktivieren": {"toml": {"tabelle": 'plugins."x@y"', "schluessel": "enabled", "wert": "false"}}}}])
+        status, antwort = self.ausfuehren("plugin:x@y", "deaktivieren")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertEqual(config.read_text(), "[kaputt\n")
+
+    def test_skill_abschalten_haengt_block_an(self):
+        config = self.mit_config()
+        skill = self.tmp / "skills/grilling/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("---\nname: grilling\n---\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:grilling", "name": "grilling", "aktionen": {
+            "deaktivieren": {"skill_aus": str(skill)}}}])
+        for _ in range(2):  # zweimal ausführen darf keinen zweiten Block schreiben
+            self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+        cfg = tomllib.loads(config.read_text())
+        self.assertEqual(cfg["skills"]["config"], [{"path": str(skill), "enabled": False}])
+        self.assertIn("# eigene Einstellungen", config.read_text())
+
+    def test_nur_manuell_schreibt_openai_yaml(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/teach"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "agents/openai.yaml").write_text("interface:\n  display_name: Teach\npolicy:\n  allow_implicit_invocation: true\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:teach", "name": "teach", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:teach", "nur manuell")[1]["ok"])
+        text = (ordner / "agents/openai.yaml").read_text()
+        self.assertIn("allow_implicit_invocation: false", text)
+        self.assertIn("display_name: Teach", text)
+        self.assertEqual((ordner / "agents/openai.yaml.bak").read_text().count("true"), 1)
+        # ohne Datei legt der Server eine neue an
+        leer = self.tmp / "skills/neu"
+        leer.mkdir(parents=True)
+        self.schreibe_inventar([], skills=[{"id": "skill:neu", "name": "neu", "aktionen": {"nur manuell": {"nur_manuell": str(leer)}}}])
+        self.assertTrue(self.ausfuehren("skill:neu", "nur manuell")[1]["ok"])
+        self.assertIn("allow_implicit_invocation: false", (leer / "agents/openai.yaml").read_text())
+
+    def test_claude_code_schreibt_weiter_settings_json(self):
+        self.schreibe_inventar([], skills=[
+            {"id": "skill:grilling", "name": "grilling", "aktionen": {"deaktivieren": {"override": "off"}}}])
+        self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"]["grilling"], "off")
 
 
 if __name__ == "__main__":

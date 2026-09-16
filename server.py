@@ -140,6 +140,32 @@ def codex_modell(config):
     return argv
 
 
+def toml_pfad(tabelle):
+    """Zerlegt einen Tabellenkopf wie plugins."a@b".mcp_servers.c in seine Schlüssel."""
+    return [t.strip('"') for t in re.findall(r'"[^"]*"|[^.]+', tabelle)]
+
+
+def toml_text_setzen(text, tabelle, schluessel, wert):
+    """Setzt `schluessel = wert` in [tabelle]: vorhandene Zeile ersetzen, sonst in die Tabelle einfügen,
+    sonst die Tabelle anhängen. Alles andere bleibt Zeichen für Zeichen stehen."""
+    zeilen = text.splitlines()
+    kopf = f"[{tabelle}]"
+    try:
+        start = next(i for i, z in enumerate(zeilen) if z.strip() == kopf)
+    except StopIteration:
+        rumpf = text if text.endswith("\n") or not text else text + "\n"
+        return f"{rumpf}\n{kopf}\n{schluessel} = {wert}\n"
+    ende = next((i for i in range(start + 1, len(zeilen)) if zeilen[i].lstrip().startswith("[")), len(zeilen))
+    muster = re.compile(rf"^\s*{re.escape(schluessel)}\s*=")
+    for i in range(start + 1, ende):
+        if muster.match(zeilen[i]):
+            zeilen[i] = f"{schluessel} = {wert}"
+            break
+    else:
+        zeilen.insert(start + 1, f"{schluessel} = {wert}")
+    return "\n".join(zeilen) + "\n"
+
+
 def codex_bewerten(ordner, arbeitsordner, ergebnis, build_ausgabe, modell):
     hinweis = CODEX_BEWERTEN_HINWEIS.format(ordner=ordner, arbeitsordner=arbeitsordner)
     # workspace-write macht sonst auch $TMPDIR und /tmp beschreibbar; ein injizierter Lauf könnte dort etwas
@@ -212,7 +238,7 @@ class Inventarserver(ThreadingHTTPServer):
         self.ordner, self.settings, self.token = Path(ordner), Path(settings), token
         self.hosts = {f"{h}:{self.server_address[1]}" for h in ("127.0.0.1", "localhost")}
         self.sperre = threading.Lock()  # Aktionen schreiben teils dieselbe settings.json, also nacheinander
-        self.gesichert = False
+        self.gesichert = set()
         self.kandidaten = []  # aus der letzten Suche; nur sie lassen sich installieren
         # Stand der Claude-Läufe „suche“ und „bewertung“: Sie laufen im Hintergrund, der Browser fragt ihn ab.
         # Eigene Sperre, weil self.sperre während einer Bewertung minutenlang belegt ist.
@@ -234,16 +260,88 @@ class Inventarserver(ThreadingHTTPServer):
                 return e["name"], e["aktionen"][aktion]
         return None
 
+    def sichern(self, datei):
+        """Einmal je Datei eine Sicherung <datei>.bak, bevor der Server sie zum ersten Mal ändert."""
+        if datei in self.gesichert:
+            return
+        datei.with_name(datei.name + ".bak").write_text(datei.read_text(encoding="utf-8"), encoding="utf-8")
+        self.gesichert.add(datei)
+
+    def schreiben(self, datei, text):
+        neu = datei.with_name(datei.name + ".neu")
+        neu.write_text(text, encoding="utf-8")
+        os.replace(neu, datei)
+
     def settings_aendern(self, aendern):
         text = self.settings.read_text(encoding="utf-8")
         daten = json.loads(text)
-        if not self.gesichert:
-            self.settings.with_name(self.settings.name + ".bak").write_text(text, encoding="utf-8")
-            self.gesichert = True
+        self.sichern(self.settings)
         aendern(daten)
-        neu = self.settings.with_name(self.settings.name + ".neu")
-        neu.write_text(json.dumps(daten, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        os.replace(neu, self.settings)
+        self.schreiben(self.settings, json.dumps(daten, indent=2, ensure_ascii=False) + "\n")
+
+    def config_aendern(self, neuer_text, pruefen):
+        """Schreibt config.toml und nimmt die Änderung zurück, wenn sie die Datei zerstört oder nicht wirkt."""
+        alt = self.codex_config.read_text(encoding="utf-8")
+        self.sichern(self.codex_config)
+        self.schreiben(self.codex_config, neuer_text)
+        try:
+            daten = tomllib.loads(self.codex_config.read_text(encoding="utf-8"))
+            if not pruefen(daten):
+                raise ValueError("Die Einstellung steht nach dem Schreiben nicht in der Datei.")
+        except (ValueError, OSError) as fehler:
+            self.schreiben(self.codex_config, alt)
+            return {"ok": False, "ausgabe": f"{self.codex_config} nicht geändert: {fehler}"}
+        return None
+
+    def toml_setzen(self, tabelle, schluessel, wert):
+        alt = self.codex_config.read_text(encoding="utf-8")
+        pfad = toml_pfad(tabelle) + [schluessel]
+
+        def pruefen(daten):
+            for teil in pfad[:-1]:
+                daten = daten.get(teil) if isinstance(daten, dict) else None
+                if daten is None:
+                    return False
+            return json.dumps(daten.get(pfad[-1])) == wert
+
+        fehler = self.config_aendern(toml_text_setzen(alt, tabelle, schluessel, wert), pruefen)
+        return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [{tabelle}] {schluessel} = {wert}"}
+
+    def skill_abschalten(self, pfad):
+        alt = self.codex_config.read_text(encoding="utf-8")
+        eintrag = {"path": pfad, "enabled": False}
+        pruefen = lambda daten: eintrag in (daten.get("skills") or {}).get("config", [])
+        if pruefen(tomllib.loads(alt)):
+            return {"ok": True, "ausgabe": f"steht schon in ~/.codex/config.toml: [[skills.config]] path = {json.dumps(pfad)}"}
+        block = f'\n[[skills.config]]\npath = {json.dumps(pfad, ensure_ascii=False)}\nenabled = false\n'
+        fehler = self.config_aendern((alt if alt.endswith("\n") else alt + "\n") + block, pruefen)
+        return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [[skills.config]] path = {json.dumps(pfad)}, enabled = false"}
+
+    def nur_manuell_datei(self, ordner):
+        """agents/openai.yaml im Skill-Ordner: policy.allow_implicit_invocation = false, damit Codex den Skill
+        nur noch per $name lädt. Eine vorhandene Datei bleibt bis auf diese Zeile erhalten."""
+        datei = Path(ordner) / "agents" / "openai.yaml"
+        if datei.is_file():
+            self.sichern(datei)
+            zeilen = datei.read_text(encoding="utf-8").splitlines()
+            for i, z in enumerate(zeilen):
+                if re.match(r"^\s+allow_implicit_invocation\s*:", z):
+                    zeilen[i] = "  allow_implicit_invocation: false"
+                    break
+            else:
+                stelle = next((i for i, z in enumerate(zeilen) if z.strip() == "policy:"), None)
+                if stelle is None:
+                    zeilen += ["policy:", "  allow_implicit_invocation: false"]
+                else:
+                    zeilen.insert(stelle + 1, "  allow_implicit_invocation: false")
+            text = "\n".join(zeilen) + "\n"
+        else:
+            datei.parent.mkdir(parents=True, exist_ok=True)
+            text = "policy:\n  allow_implicit_invocation: false\n"
+        self.schreiben(datei, text)
+        if not re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", datei.read_text(encoding="utf-8"), re.M):
+            return {"ok": False, "ausgabe": f"{datei} nicht geändert"}
+        return {"ok": True, "ausgabe": f"{datei} → policy: allow_implicit_invocation: false"}
 
     def override_setzen(self, name, wert):
         def aendern(daten):
@@ -265,6 +363,12 @@ class Inventarserver(ThreadingHTTPServer):
                 return self.override_setzen(name, schritt["override"])
             if "sperren" in schritt:
                 return self.mcp_sperren(schritt["sperren"])
+            if "toml" in schritt:
+                return self.toml_setzen(**schritt["toml"])
+            if "skill_aus" in schritt:
+                return self.skill_abschalten(schritt["skill_aus"])
+            if "nur_manuell" in schritt:
+                return self.nur_manuell_datei(schritt["nur_manuell"])
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):
