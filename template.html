@@ -250,8 +250,8 @@ const TOKEN = JSON.parse(document.getElementById("token").textContent);
 const CODEX = D.harness === "codex";
 const je = (claude, codex) => CODEX ? codex : claude;
 const NUR_MANUELL = je("nur /", "nur $");
-/* Aktionen gibt es nur mit server.py und nur für Claude Code; unter Codex stehen die Befehle zum Kopieren da */
-const AKTIONEN = TOKEN && !CODEX;
+/* Aktionen gibt es nur mit server.py */
+const AKTIONEN = !!TOKEN;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -359,8 +359,18 @@ function befehlText(e, a) {
   const s = e.aktionen[a];
   if (s.override) return `~/.claude/settings.json → "skillOverrides": {"${e.name}": "${s.override}"}`;
   if (s.sperren) return `~/.claude/settings.json → "deniedMcpServers": [${JSON.stringify(s.sperren)}]`;
+  if (s.toml) return `~/.codex/config.toml → [${s.toml.tabelle}] ${s.toml.schluessel} = ${s.toml.wert}`;
+  if (s.skill_aus) return `~/.codex/config.toml → [[skills.config]] path = ${JSON.stringify(s.skill_aus)}, enabled = false`;
+  if (s.nur_manuell) return `${s.nur_manuell}/agents/openai.yaml → policy: allow_implicit_invocation: false`;
   const argv = s.argv.map(x => /^[\w@%+=:,./-]+$/.test(x) ? x : `"${x}"`).join(" ");
   return s.cwd ? `cd "${s.cwd}" && ${argv}` : argv;
+}
+/* Was der Benutzer vor dem Ausführen wissen sollte: Ein gemeinsamer Skill verschwindet in beiden Harnesses,
+   und agents/openai.yaml liegt im Skill-Ordner, den ein Update überschreibt */
+function warnung(e, a) {
+  if (a === "deinstallieren" && e.geteilt) return `Entfernt ${e.name} auch aus ${je("Codex", "Claude Code")}.`;
+  if (a === "nur manuell" && CODEX) return "Die Datei liegt im Skill-Ordner und geht beim nächsten Update des Skills verloren.";
+  return "";
 }
 const SP = AKTIONEN ? 1 : 0; /* zusätzliche Spalte „Aktion“ */
 const WAHL_KOPF = AKTIONEN ? "<th>Aktion</th>" : "";
@@ -433,12 +443,11 @@ function renderEmpfehlungen() {
     '<div id="empf-inhalt"></div>',
     "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills." +
     (AKTIONEN ? ` Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
-      : CODEX ? " Unter Codex gibt es noch keine Knöpfe: Die Befehle zum Umsetzen stehen zum Kopieren in jeder Zeile."
       : " Nichts wird automatisch geändert."));
 }
 function empfZeile(e) {
   const a = gewaehlt(e);
-  const befehl = a ? `<div class="klein" style="margin-top:5px"><code>${esc(befehlText(e, a))}</code></div>` : befehlZeile(e.befehl);
+  const befehl = a ? `<div class="klein" style="margin-top:5px"><code>${esc(befehlText(e, a))}</code>${warnung(e, a) ? `<div>${esc(warnung(e, a))}</div>` : ""}</div>` : befehlZeile(e.befehl);
   return `<tr><td class="name" style="min-width:170px"><strong>${esc(e.name)}</strong><div class="klein">${typText(e)} · ${quelleText(e)}</div></td>
     <td style="min-width:220px">${was(e)}</td>
     <td style="min-width:220px">${txt(e.bewertung?.grund || "")}</td>
@@ -789,7 +798,7 @@ function renderSuche() {
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
     : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten, dann http://127.0.0.1:8765 öffnen.</p>';
   return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
-    `Beschreibe, wofür du ein Werkzeug suchst. ${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos. ${je("Installiert wird erst, wenn du es bestätigst.", "Installieren geht unter Codex noch von Hand mit dem Befehl am Kandidaten.")}`);
+    `Beschreibe, wofür du ein Werkzeug suchst. ${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos. Installiert wird erst, wenn du es bestätigst.`);
 }
 function renderSuchInhalt() {
   if (!TOKEN) return;
@@ -847,11 +856,17 @@ function renderHilfe() {
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
-      <li>Unter Codex gibt es noch keine Knöpfe. Jede Empfehlung zeigt den Befehl oder die Stelle in der Konfiguration zum Kopieren.</li>
+    </ul>`], ["Aktionen ausführen", `<ul>
+      <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
+      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“.</li>
+      <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei gemeinsamen Skills verschwindet der Skill auch aus Claude Code.</li>
+      <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad.</li>
+      <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
+      <li>Vor der ersten Änderung legt der Server <code>config.toml.bak</code> an und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
     </ul>`], ["Suchen", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
       <li>Die Suche läuft in einer Sandbox: nichts schreiben außer dem npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur zu skills.sh, npm und GitHub und nur lesend. Mit eingeschaltetem VPN kommt dieses Netz nicht durch; Codex sucht dann nur über seine Websuche und sagt das im Bericht.</li>
-      <li>Installieren geht unter Codex noch von Hand mit dem Befehl am Kandidaten.</li>
+      <li>Skills und Plugins installiert der Server per Knopf nach einer Bestätigung: Skills mit <code>npx skills add … --agent codex</code>, Plugins mit <code>codex plugin add</code>. MCP-Server bleiben zum Kopieren.</li>
     </ul>`], ["Woher die Zahlen kommen", `<ul>
       <li>Nutzung: gezählt in den Codex-Sitzungsprotokollen unter ~/.codex/sessions und ~/.codex/archived_sessions. Ein Skill zählt je Sitzung einmal, wenn du ihn per $name wählst oder Codex seine SKILL.md liest; MCP-Server zählen je Aufruf.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Skills, die Codex automatisch in den Katalog lädt. Grobe Schätzung.</li>
@@ -1005,7 +1020,9 @@ if (TOKEN) {
     }
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
-      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten Claude-Code-Sitzung.`, `${offen.length} ausführen`))
+      const warnungen = [...new Set(offen.map(e => warnung(e, gewaehlt(e))).filter(Boolean))];
+      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${D.harness_name}-Sitzung.`
+          + (warnungen.length ? "\n\n" + warnungen.join("\n") : ""), `${offen.length} ausführen`))
         mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
@@ -1023,7 +1040,7 @@ if (TOKEN) {
       });
     } else if (knopf.dataset.installieren !== undefined) {
       const nr = Number(knopf.dataset.installieren), k = kandidaten[nr], manuell = !!knopf.dataset.manuell;
-      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten Claude-Code-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
+      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${D.harness_name}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
       mitSperre(async () => {
         INSTALLATION.set(nr, { laeuft: true }); renderSuchInhalt();
         const r = await api("/api/installieren", { nr, nur_manuell: manuell });
