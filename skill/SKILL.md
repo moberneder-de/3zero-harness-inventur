@@ -76,7 +76,7 @@ Fertig, wenn: `python3 -m json.tool /Users/moberneder/Daten/600_Projekte/3zero-H
 python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/<Dashboard>; fi
 ```
 
-Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/server.py`. Unter Codex zeigt das Dashboard noch keine Knöpfe zum Ausführen; Befehle stehen zum Kopieren da.
+Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/server.py`.
 
 Fertig, wenn: die Ausgabe weder unbewertete noch entfallene Einträge nennt.
 

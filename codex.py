@@ -374,7 +374,8 @@ def projekte(cfg, aus, autoren):
 
 
 def befehl(e, empfehlung):
-    """Wie sich eine Empfehlung in Codex umsetzen ließe. Nur zum Kopieren: Knöpfe gibt es für Codex noch nicht."""
+    """Wie sich eine Empfehlung in Codex umsetzen ließe, als Text zum Kopieren. Für vieles bietet `aktionen()`
+    zusätzlich einen Knopf im Dashboard."""
     eid = e["id"]
     if eid.startswith("hook:"):
         return f"codex plugin remove {e['plugin']}" if e.get("plugin") else f'{e["pfad"]} → "{e["ereignis"]}" entfernen'
