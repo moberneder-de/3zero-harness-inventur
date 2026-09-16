@@ -45,8 +45,8 @@ Schlage jede ID in dem Inventar deines Harness nach (Feld `id`) und lies die Dat
   - `behalten`
   - `prüfen`: hängt an einer Entscheidung, die nur der Benutzer treffen kann. Nenne diese Entscheidung im `grund`.
   - `entfernen`: veraltet oder unfertig und ungenutzt, doppelt zu einem genutzten Eintrag, defekt, oder ohne Bezug zu Martins Arbeit (IT-Beratung, Requirements Engineering, eigene Web- und Supabase-Projekte).
-  - `abschalten`: einzelner Skill eines Plugins, das bleibt (Claude Code: `skillOverrides: off`; Codex: `[[skills.config]] enabled = false`).
-  - `nur manuell`: gelegentlich nützlich, lädt aber seine Beschreibung in jede Sitzung (Claude Code: `skillOverrides: user-invocable-only`; Codex: `policy.allow_implicit_invocation: false` in `agents/openai.yaml`).
+  - `abschalten`: einzelner Skill eines Plugins, das bleibt (Claude Code: `skillOverrides: off`; Codex: `[[skills.config]] enabled = false`, läuft unter Codex jetzt auch über das Dashboard).
+  - `nur manuell`: gelegentlich nützlich, lädt aber seine Beschreibung in jede Sitzung (Claude Code: `skillOverrides: user-invocable-only`; Codex: `policy.allow_implicit_invocation: false` in `agents/openai.yaml`, läuft unter Codex jetzt auch über das Dashboard).
 - `grund`: ein bis zwei Sätze mit Belegen aus dem Inventar deines Harness: Nutzung, Überschneidung mit welchem Eintrag, `reife` (Upstream-Status), `tokens` (Kontextkosten; bei Hooks nur SessionStart je Sitzung, sonst `ausgabe`). In Codex zählt `nutzung` Sitzungen, nicht Aufrufe.
 - `autor`, `repo`, `url`: nur wenn die Herkunft im Dashboard als „unbekannt“ erscheint und du sie belegen kannst.
 
