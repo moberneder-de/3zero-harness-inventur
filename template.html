@@ -135,6 +135,9 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .meldung li { margin: 3px 0; }
 .meldung > :last-child { margin-bottom: 0; }
 .meldung h4 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+/* Lange Berichte füllten sonst die ganze Seite, bevor man die Tabs wieder sieht */
+.meldung .inhalt.gekuerzt { max-height: 50vh; overflow: auto; }
+.meldung .inhalt > :last-child { margin-bottom: 0; }
 .suchfeld { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; }
 .suchfeld input { flex: 1 1 320px; max-width: 640px; font: 16px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: #fff; }
 .suchfeld .btn:disabled { opacity: .5; cursor: default; }
@@ -692,10 +695,24 @@ function markdown(text) {
   const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const teile = [];
-  let absatz = [], punkte = [];
+  let absatz = [], punkte = [], reihen = [];
   const absatzZu = () => { if (absatz.length) teile.push(`<p>${inline(absatz.join(" "))}</p>`); absatz = []; };
   const listeZu = () => { if (punkte.length) teile.push(`<ul>${punkte.map(p => `<li>${inline(p)}</li>`).join("")}</ul>`); punkte = []; };
+  const zellen = z => z.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+  const tabelleZu = () => {
+    if (reihen.length) {
+      const [kopf, ...rest] = reihen;
+      teile.push(`<div class="tabelle"><table><thead><tr>${kopf.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead>` +
+        `<tbody>${rest.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+    }
+    reihen = [];
+  };
   for (const zeile of esc(text).split("\n")) {
+    /* Tabellen: ohne sie würde eine Markdown-Tabelle als ein langer Absatz erscheinen */
+    const reihe = zeile.trim().startsWith("|") ? zellen(zeile) : null;
+    if (reihe && reihe.every(c => /^:?-{2,}:?$/.test(c))) continue; /* Trennzeile unter dem Kopf */
+    if (reihe) { absatzZu(); listeZu(); reihen.push(reihe); continue; }
+    tabelleZu();
     const punkt = zeile.match(/^\s*[-*]\s+(.*)$/);
     const titel = zeile.match(/^#{1,4}\s+(.*)$/);
     if (titel) { absatzZu(); listeZu(); teile.push(`<h4>${inline(titel[1])}</h4>`); }
@@ -703,13 +720,17 @@ function markdown(text) {
     else if (!zeile.trim()) { absatzZu(); listeZu(); }
     else { listeZu(); absatz.push(zeile.trim()); }
   }
-  absatzZu(); listeZu();
+  absatzZu(); listeZu(); tabelleZu();
   return teile.join("");
 }
 function renderMeldung() {
+  const inhalt = meldung ? markdown(meldung) : "";
+  const lang = inhalt.length > 2000; /* längere Berichte erst gekürzt zeigen */
   document.getElementById("meldung-bereich").innerHTML = meldung
     ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
-       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>${markdown(meldung)}</div>`
+       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>
+       <div class="inhalt${lang ? " gekuerzt" : ""}">${inhalt}</div>
+       ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}</div>`
     : "";
 }
 function setMeldung(text, titel = meldungTitel) {
@@ -920,6 +941,12 @@ window.addEventListener("hashchange", zeigeTab);
 document.addEventListener("click", ev => {
   const knopf = ev.target.closest("[data-copy]");
   if (knopf) { kopiere(knopf.dataset.copy, knopf); return; }
+  const mehr = ev.target.closest("#meldung-mehr");
+  if (mehr) {
+    const gekuerzt = document.querySelector(".meldung .inhalt").classList.toggle("gekuerzt");
+    mehr.textContent = gekuerzt ? "ganz anzeigen" : "kürzen";
+    return;
+  }
   const reiter = ev.target.closest('[role="tab"]');
   if (reiter) { waehleReiter(reiter); return; }
   if (ev.target.closest("a, button, input, select")) return;

@@ -86,7 +86,9 @@ CODEX_BEWERTEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Server hat build.py gerade ausgeführt, "
     "die Ausgabe steht unten, und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus "
     "und öffne nichts. Du arbeitest in einer Arbeitskopie ({arbeitsordner}), nicht im Projektordner ({ordner}): Ändere nur "
-    "{arbeitsordner}/bewertung-codex.json, lies alles andere (inventar-codex.json, Skill-Dateien) aus {ordner}. Stelle keine Rückfragen."
+    "{arbeitsordner}/bewertung-codex.json, lies alles andere (inventar-codex.json, Skill-Dateien) aus {ordner}. Stelle keine Rückfragen. "
+    "Deine Schlussnachricht ist der Bericht für das Dashboard: höchstens zehn Zeilen Markdown mit den drei Punkten aus Schritt 6 "
+    "(was neu ist, was weggefallen ist, welche Empfehlungen sich geändert haben), keine Tabellen, keine Aufzählung aller Einträge."
 )
 # Codex kennt keine Befehlsliste wie --allowedTools. Die Grenze zieht die Sandbox: nur lesen, schreiben nur in den
 # npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur über den Codex-Proxy zu diesen Domains und nur lesend (limited).

@@ -82,7 +82,7 @@ Fertig, wenn: die Ausgabe weder unbewertete noch entfallene Einträge nennt.
 
 ## 6. Melden
 
-Drei kurze Punkte an den Benutzer: was neu ist, was weggefallen ist, welche Empfehlungen sich geändert haben. Deinstalliere nichts selbst. Das Dashboard empfiehlt, der Benutzer entscheidet.
+Drei kurze Punkte an den Benutzer: was neu ist, was weggefallen ist, welche Empfehlungen sich geändert haben. Höchstens zehn Zeilen Markdown, keine Tabellen, keine Aufzählung aller Einträge: Aus dem Dashboard gestartet steht dieser Text als Karte im Seitenkopf. Deinstalliere nichts selbst. Das Dashboard empfiehlt, der Benutzer entscheidet.
 
 ## Suchen und installieren
 
