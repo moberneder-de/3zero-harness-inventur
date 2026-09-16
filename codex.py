@@ -395,6 +395,57 @@ def befehl(e, empfehlung):
     return f"mv \"{Path(e['pfad']).parent}\" ~/.Trash/"
 
 
+def toml_schluessel(name):
+    """Ein Tabellenname in TOML: schlichte Namen bleiben nackt, alles andere kommt in Anführungszeichen."""
+    return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else json.dumps(name, ensure_ascii=False)
+
+
+def aktionen(e):
+    """Was sich über das Dashboard umsetzen lässt: Befehl (`argv`), ein Wert in config.toml (`toml`),
+    ein [[skills.config]]-Block (`skill_aus`) oder agents/openai.yaml (`nur_manuell`). Was schon gilt, fehlt."""
+    eid = e["id"]
+    if eid.startswith("hook:"):
+        return {}
+    if eid.startswith("plugin:"):
+        pid = f"{e['name']}@{e['marktplatz']}"
+        a = {"deinstallieren": {"argv": ["codex", "plugin", "remove", pid]}}
+        if e["status"] == "aktiv":
+            # „im Konto“ steht im Konto, nicht in config.toml; „wirkungslos“ und „nicht aktiviert“ laden ohnehin nicht
+            a["deaktivieren"] = {"toml": {"tabelle": f'plugins."{pid}"', "schluessel": "enabled", "wert": "false"}}
+        return a
+    if eid.startswith("mcp:"):
+        if e.get("projekt"):
+            return {}  # steht in der config.toml des Projekts, nicht in der globalen
+        if e["art"] == "Plugin":
+            if e["status"] != "aktiv":
+                return {}
+            tabelle = f'plugins."{e["quelle"]}".mcp_servers.{toml_schluessel(e["name"].rsplit(":", 1)[-1])}'
+            return {"deaktivieren": {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "false"}}}
+        a = {"deinstallieren": {"argv": ["codex", "mcp", "remove", e["name"]]}}
+        if e["status"] == "aktiv":
+            a["deaktivieren"] = {"toml": {"tabelle": f"mcp_servers.{toml_schluessel(e['name'])}", "schluessel": "enabled", "wert": "false"}}
+        return a
+    if e.get("projekt"):
+        # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
+        if e["quelle"]["art"] == "skills-CLI":
+            return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
+        return {"deinstallieren": {"argv": ["mv", str(Path(e["pfad"]).parent), str(HOME / ".Trash") + "/"]}}
+    a = {}
+    if not e.get("plugin"):
+        if e.get("update"):
+            a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
+        if e["quelle"]["art"] == "skills-CLI":
+            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]]}
+        else:
+            a["deinstallieren"] = {"argv": ["mv", str(Path(e["pfad"]).parent), str(HOME / ".Trash") + "/"]}
+    if e["status"] != "aus":
+        a["deaktivieren"] = {"skill_aus": e["pfad"]}
+    if e["aufruf"] != "nur $" and not e.get("plugin"):
+        # agents/openai.yaml im Plugin-Ordner überschriebe das Plugin beim nächsten Update
+        a["nur manuell"] = {"nur_manuell": str(Path(e["pfad"]).parent)}
+    return a
+
+
 def inventar():
     """Der Codex-Bestand in der Form, die template.html erwartet. build.main ergänzt Zeitpunkt, Harness und Version."""
     cfg = lies_toml(CODEX / "config.toml")
@@ -421,7 +472,7 @@ def inventar():
     alle = mcp + plugin_liste + skills + projekt_skills + projekt_mcp + hooks
     bewerte(alle, bewertung, befehl)
     for e in alle:
-        e["aktionen"] = {}
+        e["aktionen"] = aktionen(e)
     unbewertet, entfallen = abgleich(alle, bewertung)
     return {
         "live_status": None,

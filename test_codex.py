@@ -222,7 +222,7 @@ class Befehle(unittest.TestCase):
 
 
 class Inventar(CodexOrdner):
-    def test_ganzer_bestand_ohne_aktionen(self):
+    def test_ganzer_bestand(self):
         self.skill(self.home / ".agents/skills", "grilling")
         self.skill(self.home / ".codex/skills/.system", "imagegen")
         self.schreibe(self.home / ".codex/config.toml", '[mcp_servers.node_repl]\ncommand = "n"\n')
@@ -235,7 +235,9 @@ class Inventar(CodexOrdner):
         self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
                          (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))
         g = daten["skills"][0]
-        self.assertEqual((g["bewertung"]["was"], g["aktionen"], g["befehl"]), ("Fragt nach.", {}, "mv \"%s\" ~/.Trash/" % (self.home / ".agents/skills/grilling")))
+        self.assertEqual(g["bewertung"]["was"], "Fragt nach.")
+        self.assertEqual(sorted(g["aktionen"]), ["deaktivieren", "deinstallieren", "nur manuell"])
+        self.assertEqual(g["befehl"], "mv \"%s\" ~/.Trash/" % (self.home / ".agents/skills/grilling"))
         self.assertEqual([b["name"] for b in daten["eingebaut"]], ["imagegen"])
 
 
@@ -271,3 +273,53 @@ class HooksUndProjekte(CodexOrdner):
 
     def test_kaputte_projects_bricht_nicht_ab(self):
         self.assertEqual(codex.projekte({"mcp_servers": ["x"], "projects": ["y"]}, (set(), set()), {}), ([], []))
+
+
+class Aktionen(unittest.TestCase):
+    def test_plugins(self):
+        p = {"id": "plugin:documents@openai-primary-runtime", "name": "documents", "marktplatz": "openai-primary-runtime", "status": "aktiv"}
+        self.assertEqual(codex.aktionen(p), {
+            "deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]},
+            "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}})
+        self.assertEqual(codex.aktionen({**p, "status": "deaktiviert"}),
+                         {"deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]}})
+        konto = {"id": "plugin:sites@openai-curated-remote", "name": "sites", "marktplatz": "openai-curated-remote", "status": "im Konto"}
+        self.assertEqual(codex.aktionen(konto), {"deinstallieren": {"argv": ["codex", "plugin", "remove", "sites@openai-curated-remote"]}})
+
+    def test_mcp_server(self):
+        eigen = {"id": "mcp:node_repl", "name": "node_repl", "art": "User", "status": "aktiv"}
+        self.assertEqual(codex.aktionen(eigen), {
+            "deinstallieren": {"argv": ["codex", "mcp", "remove", "node_repl"]},
+            "deaktivieren": {"toml": {"tabelle": "mcp_servers.node_repl", "schluessel": "enabled", "wert": "false"}}})
+        self.assertEqual(codex.aktionen({**eigen, "status": "deaktiviert"}),
+                         {"deinstallieren": {"argv": ["codex", "mcp", "remove", "node_repl"]}})
+        self.assertEqual(codex.aktionen({"id": "mcp:computer use", "name": "computer use", "art": "User", "status": "aktiv"})["deaktivieren"],
+                         {"toml": {"tabelle": 'mcp_servers."computer use"', "schluessel": "enabled", "wert": "false"}})
+        plugin = {"id": "mcp:plugin:documents:docs", "name": "plugin:documents:docs", "art": "Plugin",
+                  "quelle": "documents@openai-primary-runtime", "status": "aktiv"}
+        self.assertEqual(codex.aktionen(plugin), {"deaktivieren": {"toml": {
+            "tabelle": 'plugins."documents@openai-primary-runtime".mcp_servers.docs', "schluessel": "enabled", "wert": "false"}}})
+        self.assertEqual(codex.aktionen({**plugin, "status": "inaktiv (Plugin aus)"}), {})
+        self.assertEqual(codex.aktionen({"id": "mcp:Kit/q", "name": "q", "art": ".codex/config.toml", "projekt": "/x/Kit", "status": "eingetragen"}), {})
+
+    def test_skills(self):
+        cli = {"id": "skill:grilling", "name": "grilling", "typ": "Skill", "status": "aktiv", "aufruf": "automatisch + $",
+               "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
+        self.assertEqual(codex.aktionen({**cli, "update": True}), {
+            "aktualisieren": {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]},
+            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"]},
+            "deaktivieren": {"skill_aus": "/h/.agents/skills/grilling/SKILL.md"},
+            "nur manuell": {"nur_manuell": "/h/.agents/skills/grilling"}})
+        eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "name": "pdf", "quelle": {"art": "lokal"}}
+        self.assertEqual(codex.aktionen(eigen)["deinstallieren"],
+                         {"argv": ["mv", "/h/.codex/skills/pdf", str(codex.HOME / ".Trash") + "/"]})
+        aus = {**cli, "status": "aus", "aufruf": "nur $"}
+        self.assertEqual(sorted(codex.aktionen(aus)), ["deinstallieren"])
+        teil = {**cli, "id": "skill:documents:documents", "name": "documents:documents", "plugin": "documents@openai-primary-runtime",
+                "pfad": "/h/.codex/plugins/cache/x/documents/1/skills/documents/SKILL.md"}
+        self.assertEqual(codex.aktionen(teil), {"deaktivieren": {"skill_aus": teil["pfad"]}})
+        projekt = {**cli, "id": "skill:Kit/seo", "name": "seo", "projekt": "/x/Kit"}
+        self.assertEqual(codex.aktionen(projekt), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo"], "cwd": "/x/Kit"}})
+
+    def test_hooks_ohne_aktionen(self):
+        self.assertEqual(codex.aktionen({"id": "hook:config:notify", "typ": "Hook"}), {})
