@@ -17,6 +17,7 @@ from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, upd
 HOME = Path.home()
 CODEX = HOME / ".codex"
 AGENTS = HOME / ".agents"
+CLAUDE = HOME / ".claude"  # nur für die Frage, ob ein Skill auch in Claude Code lädt
 HIER = Path(__file__).resolve().parent
 SKILL_PFAD = re.compile(r"(/[^\s'\"<>]+/SKILL\.md)")
 
@@ -92,6 +93,10 @@ def eigene_skills(aus, lock, autoren):
                 continue
             namen.add(ordner.name)
             e = skill_eintrag(ordner.name, datei, aus)
+            # Verweist ~/.claude/skills auf denselben Ordner, lädt der Skill auch in Claude Code
+            verweis = CLAUDE / "skills" / ordner.name / "SKILL.md"
+            if verweis.is_file() and verweis.resolve() == datei.resolve():
+                e["geteilt"] = True
             eintrag = lock.get(ordner.name) if wurzel == AGENTS / "skills" else None
             if eintrag:
                 pfad = eintrag.get("skillPath", "")

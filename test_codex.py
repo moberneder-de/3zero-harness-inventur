@@ -15,7 +15,8 @@ class CodexOrdner(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.home = self.tmp / "home"
         self.patches = [mock.patch.object(codex, "HOME", self.home), mock.patch.object(codex, "CODEX", self.home / ".codex"),
-                        mock.patch.object(codex, "AGENTS", self.home / ".agents"), mock.patch.object(codex, "HIER", self.tmp)]
+                        mock.patch.object(codex, "AGENTS", self.home / ".agents"), mock.patch.object(codex, "CLAUDE", self.home / ".claude"),
+                        mock.patch.object(codex, "HIER", self.tmp)]
         for p in self.patches:
             p.start()
 
@@ -59,6 +60,17 @@ class Skills(CodexOrdner):
         self.assertGreater(g["tokens"], 0)
         self.assertEqual((skills["kopie"]["status"], skills["kopie"]["tokens"], skills["kopie"]["quelle"]["art"]), ("aus", 0, "lokal"))
         self.assertEqual((skills["inventur"]["aufruf"], skills["inventur"]["tokens"], skills["inventur"]["quelle"]["art"]), ("nur $", 0, "Symlink"))
+
+    def test_geteilte_skills_erkennen(self):
+        """Ein Skill aus ~/.agents/skills lädt auch in Claude Code, sobald ~/.claude/skills darauf verweist."""
+        agents, claude = self.home / ".agents/skills", self.home / ".claude/skills"
+        self.skill(agents, "grilling")
+        self.skill(agents, "nur-codex")
+        self.skill(self.home / ".codex/skills", "pdf")
+        claude.mkdir(parents=True)
+        (claude / "grilling").symlink_to(agents / "grilling")
+        skills = {e["name"]: e.get("geteilt", False) for e in codex.eigene_skills((set(), set()), {}, {})}
+        self.assertEqual(skills, {"grilling": True, "nur-codex": False, "pdf": False})
 
     def test_eingebaute_mit_was_aus_der_bewertung(self):
         system = self.home / ".codex/skills/.system"

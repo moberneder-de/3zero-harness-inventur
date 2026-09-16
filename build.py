@@ -25,6 +25,8 @@ import harness
 
 HOME = Path.home()
 CLAUDE = HOME / ".claude"
+AGENTS = HOME / ".agents"  # dorthin legt `npx skills` Skills; Codex liest denselben Ordner
+CODEX = HOME / ".codex"  # nur für die Frage, ob ein Skill auch in Codex lädt
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
 LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
@@ -44,7 +46,7 @@ SETTINGS = lies_json(CLAUDE / "settings.json")
 BEWERTUNG = lies_json(HIER / "bewertung.json")
 NUTZUNG = CFG.get("skillUsage", {})
 OVERRIDES = SETTINGS.get("skillOverrides", {})
-LOCK = lies_json(HOME / ".agents" / ".skill-lock.json").get("skills", {})
+LOCK = lies_json(AGENTS / ".skill-lock.json").get("skills", {})
 
 
 def gesperrte_namen(settings):
@@ -178,6 +180,10 @@ def persoenliche_skills():
         if not datei.is_file():
             continue
         e = skill_eintrag(ordner.name, "Skill", datei)
+        # Codex liest ~/.agents/skills selbst; dieselbe Datei kann auch unter ~/.codex/skills liegen
+        verweis = CODEX / "skills" / ordner.name / "SKILL.md"
+        if datei.resolve().is_relative_to((AGENTS / "skills").resolve()) or (verweis.is_file() and verweis.resolve() == datei.resolve()):
+            e["geteilt"] = True
         lock = LOCK.get(ordner.name)
         if lock:
             pfad = lock.get("skillPath", "")

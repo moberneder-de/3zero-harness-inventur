@@ -158,6 +158,22 @@ class ProjektSkills(unittest.TestCase):
             arten = {e["name"]: e["quelle"]["art"] for e in build.persoenliche_skills()}
         self.assertEqual(arten, {"eigen": "Symlink", "kopie": "lokal", "start": "Symlink"})
 
+    def test_skills_aus_agents_gelten_in_beiden_harnesses(self):
+        """~/.agents/skills liest Codex direkt; über den Verweis in ~/.claude/skills lädt derselbe Skill auch in Claude Code."""
+        agents, claude, codex, repo = self.tmp / ".agents", self.tmp / ".claude", self.tmp / ".codex", self.tmp / "Repo"
+        self.schreibe(agents / "skills/grilling/SKILL.md", "---\nname: grilling\ndescription: fragt nach\n---\n")
+        self.schreibe(repo / "skill/SKILL.md", "---\nname: inventur\ndescription: zählt\n---\n")
+        self.schreibe(claude / "skills/kopie/SKILL.md", "---\nname: kopie\ndescription: kopiert\n---\n")
+        (claude / "skills/grilling").symlink_to(agents / "skills/grilling")
+        # derselbe Ordner, aber je Harness ein eigener Verweis
+        (claude / "skills/inventur").symlink_to(repo / "skill")
+        (codex / "skills").mkdir(parents=True)
+        (codex / "skills/inventur").symlink_to(repo / "skill")
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.object(build, "AGENTS", agents), \
+                mock.patch.object(build, "CODEX", codex), mock.patch.object(build, "LOCK", {}):
+            geteilt = {e["name"]: e.get("geteilt", False) for e in build.persoenliche_skills()}
+        self.assertEqual(geteilt, {"grilling": True, "inventur": True, "kopie": False})
+
     def test_home_ist_kein_projekt(self):
         self.assertEqual(build.projekt_skills([str(Path.home())]), [])
 

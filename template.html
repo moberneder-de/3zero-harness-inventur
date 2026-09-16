@@ -538,7 +538,9 @@ function renderPlugins() {
 }
 
 /* Skills-Tabelle mit Filter und Sortierung */
-const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", teile: true, sort: "name", richtung: 1 };
+const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", geteilt: "", teile: true, sort: "name", richtung: 1 };
+/* Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und laden deshalb in beiden */
+const GETEILT = je("auch in Codex", "auch in Claude Code");
 function renderSkillsRahmen() {
   const quellen = [...new Set(SKILLS.map(lieferweg))].sort((a, b) => a.localeCompare(b));
   const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
@@ -548,14 +550,15 @@ function renderSkillsRahmen() {
     <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar"], "jeder Status")}</select>
     <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $"]), "jeder Aufruf")}</select>
     <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
+    <select id="f-geteilt" aria-label="Gilt in beiden Harnesses">${opt([`nur für ${D.harness_name}`, GETEILT], "beide Harnesses")}</select>
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl" id="f-anzahl"></span></div>`;
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
     .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
-    je(`Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`,
-      `Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system. „nur $“ heißt: lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>). „Genutzt“ zählt Codex-Sitzungen. Eingebaute lassen sich nicht deinstallieren.`));
+    je(`Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`,
+      `Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system. „nur $“ heißt: lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>). „Genutzt“ zählt Codex-Sitzungen. Eingebaute lassen sich nicht deinstallieren. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`));
 }
 function skillsFiltern() {
   const q = F.suche.toLowerCase();
@@ -566,7 +569,8 @@ function skillsFiltern() {
       && (!F.quelle || lieferweg(s) === F.quelle)
       && (!F.status || (F.status === "Update verfügbar" ? s.update : s.status === F.status))
       && (!F.aufruf || s.aufruf === F.aufruf)
-      && (!F.empf || empf === F.empf);
+      && (!F.empf || empf === F.empf)
+      && (!F.geteilt || (F.geteilt === GETEILT ? !!s.geteilt : !s.geteilt));
   });
   const wert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : s.name.toLowerCase();
   liste.sort((a, b) => (wert(a) > wert(b) ? 1 : wert(a) < wert(b) ? -1 : 0) * F.richtung);
@@ -574,7 +578,7 @@ function skillsFiltern() {
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
-        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}</td>
+        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}${s.geteilt ? `<span class="tag">${esc(GETEILT)}</span>` : ""}</td>
       <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
       detailZeile(7 + SP, [
@@ -966,7 +970,7 @@ document.addEventListener("click", ev => {
     }
   }
 });
-for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"]]) {
+for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"], ["f-geteilt", "geteilt"]]) {
   document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
 }
 document.getElementById("f-teile").addEventListener("change", ev => { F.teile = ev.target.checked; skillsFiltern(); });
