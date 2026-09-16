@@ -61,6 +61,9 @@ h3 { font-size: 16px; font-weight: 600; }
 
 .banner { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 14px 20px; margin-top: 28px; font-size: 15px; }
 .banner strong { color: var(--text-dark); }
+.banner details { margin: 4px 0; }
+.banner summary { cursor: pointer; }
+.banner details div { margin-top: 4px; }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 10px; }
 .kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 18px 18px 16px; }
@@ -380,8 +383,11 @@ function renderUeberblick() {
   const skAn = D.skills.filter(s => s.status === "aktiv").length;
   const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !umgesetzt(e)).length;
   const banner = [];
-  if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong> ${D.unbewertet.map(esc).join(", ")}.`);
-  if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong> ${D.entfallen.map(esc).join(", ")}.`);
+  /* Nach einem frischen Bestand sind das schnell über hundert IDs; ausgeschrieben füllen sie den halben Bildschirm */
+  const idListe = ids => ids.length <= 6 ? ` ${ids.map(esc).join(", ")}.`
+    : `<details><summary class="klein">alle ${ids.length} anzeigen</summary><div class="klein">${ids.map(esc).join(", ")}</div></details>`;
+  if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong>${idListe(D.unbewertet)}`);
+  if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong>${idListe(D.entfallen)}`);
   if (D.live_status === false) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
   const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in ${esc(D.harness_name)} <code>${je("/", "$")}3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
