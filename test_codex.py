@@ -285,6 +285,8 @@ class Aktionen(unittest.TestCase):
                          {"deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]}})
         konto = {"id": "plugin:sites@openai-curated-remote", "name": "sites", "marktplatz": "openai-curated-remote", "status": "im Konto"}
         self.assertEqual(codex.aktionen(konto), {"deinstallieren": {"argv": ["codex", "plugin", "remove", "sites@openai-curated-remote"]}})
+        self.assertEqual(codex.aktionen({"id": 'plugin:a"b@m', "name": 'a"b', "marktplatz": "m", "status": "aktiv"})["deaktivieren"],
+                         {"toml": {"tabelle": 'plugins."a\\"b@m"', "schluessel": "enabled", "wert": "false"}})
 
     def test_mcp_server(self):
         eigen = {"id": "mcp:node_repl", "name": "node_repl", "art": "User", "status": "aktiv"}

@@ -411,7 +411,7 @@ def aktionen(e):
         a = {"deinstallieren": {"argv": ["codex", "plugin", "remove", pid]}}
         if e["status"] == "aktiv":
             # „im Konto“ steht im Konto, nicht in config.toml; „wirkungslos“ und „nicht aktiviert“ laden ohnehin nicht
-            a["deaktivieren"] = {"toml": {"tabelle": f'plugins."{pid}"', "schluessel": "enabled", "wert": "false"}}
+            a["deaktivieren"] = {"toml": {"tabelle": f"plugins.{toml_schluessel(pid)}", "schluessel": "enabled", "wert": "false"}}
         return a
     if eid.startswith("mcp:"):
         if e.get("projekt"):
@@ -419,7 +419,7 @@ def aktionen(e):
         if e["art"] == "Plugin":
             if e["status"] != "aktiv":
                 return {}
-            tabelle = f'plugins."{e["quelle"]}".mcp_servers.{toml_schluessel(e["name"].rsplit(":", 1)[-1])}'
+            tabelle = f'plugins.{toml_schluessel(e["quelle"])}.mcp_servers.{toml_schluessel(e["name"].rsplit(":", 1)[-1])}'
             return {"deaktivieren": {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "false"}}}
         a = {"deinstallieren": {"argv": ["codex", "mcp", "remove", e["name"]]}}
         if e["status"] == "aktiv":
