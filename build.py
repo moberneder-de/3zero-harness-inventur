@@ -32,6 +32,8 @@ HIER = Path(__file__).resolve().parent
 LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
 # Nur die Wortmarke: „IT- Consulting“ steht unterhalb von y=163 und fällt aus der viewBox
 LOGO_MASSE = ('width="789" height="298" viewBox="21 29 789 298"', 'width="789" height="141" viewBox="21 29 789 141"')
+ICON = HIER / "app-icon.svg"  # Favicon und Zeichen im Seitenkopf
+APP_ICON = HIER / "app-icon.png"  # fürs Dock, gerendert aus ICON mit icon-entwuerfe/render.py
 
 
 def lies_json(pfad):
@@ -684,7 +686,10 @@ def main(argv=None):
     if LOGO_MASSE[0] not in svg:
         raise SystemExit(f"{LOGO} hat andere Maße als erwartet, Zuschnitt in LOGO_MASSE prüfen.")
     logo = "data:image/svg+xml;base64," + base64.b64encode(svg.replace(*LOGO_MASSE).encode()).decode()
-    vorlage = (HIER / "template.html").read_text(encoding="utf-8").replace("__LOGO__", logo)
+    icon = "data:image/svg+xml;base64," + base64.b64encode(ICON.read_bytes()).decode()
+    app_icon = "data:image/png;base64," + base64.b64encode(APP_ICON.read_bytes()).decode()
+    vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
+               .replace("__LOGO__", logo).replace("__ICON__", icon).replace("__APPICON__", app_icon))
     (HIER / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
     print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "
