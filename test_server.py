@@ -31,6 +31,7 @@ class Server(unittest.TestCase):
         }}])
         self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim")
         self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
+        self.srv.codex_skills = self.tmp / "agents-skills"  # nie das echte ~/.agents/skills treffen
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.port = self.srv.server_address[1]
 
@@ -519,17 +520,30 @@ class Server(unittest.TestCase):
 
     def test_installieren_nur_manuell_unter_codex_schreibt_openai_yaml(self):
         self.mit_config()
-        agents = self.tmp / "agents-skills"
-        (agents / "frontend-slides").mkdir(parents=True)
-        self.srv.codex_skills = agents
+        ordner = self.srv.codex_skills / "frontend-slides"
+        ordner.mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: frontend-slides\n---\n")
         self.codex_ersatz(json.dumps({"bericht": "b", "kandidaten": [
             {**{f: None for f in ("plugin", "marktplatz")}, **self.KANDIDATEN[0]}]}))
         self.suchen()
         self.claude_ersatz("installiert", name="npx")
         self.assertTrue(self.installieren({"nr": 0, "nur_manuell": True})[1]["ok"])
         self.assertIn("allow_implicit_invocation: false",
-                      (agents / "frontend-slides/agents/openai.yaml").read_text())
+                      (ordner / "agents/openai.yaml").read_text())
         self.assertEqual(json.loads(self.settings.read_text()).get("skillOverrides", {}).get("frontend-slides"), None)
+
+    def test_installieren_meldet_erfolg_auch_wenn_nur_manuell_fehlschlaegt(self):
+        """Scheitert nur der Nachschritt „nur manuell“ (hier: kein Skill-Ordner mit SKILL.md unter codex_skills),
+        bleibt die Installation selbst ein Erfolg."""
+        self.mit_config()
+        self.codex_ersatz(json.dumps({"bericht": "b", "kandidaten": [
+            {**{f: None for f in ("plugin", "marktplatz")}, **self.KANDIDATEN[0]}]}))
+        self.suchen()
+        self.claude_ersatz("installiert", name="npx")
+        status, antwort = self.installieren({"nr": 0, "nur_manuell": True})
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertIn("installiert, aber nur manuell nicht gesetzt", antwort["ausgabe"])
+        self.assertEqual(self.stand()["kandidaten"][0]["installiert"], True)
 
     CONFIG = '''# eigene Einstellungen
 model = "gpt-test"
@@ -583,6 +597,14 @@ enabled = true
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertEqual(config.read_text(), "[kaputt\n")
 
+    def test_deaktivieren_ohne_config_toml_meldet_lesbaren_fehler(self):
+        self.mit_config()
+        self.srv.codex_config.unlink()
+        self.schreibe_inventar([{"id": "plugin:documents@openai-primary-runtime", "name": "documents", "aktionen": {
+            "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}}}])
+        status, antwort = self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")
+        self.assertEqual((status, antwort), (200, {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}))
+
     def test_skill_abschalten_haengt_block_an(self):
         config = self.mit_config()
         skill = self.tmp / "skills/grilling/SKILL.md"
@@ -600,6 +622,7 @@ enabled = true
         self.mit_config()
         ordner = self.tmp / "skills/teach"
         (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: teach\n---\n")
         (ordner / "agents/openai.yaml").write_text("interface:\n  display_name: Teach\npolicy:\n  allow_implicit_invocation: true\n")
         self.schreibe_inventar([], skills=[{"id": "skill:teach", "name": "teach", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
         self.assertTrue(self.ausfuehren("skill:teach", "nur manuell")[1]["ok"])
@@ -610,9 +633,20 @@ enabled = true
         # ohne Datei legt der Server eine neue an
         leer = self.tmp / "skills/neu"
         leer.mkdir(parents=True)
+        (leer / "SKILL.md").write_text("---\nname: neu\n---\n")
         self.schreibe_inventar([], skills=[{"id": "skill:neu", "name": "neu", "aktionen": {"nur manuell": {"nur_manuell": str(leer)}}}])
         self.assertTrue(self.ausfuehren("skill:neu", "nur manuell")[1]["ok"])
         self.assertIn("allow_implicit_invocation: false", (leer / "agents/openai.yaml").read_text())
+
+    def test_nur_manuell_ohne_skill_md_meldet_fehler_ohne_datei_anzulegen(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/leer"
+        ordner.mkdir(parents=True)
+        self.schreibe_inventar([], skills=[{"id": "skill:leer", "name": "leer", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        status, antwort = self.ausfuehren("skill:leer", "nur manuell")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("SKILL.md", antwort["ausgabe"])
+        self.assertFalse((ordner / "agents").exists())
 
     def test_claude_code_schreibt_weiter_settings_json(self):
         self.schreibe_inventar([], skills=[
@@ -633,6 +667,7 @@ enabled = true
         self.mit_config()
         ordner = self.tmp / "skills/neu"
         ordner.mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: neu\n---\n")
         self.schreibe_inventar([], skills=[{"id": "skill:neu", "name": "neu", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
         self.assertTrue(self.ausfuehren("skill:neu", "nur manuell")[1]["ok"])
         self.assertEqual((ordner / "agents/openai.yaml").stat().st_mode & 0o777, 0o600)
@@ -641,6 +676,7 @@ enabled = true
         self.mit_config()
         ordner = self.tmp / "skills/vier"
         (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: vier\n---\n")
         (ordner / "agents/openai.yaml").write_text(
             "interface:\n    display_name: Vier\npolicy:\n    allow_implicit_invocation: true\n    andere_einstellung: 1\n")
         self.schreibe_inventar([], skills=[{"id": "skill:vier", "name": "vier", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
@@ -652,6 +688,7 @@ enabled = true
         self.mit_config()
         ordner = self.tmp / "skills/mix"
         (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: mix\n---\n")
         (ordner / "agents/openai.yaml").write_text("defaults:\n  allow_implicit_invocation: true\npolicy:\n  other: 1\n")
         self.schreibe_inventar([], skills=[{"id": "skill:mix", "name": "mix", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
         self.assertTrue(self.ausfuehren("skill:mix", "nur manuell")[1]["ok"])
@@ -662,6 +699,7 @@ enabled = true
         self.mit_config()
         ordner = self.tmp / "skills/inline"
         (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: inline\n---\n")
         inhalt = "policy: {allow_implicit_invocation: true}\n"
         (ordner / "agents/openai.yaml").write_text(inhalt)
         self.schreibe_inventar([], skills=[{"id": "skill:inline", "name": "inline", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
@@ -671,10 +709,38 @@ enabled = true
         self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
         self.assertFalse((ordner / "agents/openai.yaml.bak").exists())
 
+    def test_nur_manuell_skalares_policy_wird_abgelehnt(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/skalar"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: skalar\n---\n")
+        inhalt = "policy: ~\n"
+        (ordner / "agents/openai.yaml").write_text(inhalt)
+        self.schreibe_inventar([], skills=[{"id": "skill:skalar", "name": "skalar", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        status, antwort = self.ausfuehren("skill:skalar", "nur manuell")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
+        self.assertFalse((ordner / "agents/openai.yaml.bak").exists())
+
+    def test_nur_manuell_kommentar_auf_spalte_0_beendet_block_nicht(self):
+        """Die bestehende allow_implicit_invocation-Zeile steht nach einem Kommentar auf Spalte 0: ohne den Fix
+        gilt der Block davor als beendet, und der Server fügt eine zweite (ungültige) Zeile davor ein."""
+        self.mit_config()
+        ordner = self.tmp / "skills/kommentar"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: kommentar\n---\n")
+        (ordner / "agents/openai.yaml").write_text(
+            "policy:\n  other: 1\n# Kommentar\n  allow_implicit_invocation: true\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:kommentar", "name": "kommentar", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:kommentar", "nur manuell")[1]["ok"])
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(),
+                         "policy:\n  other: 1\n# Kommentar\n  allow_implicit_invocation: false\n")
+
     def test_nur_manuell_rollback_bei_fehlgeschlagener_pruefung(self):
         self.mit_config()
         ordner = self.tmp / "skills/rollback"
         (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: rollback\n---\n")
         inhalt = "policy:\n  allow_implicit_invocation: true\n"
         (ordner / "agents/openai.yaml").write_text(inhalt)
         self.schreibe_inventar([], skills=[{"id": "skill:rollback", "name": "rollback", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])

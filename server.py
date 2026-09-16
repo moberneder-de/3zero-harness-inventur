@@ -302,6 +302,8 @@ class Inventarserver(ThreadingHTTPServer):
         return None
 
     def toml_setzen(self, tabelle, schluessel, wert):
+        if not self.codex_config.is_file():
+            return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
         alt = self.codex_config.read_text(encoding="utf-8")
         pfad = toml_pfad(tabelle) + [schluessel]
 
@@ -318,6 +320,8 @@ class Inventarserver(ThreadingHTTPServer):
         return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [{tabelle}] {schluessel} = {wert}"}
 
     def skill_abschalten(self, pfad):
+        if not self.codex_config.is_file():
+            return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
         alt = self.codex_config.read_text(encoding="utf-8")
         eintrag = {"path": pfad, "enabled": False}
         pruefen = lambda daten: eintrag in (daten.get("skills") or {}).get("config", [])
@@ -332,18 +336,23 @@ class Inventarserver(ThreadingHTTPServer):
         nur noch per $name lädt. Ändert nur innerhalb des policy:-Blocks (Einrückung 0 bis zur nächsten nicht
         leeren Zeile mit Einrückung 0) und übernimmt dessen Einrückung; alles andere bleibt erhalten. Schreibt
         bei fehlgeschlagener Prüfung den ursprünglichen Stand zurück, wie config_aendern es für config.toml tut."""
+        if not (Path(ordner) / "SKILL.md").is_file():
+            return {"ok": False, "ausgabe": f"{ordner} enthält keine SKILL.md"}
         datei = Path(ordner) / "agents" / "openai.yaml"
         alt = datei.read_text(encoding="utf-8") if datei.is_file() else None
         if alt is not None:
             zeilen = alt.splitlines()
             start = next((i for i, z in enumerate(zeilen) if re.match(r"^policy:\s*", z)), None)
-            if start is not None and "{" in zeilen[start]:
-                return {"ok": False, "ausgabe": f"{datei} nutzt eine Inline-Notation für policy, bitte von Hand ändern"}
+            if start is not None and not re.fullmatch(r"policy:\s*", zeilen[start]):
+                art = "eine Inline-Notation" if "{" in zeilen[start] else "einen Wert"
+                return {"ok": False, "ausgabe": f"{datei} nutzt {art} für policy, bitte von Hand ändern"}
             if start is None:
                 zeilen += ["policy:", "  allow_implicit_invocation: false"]
             else:
+                # Leerzeilen und Kommentare auf Spalte 0 beenden den Block nicht, nur eine echte neue Zeile auf Spalte 0
                 ende = next((i for i in range(start + 1, len(zeilen))
-                             if zeilen[i].strip() and len(zeilen[i]) == len(zeilen[i].lstrip())), len(zeilen))
+                             if zeilen[i].strip() and not zeilen[i].lstrip().startswith("#")
+                             and len(zeilen[i]) == len(zeilen[i].lstrip())), len(zeilen))
                 muster = re.compile(r"^\s+allow_implicit_invocation\s*:")
                 for i in range(start + 1, ende):
                     if muster.match(zeilen[i]):
@@ -525,8 +534,10 @@ class Inventarserver(ThreadingHTTPServer):
             with self.sperre:
                 nachher = (self.nur_manuell_datei(self.codex_skills / k["skill"]) if codex
                            else self.override_setzen(k["skill"], "user-invocable-only"))
-            r["ok"] = nachher["ok"]
-            r["ausgabe"] += "\n" + nachher["ausgabe"]
+            if nachher["ok"]:
+                r["ausgabe"] += "\n" + nachher["ausgabe"]
+            else:
+                r["ausgabe"] += "\ninstalliert, aber nur manuell nicht gesetzt: " + nachher["ausgabe"]
         if r["ok"]:
             k["installiert"] = True
         return r
@@ -590,7 +601,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(400, {"ok": False, "ausgabe": "Diese Aktion bietet der Eintrag nicht an."})
         try:
             ergebnis = self.server.ausfuehren(*treffer)
-        except (OSError, ValueError) as fehler:
+        except (OSError, ValueError, AttributeError, TypeError) as fehler:
             ergebnis = {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"}
         self.antworte(200, ergebnis)
 
