@@ -456,7 +456,7 @@ class Server(unittest.TestCase):
         status, stand = self.suchen()
         self.assertEqual((status, stand["ok"], stand["ausgabe"]), (200, True, "## Bedarf\nFolien"))
         self.assertEqual(len(stand["kandidaten"]), 3)
-        self.assertEqual([k["installierbar"] for k in stand["kandidaten"]], [False, False, False])
+        self.assertEqual([k["installierbar"] for k in stand["kandidaten"]], [True, True, False])
         self.assertNotIn("plugin", stand["kandidaten"][0])
         argv = (self.tmp / "argv").read_text().split("\n")
         for erwartet in ('permissions.suche.extends=":read-only"', "permissions.suche.network.enabled=true",
@@ -477,7 +477,6 @@ class Server(unittest.TestCase):
         for verboten in ("workspace-write", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox"):
             self.assertNotIn(verboten, argv)
         self.assertFalse(Path((self.tmp / "cwd").read_text().strip()).resolve().is_relative_to(Path.home()))
-        self.assertEqual(self.installieren({"nr": 0})[0], 400)
 
     def test_codex_modell_aus_der_konfiguration(self):
         config = self.tmp / "c.toml"
@@ -497,14 +496,40 @@ class Server(unittest.TestCase):
         wert = next(a for a in argv if a.startswith("shell_environment_policy.set.npm_config_userconfig="))
         self.assertEqual(json.loads(wert.split("=", 1)[1]), "/tmp/beispiel/npmrc")
 
-    def test_installieren_unter_codex_immer_abgelehnt(self):
-        self.suchen()  # Claude-Suche, Kandidat 0 ist installierbar
-        vor = (self.tmp / "argv").read_text()
-        (self.tmp / "harness.json").write_text('{"harness": "codex"}')
-        self.claude_ersatz("sollte nicht laufen", name="npx")
-        status, _ = self.installieren({"nr": 0})
-        self.assertEqual(status, 400)
-        self.assertEqual((self.tmp / "argv").read_text(), vor)  # npx wurde nicht aufgerufen
+    def test_installieren_skill_unter_codex(self):
+        self.mit_config()
+        self.codex_ersatz(json.dumps({"bericht": "b", "kandidaten": [
+            {**{f: None for f in ("plugin", "marktplatz")}, **self.KANDIDATEN[0]}]}))
+        self.suchen()
+        self.claude_ersatz("installiert", name="npx")
+        status, antwort = self.installieren({"nr": 0})
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
+                         ["-y", "skills", "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "codex"])
+
+    def test_installieren_plugin_unter_codex(self):
+        self.mit_config()
+        self.codex_ersatz(json.dumps({"bericht": "b", "kandidaten": [
+            {**{f: None for f in ("repo", "skill")}, **self.KANDIDATEN[1]}]}))
+        self.suchen()
+        self.codex_ersatz("installiert")
+        status, antwort = self.installieren({"nr": 0})
+        self.assertEqual((status, antwort["ok"]), (200, True))
+        self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1], ["plugin", "add", "slides@claude-plugins-official"])
+
+    def test_installieren_nur_manuell_unter_codex_schreibt_openai_yaml(self):
+        self.mit_config()
+        agents = self.tmp / "agents-skills"
+        (agents / "frontend-slides").mkdir(parents=True)
+        self.srv.codex_skills = agents
+        self.codex_ersatz(json.dumps({"bericht": "b", "kandidaten": [
+            {**{f: None for f in ("plugin", "marktplatz")}, **self.KANDIDATEN[0]}]}))
+        self.suchen()
+        self.claude_ersatz("installiert", name="npx")
+        self.assertTrue(self.installieren({"nr": 0, "nur_manuell": True})[1]["ok"])
+        self.assertIn("allow_implicit_invocation: false",
+                      (agents / "frontend-slides/agents/openai.yaml").read_text())
+        self.assertEqual(json.loads(self.settings.read_text()).get("skillOverrides", {}).get("frontend-slides"), None)
 
     CONFIG = '''# eigene Einstellungen
 model = "gpt-test"

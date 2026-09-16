@@ -245,6 +245,7 @@ class Inventarserver(ThreadingHTTPServer):
         # Eigene Sperre, weil self.sperre während einer Bewertung minutenlang belegt ist.
         self.laeufe, self.laeufe_sperre = {}, threading.Lock()
         self.codex_config = Path.home() / ".codex" / "config.toml"
+        self.codex_skills = Path.home() / ".agents" / "skills"  # dorthin legt npx skills die Skills
 
     def harness(self):
         return harness.aktuell(self.ordner)
@@ -474,8 +475,7 @@ class Inventarserver(ThreadingHTTPServer):
         if not r["ok"] or not isinstance(daten, dict):
             return {"ok": False, "ausgabe": r["ausgabe"]}
         kandidaten = [{f: w for f, w in k.items() if w is not None} for k in daten.get("kandidaten", []) if isinstance(k, dict)][:3]
-        # Installieren unter Codex kommt erst mit Teil B; bis dahin nur zum Kopieren
-        self.kandidaten = [{**k, "installierbar": False} for k in kandidaten]
+        self.kandidaten = [{**k, "installierbar": installierbar(k)} for k in kandidaten]
         return {"ok": True, "ausgabe": str(daten.get("bericht", "")), "kandidaten": self.kandidaten}
 
     def im_hintergrund(self, art, arbeit, **angaben):
@@ -510,8 +510,12 @@ class Inventarserver(ThreadingHTTPServer):
 
     def installieren(self, nr, nur_manuell):
         k = self.kandidaten[nr]
+        codex = self.harness() == "codex"
         if k["art"] == "skill":
-            argv = ["npx", "-y", "skills", "add", k["repo"], "--skill", k["skill"], "-g", "-y", "--agent", "claude-code"]
+            argv = ["npx", "-y", "skills", "add", k["repo"], "--skill", k["skill"], "-g", "-y",
+                    "--agent", "codex" if codex else "claude-code"]
+        elif codex:
+            argv = ["codex", "plugin", "add", f"{k['plugin']}@{k['marktplatz']}"]
         else:
             argv = ["claude", "plugin", "install", f"{k['plugin']}@{k['marktplatz']}"]
         with self.sperre:
@@ -519,7 +523,10 @@ class Inventarserver(ThreadingHTTPServer):
                 r = lauf(argv, tmp, 300)
         if r["ok"] and nur_manuell and k["art"] == "skill":
             with self.sperre:
-                r["ausgabe"] += "\n" + self.override_setzen(k["skill"], "user-invocable-only")["ausgabe"]
+                nachher = (self.nur_manuell_datei(self.codex_skills / k["skill"]) if codex
+                           else self.override_setzen(k["skill"], "user-invocable-only"))
+            r["ok"] = nachher["ok"]
+            r["ausgabe"] += "\n" + nachher["ausgabe"]
         if r["ok"]:
             k["installiert"] = True
         return r
@@ -572,9 +579,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
         if self.path == "/api/installieren":
             nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
-            # Installieren gibt es erst mit Teil B; unter Codex kämen sonst noch Kandidaten aus einer Claude-Suche vor dem Wechsel durch.
-            if (self.server.harness() == "codex" or type(nr) is not int or not 0 <= nr < len(self.server.kandidaten)
-                    or not self.server.kandidaten[nr]["installierbar"]):
+            if type(nr) is not int or not 0 <= nr < len(self.server.kandidaten) or not self.server.kandidaten[nr]["installierbar"]:
                 return self.antworte(400, {"ok": False, "ausgabe": "Diesen Kandidaten kann das Dashboard nicht installieren."})
             return self.antworte(200, self.server.installieren(nr, anfrage.get("nur_manuell") is True))
         try:
