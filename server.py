@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -264,12 +265,18 @@ class Inventarserver(ThreadingHTTPServer):
         """Einmal je Datei eine Sicherung <datei>.bak, bevor der Server sie zum ersten Mal ändert."""
         if datei in self.gesichert:
             return
-        datei.with_name(datei.name + ".bak").write_text(datei.read_text(encoding="utf-8"), encoding="utf-8")
+        shutil.copy2(datei, datei.with_name(datei.name + ".bak"))  # übernimmt Rechte und Zeitstempel
         self.gesichert.add(datei)
 
     def schreiben(self, datei, text):
+        """Schreibt atomar über <datei>.neu + os.replace, ohne die Datei zwischendurch mit weiteren
+        Rechten als nötig auf der Platte liegen zu haben: die echte config.toml kann Zugangsdaten enthalten."""
         neu = datei.with_name(datei.name + ".neu")
-        neu.write_text(text, encoding="utf-8")
+        fd = os.open(neu, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        modus = datei.stat().st_mode & 0o777 if datei.exists() else 0o600
+        os.chmod(neu, modus)
         os.replace(neu, datei)
 
     def settings_aendern(self, aendern):
@@ -288,7 +295,7 @@ class Inventarserver(ThreadingHTTPServer):
             daten = tomllib.loads(self.codex_config.read_text(encoding="utf-8"))
             if not pruefen(daten):
                 raise ValueError("Die Einstellung steht nach dem Schreiben nicht in der Datei.")
-        except (ValueError, OSError) as fehler:
+        except Exception as fehler:  # jeder Fehler nach dem Schreiben muss zurückrollen, nicht nur ValueError/OSError
             self.schreiben(self.codex_config, alt)
             return {"ok": False, "ausgabe": f"{self.codex_config} nicht geändert: {fehler}"}
         return None
@@ -298,6 +305,8 @@ class Inventarserver(ThreadingHTTPServer):
         pfad = toml_pfad(tabelle) + [schluessel]
 
         def pruefen(daten):
+            # wert ist ein TOML-Literal; der Vergleich über json.dumps setzt voraus, dass seine JSON- und
+            # TOML-Schreibweise übereinstimmen. Gilt für "false" (heute das Einzige, was der Server erzeugt).
             for teil in pfad[:-1]:
                 daten = daten.get(teil) if isinstance(daten, dict) else None
                 if daten is None:
@@ -319,27 +328,42 @@ class Inventarserver(ThreadingHTTPServer):
 
     def nur_manuell_datei(self, ordner):
         """agents/openai.yaml im Skill-Ordner: policy.allow_implicit_invocation = false, damit Codex den Skill
-        nur noch per $name lädt. Eine vorhandene Datei bleibt bis auf diese Zeile erhalten."""
+        nur noch per $name lädt. Ändert nur innerhalb des policy:-Blocks (Einrückung 0 bis zur nächsten nicht
+        leeren Zeile mit Einrückung 0) und übernimmt dessen Einrückung; alles andere bleibt erhalten. Schreibt
+        bei fehlgeschlagener Prüfung den ursprünglichen Stand zurück, wie config_aendern es für config.toml tut."""
         datei = Path(ordner) / "agents" / "openai.yaml"
-        if datei.is_file():
-            self.sichern(datei)
-            zeilen = datei.read_text(encoding="utf-8").splitlines()
-            for i, z in enumerate(zeilen):
-                if re.match(r"^\s+allow_implicit_invocation\s*:", z):
-                    zeilen[i] = "  allow_implicit_invocation: false"
-                    break
+        alt = datei.read_text(encoding="utf-8") if datei.is_file() else None
+        if alt is not None:
+            zeilen = alt.splitlines()
+            start = next((i for i, z in enumerate(zeilen) if re.match(r"^policy:\s*", z)), None)
+            if start is not None and "{" in zeilen[start]:
+                return {"ok": False, "ausgabe": f"{datei} nutzt eine Inline-Notation für policy, bitte von Hand ändern"}
+            if start is None:
+                zeilen += ["policy:", "  allow_implicit_invocation: false"]
             else:
-                stelle = next((i for i, z in enumerate(zeilen) if z.strip() == "policy:"), None)
-                if stelle is None:
-                    zeilen += ["policy:", "  allow_implicit_invocation: false"]
+                ende = next((i for i in range(start + 1, len(zeilen))
+                             if zeilen[i].strip() and len(zeilen[i]) == len(zeilen[i].lstrip())), len(zeilen))
+                muster = re.compile(r"^\s+allow_implicit_invocation\s*:")
+                for i in range(start + 1, ende):
+                    if muster.match(zeilen[i]):
+                        einrueckung = zeilen[i][:len(zeilen[i]) - len(zeilen[i].lstrip())]
+                        zeilen[i] = f"{einrueckung}allow_implicit_invocation: false"
+                        break
                 else:
-                    zeilen.insert(stelle + 1, "  allow_implicit_invocation: false")
+                    folge = next((z for z in zeilen[start + 1:ende] if z.strip()), None)
+                    einrueckung = folge[:len(folge) - len(folge.lstrip())] if folge else "  "
+                    zeilen.insert(start + 1, f"{einrueckung}allow_implicit_invocation: false")
             text = "\n".join(zeilen) + "\n"
+            self.sichern(datei)
         else:
             datei.parent.mkdir(parents=True, exist_ok=True)
             text = "policy:\n  allow_implicit_invocation: false\n"
         self.schreiben(datei, text)
         if not re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", datei.read_text(encoding="utf-8"), re.M):
+            if alt is not None:
+                self.schreiben(datei, alt)
+            else:
+                datei.unlink()
             return {"ok": False, "ausgabe": f"{datei} nicht geändert"}
         return {"ok": True, "ausgabe": f"{datei} → policy: allow_implicit_invocation: false"}
 

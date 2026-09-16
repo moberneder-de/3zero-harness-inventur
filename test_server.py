@@ -8,6 +8,7 @@ import time
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import harness
 import server
@@ -29,6 +30,7 @@ class Server(unittest.TestCase):
             "deaktivieren": {"argv": ["sh", "-c", "echo kaputt >&2; exit 3"]},
         }}])
         self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim")
+        self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.port = self.srv.server_address[1]
 
@@ -592,6 +594,69 @@ enabled = true
             {"id": "skill:grilling", "name": "grilling", "aktionen": {"deaktivieren": {"override": "off"}}}])
         self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
         self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"]["grilling"], "off")
+
+    def test_schreiben_erhaelt_dateirechte_der_config(self):
+        config = self.mit_config()
+        config.chmod(0o600)
+        self.schreibe_inventar([{"id": "plugin:documents@openai-primary-runtime", "name": "documents", "aktionen": {
+            "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}}}])
+        self.assertTrue(self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")[1]["ok"])
+        self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.tmp / "config.toml.bak").stat().st_mode & 0o777, 0o600)
+
+    def test_neu_angelegte_openai_yaml_bekommt_0600(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/neu"
+        ordner.mkdir(parents=True)
+        self.schreibe_inventar([], skills=[{"id": "skill:neu", "name": "neu", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:neu", "nur manuell")[1]["ok"])
+        self.assertEqual((ordner / "agents/openai.yaml").stat().st_mode & 0o777, 0o600)
+
+    def test_nur_manuell_uebernimmt_einrueckung(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/vier"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "agents/openai.yaml").write_text(
+            "interface:\n    display_name: Vier\npolicy:\n    allow_implicit_invocation: true\n    andere_einstellung: 1\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:vier", "name": "vier", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:vier", "nur manuell")[1]["ok"])
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(),
+                         "interface:\n    display_name: Vier\npolicy:\n    allow_implicit_invocation: false\n    andere_einstellung: 1\n")
+
+    def test_nur_manuell_aendert_nur_policy_block(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/mix"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "agents/openai.yaml").write_text("defaults:\n  allow_implicit_invocation: true\npolicy:\n  other: 1\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:mix", "name": "mix", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:mix", "nur manuell")[1]["ok"])
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(),
+                         "defaults:\n  allow_implicit_invocation: true\npolicy:\n  allow_implicit_invocation: false\n  other: 1\n")
+
+    def test_nur_manuell_inline_notation_wird_nicht_angefasst(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/inline"
+        (ordner / "agents").mkdir(parents=True)
+        inhalt = "policy: {allow_implicit_invocation: true}\n"
+        (ordner / "agents/openai.yaml").write_text(inhalt)
+        self.schreibe_inventar([], skills=[{"id": "skill:inline", "name": "inline", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        status, antwort = self.ausfuehren("skill:inline", "nur manuell")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("Inline-Notation", antwort["ausgabe"])
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
+        self.assertFalse((ordner / "agents/openai.yaml.bak").exists())
+
+    def test_nur_manuell_rollback_bei_fehlgeschlagener_pruefung(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/rollback"
+        (ordner / "agents").mkdir(parents=True)
+        inhalt = "policy:\n  allow_implicit_invocation: true\n"
+        (ordner / "agents/openai.yaml").write_text(inhalt)
+        self.schreibe_inventar([], skills=[{"id": "skill:rollback", "name": "rollback", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        with mock.patch("server.re.search", return_value=None):
+            status, antwort = self.ausfuehren("skill:rollback", "nur manuell")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
 
 
 if __name__ == "__main__":
