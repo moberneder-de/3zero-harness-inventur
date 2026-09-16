@@ -36,6 +36,6 @@ class Harness(unittest.TestCase):
 
     def test_dateien_je_harness(self):
         self.assertEqual({h: (d["inventar"], d["dashboard"], d["bewertung"]) for h, d in harness.HARNESSE.items()}, {
-            "claude-code": ("inventar.json", "dashboard.html", "bewertung.json"),
+            "claude-code": ("inventar.json", "dashboard.html", "bewertung-claude-code.json"),
             "codex": ("inventar-codex.json", "dashboard-codex.html", "bewertung-codex.json"),
         })

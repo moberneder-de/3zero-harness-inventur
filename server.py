@@ -40,7 +40,7 @@ BEWERTEN = [
     "claude", "-p", "/3zero-harness-inventur", "--model", "opus", "--output-format", "json",
     "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash(python3 *)",
     "--append-system-prompt", "Dieser Lauf kommt aus dem Dashboard-Server. Das Dashboard ist bereits "
-    "geöffnet: baue es in Schritt 5 nur neu, öffne es nicht. Ändere nichts außer bewertung.json.",
+    "geöffnet: baue es in Schritt 5 nur neu, öffne es nicht. Ändere nichts außer bewertung-claude-code.json.",
 ]
 
 # Suchen liest fremde Inhalte aus dem Netz, deshalb nur Lese- und Suchrechte: kein Schreiben, kein python3, kein gh.

@@ -9,7 +9,7 @@ from pathlib import Path
 
 HARNESSE = {
     "claude-code": {"name": "Claude Code", "cli": "claude",
-                    "inventar": "inventar.json", "dashboard": "dashboard.html", "bewertung": "bewertung.json"},
+                    "inventar": "inventar.json", "dashboard": "dashboard.html", "bewertung": "bewertung-claude-code.json"},
     "codex": {"name": "Codex", "cli": "codex",
               "inventar": "inventar-codex.json", "dashboard": "dashboard-codex.html", "bewertung": "bewertung-codex.json"},
 }

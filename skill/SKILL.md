@@ -16,7 +16,7 @@ Der Skill läuft in Claude Code (Aufruf `/3zero-harness-inventur`) und in Codex 
 | | Claude Code | Codex |
 |---|---|---|
 | `<harness>` | `claude-code` | `codex` |
-| Bewertung | `bewertung.json` | `bewertung-codex.json` |
+| Bewertung | `bewertung-claude-code.json` | `bewertung-codex.json` |
 | Inventar | `inventar.json` | `inventar-codex.json` |
 | Dashboard | `dashboard.html` | `dashboard-codex.html` |
 

@@ -43,7 +43,7 @@ def lies_json(pfad):
 
 CFG = lies_json(HOME / ".claude.json")
 SETTINGS = lies_json(CLAUDE / "settings.json")
-BEWERTUNG = lies_json(HIER / "bewertung.json")
+BEWERTUNG = lies_json(HIER / harness.HARNESSE["claude-code"]["bewertung"])
 NUTZUNG = CFG.get("skillUsage", {})
 OVERRIDES = SETTINGS.get("skillOverrides", {})
 LOCK = lies_json(AGENTS / ".skill-lock.json").get("skills", {})
@@ -583,7 +583,7 @@ def aktionen(e):
 
 
 def bewerte(eintraege, bewertung=None, befehl_fuer=None):
-    """Hängt Bewertung und Umsetzungsbefehl an. Ohne Angaben: bewertung.json und die Befehle für Claude Code."""
+    """Hängt Bewertung und Umsetzungsbefehl an. Ohne Angaben: bewertung-claude-code.json und die Befehle für Claude Code."""
     bewertungen = (BEWERTUNG if bewertung is None else bewertung).get("eintraege", {})
     befehl_fuer = befehl_fuer or befehl
     for e in eintraege:

@@ -318,7 +318,7 @@ function quelleText(e) {
 function lieferweg(s) {
   if (s.plugin) return `Plugin ${s.plugin.split("@")[0]}`;
   if (s.typ === "Harness") return je("Anthropic/Claude Code", "OpenAI/Codex");
-  /* Besitzer lesbar über `autoren` in bewertung.json, der GitHub-Pfad steht in der Detailzeile */
+  /* Besitzer lesbar über `autoren` in der Bewertungsdatei, der GitHub-Pfad steht in der Detailzeile */
   if (s.quelle.repo) return `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}`;
   if (s.projekt) return "im Projekt";
   return s.quelle.art === "Symlink" ? "eigen" : "unbekannt";
@@ -877,7 +877,7 @@ function renderHilfe() {
     </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar.</li>
-      <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung.json).</li>
+      <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-claude-code.json).</li>
       <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt.</li>
       <li>Claude-Läufe aus dem Dashboard nutzen die Anmeldung von Claude Code. Solange die über dein claude.ai-Konto läuft (<code>claude auth status</code>), verbrauchen sie Kontingent deines Abos und kosten keine API-Gebühren.</li>
     </ul>`], ["Bestand lesen", `<ul>
@@ -911,7 +911,7 @@ function renderHilfe() {
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
       <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4.</li>
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
-      <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
+      <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
       <li>Updates: <code>build.py</code> fragt per <code>gh api</code> den aktuellen Stand des Skill-Ordners auf GitHub ab und vergleicht ihn mit dem Stand bei der Installation (<code>skillFolderHash</code>). Ohne <code>gh</code> oder Netz fehlt nur diese Angabe; fehlt der Ordner upstream, ebenfalls.</li>
     </ul>`]];
   const reiter = teile.map(([titel], i) => `<button type="button" role="tab" id="hilfe-reiter-${i}" aria-controls="hilfe-teil-${i}" aria-selected="${i === 0}">${titel}</button>`).join("");
@@ -1079,7 +1079,7 @@ async function bewertungVerfolgen() {
   for (;;) {
     const b = await api("/api/bewertung");
     if (b.verbindung === false) return setMeldung(b.ausgabe, "Fehler");
-    if (!b.laeuft) return location.reload(); /* bewertung.json und dashboard.html sind neu; die Karte zeigt die Seite danach */
+    if (!b.laeuft) return location.reload(); /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
     setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
     await warte(2000);
   }
