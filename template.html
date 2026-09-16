@@ -365,10 +365,11 @@ function befehlText(e, a) {
   const argv = s.argv.map(x => /^[\w@%+=:,./-]+$/.test(x) ? x : `"${x}"`).join(" ");
   return s.cwd ? `cd "${s.cwd}" && ${argv}` : argv;
 }
-/* Was der Benutzer vor dem Ausführen wissen sollte: Ein gemeinsamer Skill verschwindet in beiden Harnesses,
-   und agents/openai.yaml liegt im Skill-Ordner, den ein Update überschreibt */
+/* Was der Benutzer vor dem Ausführen wissen sollte: Trifft der Schritt die gemeinsame Quelle (npx skills remove
+   oder ein Pfad unter ~/.agents/skills), verschwindet der Skill in beiden Harnesses; agents/openai.yaml liegt
+   im Skill-Ordner, den ein Update überschreibt */
 function warnung(e, a) {
-  if (a === "deinstallieren" && e.geteilt) return `Entfernt ${e.name} auch aus ${je("Codex", "Claude Code")}.`;
+  if (a === "deinstallieren" && e.aktionen?.[a]?.gemeinsam) return `Entfernt ${e.name} auch aus ${je("Codex", "Claude Code")}.`;
   if (a === "nur manuell" && CODEX) return "Die Datei liegt im Skill-Ordner und geht beim nächsten Update des Skills verloren.";
   return "";
 }
@@ -859,8 +860,8 @@ function renderHilfe() {
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
       <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“.</li>
-      <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei gemeinsamen Skills verschwindet der Skill auch aus Claude Code.</li>
-      <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad.</li>
+      <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code.</li>
+      <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
       <li>Vor der ersten Änderung legt der Server <code>config.toml.bak</code> an und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
     </ul>`], ["Suchen", `<ul>
@@ -1021,7 +1022,7 @@ if (TOKEN) {
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
       const warnungen = [...new Set(offen.map(e => warnung(e, gewaehlt(e))).filter(Boolean))];
-      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
+      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`
           + (warnungen.length ? "\n\n" + warnungen.join("\n\n") : ""), `${offen.length} ausführen`))
         mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
     } else if (knopf.id === "neu-einlesen") {
@@ -1040,7 +1041,7 @@ if (TOKEN) {
       });
     } else if (knopf.dataset.installieren !== undefined) {
       const nr = Number(knopf.dataset.installieren), k = kandidaten[nr], manuell = !!knopf.dataset.manuell;
-      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
+      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
       mitSperre(async () => {
         INSTALLATION.set(nr, { laeuft: true }); renderSuchInhalt();
         const r = await api("/api/installieren", { nr, nur_manuell: manuell });
