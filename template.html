@@ -867,7 +867,7 @@ function renderHilfe() {
       <li>Herkunft: plugin.json im Plugin-Ordner, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills. Klarnamen und belegte Quellen stehen in bewertung-codex.json.</li>
       <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
     </ul>`]] : [["Aktualisieren", `<ul>
-      <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“.</li>
+      <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness codex</code> zeigt das Dashboard stattdessen Codex; ohne Angabe gilt der zuletzt genannte.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar.</li>
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-claude-code.json).</li>
       <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt.</li>
