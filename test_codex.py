@@ -165,6 +165,21 @@ class Plugins(CodexOrdner):
                          [("hook:documents@openai-primary-runtime:Stop", "MCP node_repl.turn_ended", "aktiv")])
         self.assertNotIn(GEHEIM, json.dumps([liste, teile, hooks]))
 
+    def test_gleicher_plugin_name_in_zwei_marktplaetzen(self):
+        """Sonst trügen beide Skills dieselbe ID, und eine Aktion träfe das falsche Plugin."""
+        eins = self.plugin("openai-bundled", "sites", "0.1.57", {"name": "sites"})
+        zwei = self.plugin("openai-curated-remote", "sites", "0.1.62", {"name": "sites"}, remote=True)
+        self.skill(eins / "skills", "sites-building")
+        self.skill(zwei / "skills", "sites-building")
+        allein = self.plugin("openai-primary-runtime", "pdf", "1.0", {"name": "pdf"})
+        self.skill(allein / "skills", "pdf")
+        liste, teile, _ = codex.plugins({"plugins": {"sites@openai-bundled": {"enabled": True}}}, (set(), set()), {})
+        self.assertEqual(sorted(t["id"] for t in teile),
+                         ["skill:pdf:pdf", "skill:sites@openai-bundled:sites-building", "skill:sites@openai-curated-remote:sites-building"])
+        self.assertEqual(sorted(p["skills"] for p in liste if p["name"] == "sites"),
+                         [["sites@openai-bundled:sites-building"], ["sites@openai-curated-remote:sites-building"]])
+        self.assertEqual([t["plugin"] for t in teile if t["name"].startswith("sites@openai-bundled")], ["sites@openai-bundled"])
+
     def test_remote_katalog_abgeschaltet_macht_curated_wirksam(self):
         self.plugin("openai-curated", "github", "bd2122cb", {"name": "github"})
         cfg = {"plugins": {"github@openai-curated": {"enabled": True}}, "features": {"remote_plugin": False}}

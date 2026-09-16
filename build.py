@@ -315,14 +315,23 @@ def mcp_definitionen(wurzel, manifest):
     return {n: c for n, c in server.items() if isinstance(c, dict)}
 
 
+def mehrfache_namen(pids):
+    """Plugin-Namen, die es in mehreren Marktplätzen gibt. Ihre Bestandteile brauchen den Marktplatz im Namen,
+    sonst tragen zwei Skills dieselbe ID und eine Aktion träfe das falsche Plugin."""
+    namen = [str(pid).partition("@")[0] for pid in pids]
+    return {n for n in namen if namen.count(n) > 1}
+
+
 def plugins():
     installiert = lies_json(PLUGINS / "installed_plugins.json").get("plugins", {})
     aktiviert = SETTINGS.get("enabledPlugins", {})
     marktplaetze = lies_json(PLUGINS / "known_marketplaces.json")
     liste, bestandteile, hooks = [], [], []
+    mehrfach = mehrfache_namen(installiert)
     for pid, installationen in sorted(installiert.items()):
         inst = next((i for i in installationen if i.get("scope") == "user"), installationen[0])
         name, _, mkt = pid.partition("@")
+        praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
         wurzel = Path(inst["installPath"])
         manifest = lies_json(wurzel / ".claude-plugin" / "plugin.json")
         mkt_info = marktplaetze.get(mkt, {})
@@ -348,11 +357,11 @@ def plugins():
         teile = []
         for d in skill_dateien:
             if d.is_file():
-                teile.append(skill_eintrag(f"{name}:{d.parent.name}", "Skill", d, aktiv))
+                teile.append(skill_eintrag(f"{praefix}:{d.parent.name}", "Skill", d, aktiv))
         for d in sorted(wurzel.glob("commands/*.md")):
-            teile.append(skill_eintrag(f"{name}:{d.stem}", "Befehl", d, aktiv))
+            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Befehl", d, aktiv))
         for d in sorted(wurzel.glob("agents/*.md")):
-            teile.append(skill_eintrag(f"{name}:{d.stem}", "Agent", d, aktiv))
+            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Agent", d, aktiv))
         for t in teile:
             t["plugin"] = pid
             t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}

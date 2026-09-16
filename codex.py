@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import harness
-from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, updates_markieren, ziel_text
+from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -239,12 +239,15 @@ def plugin_status(pid, marktplatz, cfg, remote):
 def plugins(cfg, aus, autoren):
     liste, bestandteile, hooks = [], [], []
     cache = CODEX / "plugins" / "cache"
-    for plugin_ordner in sorted(cache.glob("*/*")) if cache.is_dir() else []:
-        wurzel = version_ordner(plugin_ordner) if plugin_ordner.is_dir() else None
+    ordner = [o for o in sorted(cache.glob("*/*")) if o.is_dir()] if cache.is_dir() else []
+    mehrfach = mehrfache_namen(f"{o.name}@{o.parent.name}" for o in ordner)
+    for plugin_ordner in ordner:
+        wurzel = version_ordner(plugin_ordner)
         if wurzel is None:
             continue
         name, mkt = plugin_ordner.name, plugin_ordner.parent.name
         pid = f"{name}@{mkt}"
+        praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
         m = manifest(wurzel)
         status = plugin_status(pid, mkt, cfg, (plugin_ordner / ".codex-remote-plugin-install.json").is_file())
         aktiv = status in LAEDT
@@ -256,7 +259,7 @@ def plugins(cfg, aus, autoren):
         skills_ordner = wurzel / (m["skills"] if isinstance(m.get("skills"), str) else "skills")
         teile = []
         for d in sorted(skills_ordner.glob("*/SKILL.md")):
-            t = skill_eintrag(f"{name}:{d.parent.name}", d, aus, aktiv)
+            t = skill_eintrag(f"{praefix}:{d.parent.name}", d, aus, aktiv)
             t.update(plugin=pid, quelle=dict(quelle))
             teile.append(t)
         bestandteile += teile

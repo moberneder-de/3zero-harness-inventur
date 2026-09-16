@@ -129,6 +129,15 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
 
 
+class MehrfacheNamen(unittest.TestCase):
+    def test_nur_namen_aus_mehreren_marktplaetzen(self):
+        """Kommt derselbe Plugin-Name zweimal vor, gehört der Marktplatz in die IDs seiner Bestandteile."""
+        self.assertEqual(build.mehrfache_namen(["sites@openai-bundled", "sites@openai-curated-remote", "pdf@openai-primary-runtime"]),
+                         {"sites"})
+        self.assertEqual(build.mehrfache_namen(["pdf@a", "documents@b"]), set())
+        self.assertEqual(build.mehrfache_namen([]), set())
+
+
 class ProjektSkills(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
