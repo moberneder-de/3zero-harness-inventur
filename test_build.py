@@ -46,10 +46,19 @@ class Aktionen(unittest.TestCase):
 
     def test_skill_aus_skills_cli(self):
         self.assertEqual(build.aktionen(skill("grilling")), {
-            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"]},
+            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"], "gemeinsam": True},
             "deaktivieren": {"override": "off"},
             "nur manuell": {"override": "user-invocable-only"},
         })
+
+    def test_deinstallieren_markiert_gemeinsame_skills(self):
+        """gemeinsam=True gilt bei npx skills remove immer und bei mv nur unter ~/.agents/skills."""
+        self.assertTrue(build.aktionen(skill("grilling"))["deinstallieren"]["gemeinsam"])
+        with mock.patch.object(build, "AGENTS", Path("/x/agents")):
+            agents_skill = skill("kopie", quelle_art="lokal", pfad="/x/agents/skills/kopie/SKILL.md")
+            self.assertTrue(build.aktionen(agents_skill)["deinstallieren"]["gemeinsam"])
+            eigen = skill("eigen", quelle_art="Symlink", pfad="/x/Repo/skill/SKILL.md")
+            self.assertNotIn("gemeinsam", build.aktionen(eigen)["deinstallieren"])
 
     def test_was_schon_gilt_wird_nicht_angeboten(self):
         self.assertEqual(list(build.aktionen(skill("find-skills", override="off"))), ["deinstallieren", "nur manuell"])

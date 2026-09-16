@@ -309,7 +309,7 @@ class Aktionen(unittest.TestCase):
                "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
         self.assertEqual(codex.aktionen({**cli, "update": True}), {
             "aktualisieren": {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]},
-            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"]},
+            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"], "gemeinsam": True},
             "deaktivieren": {"skill_aus": "/h/.agents/skills/grilling/SKILL.md"},
             "nur manuell": {"nur_manuell": "/h/.agents/skills/grilling"}})
         eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "name": "pdf", "quelle": {"art": "lokal"}}
@@ -322,6 +322,15 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(codex.aktionen(teil), {"deaktivieren": {"skill_aus": teil["pfad"]}})
         projekt = {**cli, "id": "skill:Kit/seo", "name": "seo", "projekt": "/x/Kit"}
         self.assertEqual(codex.aktionen(projekt), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo"], "cwd": "/x/Kit"}})
+
+    def test_deinstallieren_markiert_gemeinsame_skills(self):
+        """gemeinsam=True gilt bei npx skills remove immer und bei mv nur unter ~/.agents/skills."""
+        with mock.patch.object(codex, "AGENTS", Path("/x/agents")):
+            agents_skill = {"id": "skill:kopie", "name": "kopie", "typ": "Skill", "status": "aktiv", "aufruf": "automatisch + $",
+                            "pfad": "/x/agents/skills/kopie/SKILL.md", "quelle": {"art": "lokal"}}
+            self.assertTrue(codex.aktionen(agents_skill)["deinstallieren"]["gemeinsam"])
+            eigen = {**agents_skill, "pfad": "/h/.codex/skills/pdf/SKILL.md", "quelle": {"art": "Symlink"}}
+            self.assertNotIn("gemeinsam", codex.aktionen(eigen)["deinstallieren"])
 
     def test_hooks_ohne_aktionen(self):
         self.assertEqual(codex.aktionen({"id": "hook:config:notify", "typ": "Hook"}), {})

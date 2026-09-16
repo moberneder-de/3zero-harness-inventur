@@ -436,9 +436,14 @@ def aktionen(e):
         if e.get("update"):
             a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
         if e["quelle"]["art"] == "skills-CLI":
-            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]]}
+            # npx skills remove --global entfernt den Skill für alle Harnesses, die ihn lesen
+            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
-            a["deinstallieren"] = {"argv": ["mv", str(Path(e["pfad"]).parent), str(HOME / ".Trash") + "/"]}
+            ziel = str(Path(e["pfad"]).parent)
+            schritt = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+            if Path(ziel).resolve().is_relative_to((AGENTS / "skills").resolve()):
+                schritt["gemeinsam"] = True
+            a["deinstallieren"] = schritt
     if e["status"] != "aus":
         a["deaktivieren"] = {"skill_aus": e["pfad"]}
     if e["aufruf"] != "nur $" and not e.get("plugin"):

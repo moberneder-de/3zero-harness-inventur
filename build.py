@@ -567,10 +567,14 @@ def aktionen(e):
         if e.get("update"):
             a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
         if e["quelle"]["art"] == "skills-CLI":
-            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]]}
+            # npx skills remove --global entfernt den Skill für alle Harnesses, die ihn lesen
+            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
             ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
-            a["deinstallieren"] = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+            schritt = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+            if Path(ziel).resolve().is_relative_to((AGENTS / "skills").resolve()):
+                schritt["gemeinsam"] = True
+            a["deinstallieren"] = schritt
     if e["override"] != "off":
         a["deaktivieren"] = {"override": "off"}
     if e["aufruf"] != "nur /":
