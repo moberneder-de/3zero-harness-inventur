@@ -6,8 +6,10 @@ bei Claude Code aus ~/.claude, ~/.claude.json und ~/.agents (mit Live-Status üb
 bei Codex über codex.py aus ~/.codex und ~/.agents. Schreibt inventar.json und dashboard.html,
 für Codex inventar-codex.json und dashboard-codex.html.
 
-Die fachliche Bewertung (Beschreibung auf Deutsch, Überschneidungen, Empfehlungen) steht in
-bewertung.json bzw. bewertung-codex.json. Die pflegt der Skill /3zero-harness-inventur, dieses Skript liest sie nur.
+Alles Geschriebene landet in ~/.3zero-harness-inventur, nicht im Projektordner: Es gehört zum Rechner
+des Benutzers, nicht zum Werkzeug. Dort liegt auch die fachliche Bewertung (Beschreibung auf Deutsch,
+Überschneidungen, Empfehlungen), bewertung-claude-code.json bzw. bewertung-codex.json. Die pflegt der
+Skill /3zero-harness-inventur, dieses Skript liest sie nur.
 
 Aufruf: python3 build.py [--harness claude-code|codex]   (ohne Angabe gilt der zuletzt genannte)
 """
@@ -29,6 +31,7 @@ AGENTS = HOME / ".agents"  # dorthin legt `npx skills` Skills; Codex liest dense
 CODEX = HOME / ".codex"  # nur für die Frage, ob ein Skill auch in Codex lädt
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
+DATEN = harness.DATEN  # Bewertung, Inventar, Dashboard und harness.json: alles außerhalb des Repos
 LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
 # Nur die Wortmarke: „IT- Consulting“ steht unterhalb von y=163 und fällt aus der viewBox
 LOGO_MASSE = ('width="789" height="298" viewBox="21 29 789 298"', 'width="789" height="141" viewBox="21 29 789 141"')
@@ -45,7 +48,7 @@ def lies_json(pfad):
 
 CFG = lies_json(HOME / ".claude.json")
 SETTINGS = lies_json(CLAUDE / "settings.json")
-BEWERTUNG = lies_json(HIER / harness.HARNESSE["claude-code"]["bewertung"])
+BEWERTUNG = lies_json(DATEN / harness.HARNESSE["claude-code"]["bewertung"])
 NUTZUNG = CFG.get("skillUsage", {})
 OVERRIDES = SETTINGS.get("skillOverrides", {})
 LOCK = lies_json(AGENTS / ".skill-lock.json").get("skills", {})
@@ -669,9 +672,10 @@ def main(argv=None):
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
     wahl = parser.parse_args(argv).harness
     if wahl:
-        harness.merken(HIER, wahl)
-    h = wahl or harness.aktuell(HIER)
+        harness.merken(DATEN, wahl)
+    h = wahl or harness.aktuell(DATEN)
     angaben = harness.HARNESSE[h]
+    DATEN.mkdir(parents=True, exist_ok=True)
     if h == "codex":
         import codex  # erst hier: codex.py importiert selbst aus build
         inhalt = codex.inventar()
@@ -679,7 +683,7 @@ def main(argv=None):
         inhalt = claude_inventar()
     daten = {"erstellt": datetime.now().strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
              "version": version(angaben["cli"]), **inhalt}
-    (HIER / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
+    (DATEN / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
     svg = LOGO.read_text(encoding="utf-8")
@@ -690,7 +694,7 @@ def main(argv=None):
     app_icon = "data:image/png;base64," + base64.b64encode(APP_ICON.read_bytes()).decode()
     vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
                .replace("__LOGO__", logo).replace("__ICON__", icon).replace("__APPICON__", app_icon))
-    (HIER / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
+    (DATEN / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
     print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "
           f"{len(daten['skills'])} Skills/Befehle/Agenten, {len(daten['projekt_skills'])} Projekt-Skills, "

@@ -87,7 +87,8 @@ CODEX_BEWERTEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Server hat build.py gerade ausgeführt, "
     "die Ausgabe steht unten, und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus "
     "und öffne nichts. Du arbeitest in einer Arbeitskopie ({arbeitsordner}), nicht im Projektordner ({ordner}): Ändere nur "
-    "{arbeitsordner}/bewertung-codex.json, lies alles andere (inventar-codex.json, Skill-Dateien) aus {ordner}. Stelle keine Rückfragen. "
+    "{arbeitsordner}/bewertung-codex.json. Das Inventar liegt in {daten}, die Skill-Dateien im Projektordner; beides nur lesen. "
+    "Stelle keine Rückfragen. "
     "Deine Schlussnachricht ist der Bericht für das Dashboard: höchstens zehn Zeilen Markdown mit den drei Punkten aus Schritt 6 "
     "(was neu ist, was weggefallen ist, welche Empfehlungen sich geändert haben), keine Tabellen, keine Aufzählung aller Einträge."
 )
@@ -167,8 +168,8 @@ def toml_text_setzen(text, tabelle, schluessel, wert):
     return "\n".join(zeilen) + "\n"
 
 
-def codex_bewerten(ordner, arbeitsordner, ergebnis, build_ausgabe, modell):
-    hinweis = CODEX_BEWERTEN_HINWEIS.format(ordner=ordner, arbeitsordner=arbeitsordner)
+def codex_bewerten(ordner, daten, arbeitsordner, ergebnis, build_ausgabe, modell):
+    hinweis = CODEX_BEWERTEN_HINWEIS.format(ordner=ordner, daten=daten, arbeitsordner=arbeitsordner)
     # workspace-write macht sonst auch $TMPDIR und /tmp beschreibbar; ein injizierter Lauf könnte dort etwas
     # ablegen, das installieren() oder die Claude-Suche später ohne Sandbox ausführen.
     return [*CODEX_BASIS, "-s", "workspace-write", "-C", str(arbeitsordner), "-c", 'web_search="disabled"',
@@ -234,9 +235,11 @@ def lauf(argv, cwd, timeout):
 
 
 class Inventarserver(ThreadingHTTPServer):
-    def __init__(self, port, ordner, settings, token):
+    def __init__(self, port, ordner, settings, token, daten=None):
+        """`ordner` ist das Werkzeug (build.py, template.html), `daten` sind die Dateien des Benutzers."""
         super().__init__(("127.0.0.1", port), Handler)
         self.ordner, self.settings, self.token = Path(ordner), Path(settings), token
+        self.daten = Path(ordner if daten is None else daten)
         self.hosts = {f"{h}:{self.server_address[1]}" for h in ("127.0.0.1", "localhost")}
         self.sperre = threading.Lock()  # Aktionen schreiben teils dieselbe settings.json, also nacheinander
         self.gesichert = set()
@@ -248,11 +251,11 @@ class Inventarserver(ThreadingHTTPServer):
         self.codex_skills = Path.home() / ".agents" / "skills"  # dorthin legt npx skills die Skills
 
     def harness(self):
-        return harness.aktuell(self.ordner)
+        return harness.aktuell(self.daten)
 
     def datei(self, art):
         """inventar oder dashboard des Harness, in dem der Skill zuletzt gestartet wurde."""
-        return self.ordner / harness.HARNESSE[self.harness()][art]
+        return self.daten / harness.HARNESSE[self.harness()][art]
 
     def schritt(self, eid, aktion):
         """(Name, Schritt) aus dem Inventar des aktuellen Harness, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
@@ -424,13 +427,13 @@ class Inventarserver(ThreadingHTTPServer):
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
             if not r["ok"]:
                 return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
-            bewertung_datei = self.ordner / harness.HARNESSE["codex"]["bewertung"]
+            bewertung_datei = self.daten / harness.HARNESSE["codex"]["bewertung"]
             with tempfile.TemporaryDirectory() as tmp:
                 arbeitsordner = Path(tmp)
                 (arbeitsordner / "bewertung-codex.json").write_text(
                     bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
                 ergebnis = arbeitsordner / "ergebnis.md"
-                c = lauf(codex_bewerten(self.ordner, arbeitsordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)),
+                c = lauf(codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)),
                          arbeitsordner, 1200)
                 text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
                 if not c["ok"]:
@@ -611,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     try:
-        srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16))
+        srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
     except OSError:
         sys.exit(f"Port {PORT} ist belegt. Läuft der Server schon? Dann http://127.0.0.1:{PORT}/ öffnen.")
     print("Lese den Bestand ein …")

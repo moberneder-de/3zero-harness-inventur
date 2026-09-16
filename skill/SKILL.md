@@ -20,6 +20,8 @@ Der Skill läuft in Claude Code (Aufruf `/3zero-harness-inventur`) und in Codex 
 | Inventar | `inventar.json` | `inventar-codex.json` |
 | Dashboard | `dashboard.html` | `dashboard-codex.html` |
 
+Diese vier Dateien liegen in `~/.3zero-harness-inventur`, nicht im Projektordner: Sie gehören zum Rechner des Benutzers, das Projekt enthält nur das Werkzeug. Dort liegt auch `harness.json` mit dem zuletzt genannten Harness.
+
 Setze in allen Befehlen unten `<harness>` ein und arbeite mit den Dateien aus deiner Spalte. Die Bewertungen der beiden Harnesses sind getrennt: Ein Skill in `~/.agents/skills` steht in beiden und wird in beiden bewertet.
 
 Verlangt der Benutzer eine **komplette Neubewertung**, gehst du in Schritt 2 alle Einträge durch, nicht nur die neuen.
@@ -68,12 +70,12 @@ Fertig, wenn: keine dieser IDs mehr in deiner Bewertungsdatei vorkommt.
 - Begründungen, die Zahlen oder Daten nennen, gegen das Inventar deines Harness prüfen und angleichen.
 - `stand` auf das heutige Datum setzen.
 
-Fertig, wenn: `python3 -m json.tool /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/<Bewertungsdatei> > /dev/null` ohne Fehler durchläuft.
+Fertig, wenn: `python3 -m json.tool ~/.3zero-harness-inventur/<Bewertungsdatei> > /dev/null` ohne Fehler durchläuft.
 
 ## 5. Neu erzeugen und öffnen
 
 ```bash
-python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/<Dashboard>; fi
+python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open ~/.3zero-harness-inventur/<Dashboard>; fi
 ```
 
 Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/server.py`.

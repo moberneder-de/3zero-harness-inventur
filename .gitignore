@@ -5,7 +5,11 @@ __pycache__/
 node_modules/
 .venv/
 
-# Erzeugt von build.py aus der lokalen Konfiguration
+# Alles, was zum Rechner des Benutzers gehört, liegt in ~/.3zero-harness-inventur:
+# Bewertungen, Inventare, Dashboards, harness.json. Hier stehen sie nur als Sperre,
+# falls eine Sicherung zurück in den Projektordner kopiert wird.
+bewertung-claude-code.json
+bewertung-codex.json
 dashboard.html
 inventar.json
 dashboard-codex.html

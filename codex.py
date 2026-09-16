@@ -19,6 +19,7 @@ CODEX = HOME / ".codex"
 AGENTS = HOME / ".agents"
 CLAUDE = HOME / ".claude"  # nur für die Frage, ob ein Skill auch in Claude Code lädt
 HIER = Path(__file__).resolve().parent
+DATEN = harness.DATEN
 SKILL_PFAD = re.compile(r"(/[^\s'\"<>]+/SKILL\.md)")
 
 
@@ -458,7 +459,7 @@ def aktionen(e):
 def inventar():
     """Der Codex-Bestand in der Form, die template.html erwartet. build.main ergänzt Zeitpunkt, Harness und Version."""
     cfg = lies_toml(CODEX / "config.toml")
-    bewertung = lies_json(HIER / harness.HARNESSE["codex"]["bewertung"])
+    bewertung = lies_json(DATEN / harness.HARNESSE["codex"]["bewertung"])
     autoren = bewertung.get("autoren", {})
     aus = abgeschaltete(cfg)
     lock = lies_json(AGENTS / ".skill-lock.json").get("skills", {})

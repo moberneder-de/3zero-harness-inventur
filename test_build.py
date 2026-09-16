@@ -349,8 +349,11 @@ class McpStatus(unittest.TestCase):
 class HarnessWahl(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.daten = self.tmp / "daten"  # eigener Ordner: so fällt auf, wenn etwas wieder ins Werkzeug schreibt
+        self.daten.mkdir()
         (self.tmp / "template.html").write_text("<script>__DATEN__</script>")
-        self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "LOGO", self.tmp / "logo.svg")]
+        self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
+                        mock.patch.object(build, "LOGO", self.tmp / "logo.svg")]
         (self.tmp / "logo.svg").write_text(f'<svg {build.LOGO_MASSE[0]}></svg>')
         for p in self.patches:
             p.start()
@@ -369,15 +372,15 @@ class HarnessWahl(unittest.TestCase):
         import codex
         with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value="codex-cli 0.154.0"):
             build.main(["--harness", "codex"])
-        daten = json.loads((self.tmp / "inventar-codex.json").read_text())
+        daten = json.loads((self.daten / "inventar-codex.json").read_text())
         self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("codex", "Codex", "codex-cli 0.154.0"))
-        self.assertTrue((self.tmp / "dashboard-codex.html").exists())
-        self.assertFalse((self.tmp / "inventar.json").exists())
-        self.assertEqual(json.loads((self.tmp / "harness.json").read_text()), {"harness": "codex"})
+        self.assertTrue((self.daten / "dashboard-codex.html").exists())
+        self.assertFalse((self.daten / "inventar.json").exists())
+        self.assertEqual(json.loads((self.daten / "harness.json").read_text()), {"harness": "codex"})
 
     def test_ohne_angabe_gilt_der_gemerkte_harness(self):
         import codex
-        (self.tmp / "harness.json").write_text('{"harness": "codex"}')
+        (self.daten / "harness.json").write_text('{"harness": "codex"}')
         with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()) as lesen, \
                 mock.patch.object(build, "claude_inventar") as claude, mock.patch.object(build, "version", return_value=None):
             build.main([])
@@ -388,9 +391,9 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(live_status=True)), \
                 mock.patch.object(build, "version", return_value="2.1.272 (Claude Code)"):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.tmp / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("claude-code", "Claude Code", "2.1.272 (Claude Code)"))
-        self.assertTrue((self.tmp / "dashboard.html").exists())
+        self.assertTrue((self.daten / "dashboard.html").exists())
 
     def test_abgleich(self):
         alle = [{"id": "a", "bewertung": {"was": "x"}}, {"id": "b", "bewertung": None}]
