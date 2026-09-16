@@ -37,7 +37,7 @@ h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 .seitenkopf { position: sticky; top: 0; z-index: 100; }
 .hero { background: var(--hero); color: #fff; border-bottom: 3px solid var(--cyan); padding: 14px 30px; }
 .hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
-.hero .icon { display: block; flex: none; }
+.hero .icon { display: block; flex: none; align-self: flex-start; } /* bündig mit der Oberkante des Schriftzugs, nicht zur höheren Knopfleiste zentriert */
 .hero .marke { display: flex; flex-direction: column; gap: 3px; }
 .hero .logo { display: block; width: 132px; height: auto; }
 .hero h1 { color: var(--cool-gray); font: 600 19px/1.1 var(--body); text-transform: uppercase; letter-spacing: .16em; }
@@ -53,7 +53,7 @@ nav a:hover, nav a[aria-current] { color: var(--cyan); }
 nav a:hover::after, nav a[aria-current]::after { transform: scaleX(1); }
 
 main { padding-inline: 30px; }
-section { padding-block: 44px 8px; scroll-margin-top: var(--kopf, 0px); }
+section { padding-block: 24px 8px; scroll-margin-top: var(--kopf, 0px); }
 .label { color: var(--cyan); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
 section > .wrap > h2 { font-size: 22px; font-weight: 400; margin-bottom: 10px; }
 .intro { max-width: 760px; margin: 0 0 20px; }
@@ -142,8 +142,8 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 /* Lange Berichte füllten sonst die ganze Seite, bevor man die Tabs wieder sieht */
 .meldung .inhalt.gekuerzt { max-height: 50vh; overflow: auto; }
 .meldung .inhalt > :last-child { margin-bottom: 0; }
-.suchfeld { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; }
-.suchfeld input { flex: 1 1 320px; max-width: 640px; font: 16px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: #fff; }
+.suchfeld { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
+.suchfeld textarea { flex: 1 1 320px; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: #fff; resize: vertical; }
 .suchfeld .btn:disabled { opacity: .5; cursor: default; }
 /* Dialog: gebaut wie die Service-Card des Brand-Kits, dahinter der Hero-Overlay; ohne Schatten, das Kit kennt sie nur als Hover-Rückmeldung */
 dialog.frage { border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 28px 24px; width: min(520px, calc(100vw - 40px)); color: var(--text); }
@@ -787,7 +787,7 @@ function frage(titel, text, ja) {
 let suchStand = { laeuft: false };
 function renderSuche() {
   const inhalt = TOKEN
-    ? `<form class="suchfeld" id="suchform"><input type="search" id="bedarf" maxlength="300" required placeholder="z. B. Präsentationen als HTML" aria-label="Wofür suchst du ein Werkzeug?">
+    ? `<form class="suchfeld" id="suchform"><textarea id="bedarf" rows="3" maxlength="300" required placeholder="z. B. Präsentationen als HTML" aria-label="Wofür suchst du ein Werkzeug?"></textarea>
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
     : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten, dann http://127.0.0.1:8765 öffnen.</p>';
   return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
