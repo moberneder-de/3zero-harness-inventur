@@ -1,11 +1,11 @@
-"""Rendert ../app-icon.svg einmalig nach ../app-icon.png.
+"""Rendert app-icon.svg einmalig nach app-icon.png.
 
 Einmalschritt von Hand, keine Abhängigkeit von build.py: das PNG liegt danach im Repo.
 Die Formen sind hier nachgezeichnet, nicht aus dem SVG gelesen — ändert sich app-icon.svg,
 muss dieses Skript mitgeändert werden. Gezeichnet wird 4-fach überabgetastet und dann
 verkleinert, das glättet die Kanten. Braucht Pillow.
 
-Aufruf: python3 icon-entwuerfe/render.py
+Aufruf: python3 render-app-icon.py
 """
 
 from pathlib import Path
@@ -65,6 +65,6 @@ funke = (
 )
 d.polygon(funke, fill=WEISS)
 
-ziel = Path(__file__).resolve().parent.parent / "app-icon.png"
+ziel = Path(__file__).resolve().parent / "app-icon.png"
 bild.resize((ZIEL, ZIEL), Image.LANCZOS).save(ziel, optimize=True)
 print(f"{ziel} geschrieben")

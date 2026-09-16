@@ -33,7 +33,7 @@ LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
 # Nur die Wortmarke: „IT- Consulting“ steht unterhalb von y=163 und fällt aus der viewBox
 LOGO_MASSE = ('width="789" height="298" viewBox="21 29 789 298"', 'width="789" height="141" viewBox="21 29 789 141"')
 ICON = HIER / "app-icon.svg"  # Favicon und Zeichen im Seitenkopf
-APP_ICON = HIER / "app-icon.png"  # fürs Dock, gerendert aus ICON mit icon-entwuerfe/render.py
+APP_ICON = HIER / "app-icon.png"  # fürs Dock, gerendert aus ICON mit render-app-icon.py
 
 
 def lies_json(pfad):
