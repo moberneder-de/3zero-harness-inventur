@@ -1021,8 +1021,8 @@ if (TOKEN) {
     if (knopf.id === "alle-ausfuehren") {
       const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
       const warnungen = [...new Set(offen.map(e => warnung(e, gewaehlt(e))).filter(Boolean))];
-      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${D.harness_name}-Sitzung.`
-          + (warnungen.length ? "\n\n" + warnungen.join("\n") : ""), `${offen.length} ausführen`))
+      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
+          + (warnungen.length ? "\n\n" + warnungen.join("\n\n") : ""), `${offen.length} ausführen`))
         mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
@@ -1040,7 +1040,7 @@ if (TOKEN) {
       });
     } else if (knopf.dataset.installieren !== undefined) {
       const nr = Number(knopf.dataset.installieren), k = kandidaten[nr], manuell = !!knopf.dataset.manuell;
-      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${D.harness_name}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
+      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
       mitSperre(async () => {
         INSTALLATION.set(nr, { laeuft: true }); renderSuchInhalt();
         const r = await api("/api/installieren", { nr, nur_manuell: manuell });
