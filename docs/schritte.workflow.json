@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Die sechs Schritte der Inventur",
+    "output": "schritte.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "hauptweg",
+        "label": "Der gewöhnliche Lauf",
+        "focus": [
+          "s1",
+          "s2",
+          "s3",
+          "s4",
+          "s5",
+          "s6"
+        ],
+        "note": "Einlesen, Urteil nachziehen, neu bauen, melden."
+      },
+      {
+        "id": "abkuerzung",
+        "label": "Wenn nichts neu ist",
+        "focus": [
+          "s1",
+          "s2",
+          "s3",
+          "s4"
+        ],
+        "note": "Nennt Schritt 1 keine neuen und keine entfallenen Einträge, fallen 2 und 3 weg und es geht direkt zu 4."
+      },
+      {
+        "id": "suche",
+        "label": "Such-Modus",
+        "focus": [
+          "abgleich",
+          "kandidaten",
+          "install"
+        ],
+        "note": "Nur lesend; installiert erst nach deinem Ja. Danach beginnt die Inventur von vorn."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "lauf",
+      "label": "Die sechs Schritte"
+    },
+    {
+      "id": "suche",
+      "label": "Stattdessen: suche <Bedarf>",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "lesen",
+      "label": "Lesen",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "urteil",
+      "label": "Urteil nachziehen",
+      "fromCol": 1,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ausgeben",
+      "label": "Ausgeben",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "s1",
+      "abgleich"
+    ],
+    "allowedTerminals": [
+      "s6",
+      "install"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "s1",
+      "lane": "lauf",
+      "col": 0,
+      "type": "backend",
+      "label": "1 Einlesen",
+      "sublabel": "build.py",
+      "tag": "ohne Urteil"
+    },
+    {
+      "id": "s2",
+      "lane": "lauf",
+      "col": 1,
+      "type": "frontend",
+      "label": "2 Bewerten",
+      "sublabel": "neue Einträge"
+    },
+    {
+      "id": "s3",
+      "lane": "lauf",
+      "col": 2,
+      "type": "frontend",
+      "label": "3 Austragen",
+      "sublabel": "entfernte"
+    },
+    {
+      "id": "s4",
+      "lane": "lauf",
+      "col": 3,
+      "type": "frontend",
+      "label": "4 Nachziehen",
+      "sublabel": "Gruppen, Hinweise"
+    },
+    {
+      "id": "s5",
+      "lane": "lauf",
+      "col": 4,
+      "type": "backend",
+      "label": "5 Neu bauen",
+      "sublabel": "und öffnen"
+    },
+    {
+      "id": "s6",
+      "lane": "lauf",
+      "col": 5,
+      "type": "external",
+      "label": "6 Melden",
+      "sublabel": "zehn Zeilen"
+    },
+    {
+      "id": "abgleich",
+      "lane": "suche",
+      "col": 1,
+      "type": "security",
+      "label": "Abgleich",
+      "sublabel": "kann der Bestand das?"
+    },
+    {
+      "id": "kandidaten",
+      "lane": "suche",
+      "col": 3,
+      "type": "cloud",
+      "label": "Kandidaten",
+      "sublabel": "höchstens drei"
+    },
+    {
+      "id": "install",
+      "lane": "suche",
+      "col": 4,
+      "type": "security",
+      "label": "Installieren",
+      "sublabel": "nur nach deinem Ja",
+      "tag": "Bestätigung"
+    }
+  ],
+  "edges": [
+    {
+      "from": "s1",
+      "to": "s2",
+      "label": "unbewertet",
+      "variant": "emphasis"
+    },
+    {
+      "from": "s2",
+      "to": "s3"
+    },
+    {
+      "from": "s3",
+      "to": "s4"
+    },
+    {
+      "from": "s4",
+      "to": "s5",
+      "variant": "emphasis"
+    },
+    {
+      "from": "s5",
+      "to": "s6"
+    },
+    {
+      "from": "abgleich",
+      "to": "kandidaten",
+      "label": "suchen"
+    },
+    {
+      "from": "kandidaten",
+      "to": "install",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Wo der Lauf abkürzt",
+      "items": [
+        "Schritt 1 nennt zwei Listen: neu installiert und nicht mehr installiert",
+        "Sind beide leer und willst du keine Neubewertung, geht es direkt zu Schritt 4"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Wann ein Schritt fertig ist",
+      "items": [
+        "Jeder Schritt hat eine Abbruchbedingung, keine Einschätzung",
+        "Schritt 4 endet, wenn die Bewertungsdatei als JSON parst",
+        "Schritt 5 endet, wenn nichts Unbewertetes mehr gemeldet wird"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Der Such-Modus",
+      "items": [
+        "Er läuft nur lesend und installiert erst nach deinem ausdrücklichen Ja",
+        "Ohne Benutzer, etwa aus dem Dashboard, schlägt er nur vor",
+        "Danach beginnt die Inventur von vorn, damit das Neue ein Urteil bekommt"
+      ]
+    }
+  ]
+}

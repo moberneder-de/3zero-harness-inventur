@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Woher die Zahlen im Dashboard kommen",
+    "output": "zahlen.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1085,
+      520
+    ],
+    "views": [
+      {
+        "id": "nutzung",
+        "label": "Zwei Einheiten",
+        "focus": [
+          "cfg",
+          "sessions",
+          "nutzung"
+        ],
+        "note": "Claude Code zählt jeden Aufruf, Codex nur eine Sitzung. Dieselbe Zahl bedeutet nicht dasselbe."
+      },
+      {
+        "id": "schaetzung",
+        "label": "Nur geschätzt",
+        "focus": [
+          "skillmd",
+          "kontext"
+        ],
+        "note": "Zeichen geteilt durch vier, keine gezählten Tokens."
+      },
+      {
+        "id": "folgen",
+        "label": "Was daraus folgt",
+        "focus": [
+          "nutzung",
+          "kontext",
+          "entfernen",
+          "nurmanuell"
+        ],
+        "note": "Die Zahl liefert den Beleg; entscheiden musst du."
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Quelle auf der Platte"
+    },
+    {
+      "label": "Daraus gerechnet"
+    },
+    {
+      "label": "Was es begründet"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cfg",
+      "type": "external",
+      "label": "skillUsage",
+      "sublabel": "~/.claude.json",
+      "stage": 0,
+      "row": 0
+    },
+    {
+      "id": "sessions",
+      "type": "external",
+      "label": "Protokolle",
+      "sublabel": "~/.codex/sessions",
+      "stage": 0,
+      "row": 1
+    },
+    {
+      "id": "skillmd",
+      "type": "external",
+      "label": "SKILL.md",
+      "sublabel": "Name, Beschreibung",
+      "stage": 0,
+      "row": 2
+    },
+    {
+      "id": "nutzung",
+      "type": "database",
+      "label": "Nutzung",
+      "sublabel": "gezählt",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "kontext",
+      "type": "database",
+      "label": "Kontext",
+      "sublabel": "geschätzt",
+      "stage": 1,
+      "row": 2
+    },
+    {
+      "id": "entfernen",
+      "type": "backend",
+      "label": "entfernen",
+      "sublabel": "ungenutzt, doppelt",
+      "stage": 2,
+      "row": 0
+    },
+    {
+      "id": "nurmanuell",
+      "type": "backend",
+      "label": "nur manuell",
+      "sublabel": "teuer, selten",
+      "stage": 2,
+      "row": 2
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-cfg",
+      "from": "cfg",
+      "to": "nutzung",
+      "label": "Aufrufe",
+      "classification": "Claude Code",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -14
+    },
+    {
+      "id": "f-sessions",
+      "from": "sessions",
+      "to": "nutzung",
+      "label": "Sitzungen",
+      "classification": "Codex"
+    },
+    {
+      "id": "f-skillmd",
+      "from": "skillmd",
+      "to": "kontext",
+      "label": "Länge ÷ 4",
+      "classification": "Schätzung",
+      "route": "straight"
+    },
+    {
+      "id": "e-nutzung",
+      "from": "nutzung",
+      "to": "entfernen",
+      "label": "ungenutzt",
+      "classification": "mit Datum"
+    },
+    {
+      "id": "e-kontext",
+      "from": "kontext",
+      "to": "nurmanuell",
+      "label": "immer dabei",
+      "classification": "je Sitzung"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Was nicht vergleichbar ist",
+      "items": [
+        "Bei Claude Code zählt Nutzung jeden Aufruf, bei Codex nur eine Sitzung",
+        "Dieselbe Zahl bedeutet in den beiden Dashboards also nicht dasselbe",
+        "Frisch installiert heißt wenig genutzt; das Datum steht daneben"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Was nur geschätzt ist",
+      "items": [
+        "Kontextkosten sind Zeichen geteilt durch vier, keine gezählten Tokens",
+        "Dasselbe gilt für die Hook-Wirkung aus den Transkripten der letzten Tage",
+        "Reicht für Größenordnungen, nicht zum Vergleich zweier ähnlicher Skills"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Nicht im Bild, aber belastbar",
+      "items": [
+        "„Update verfügbar“ vergleicht per gh api zwei Prüfsummen: gleich oder nicht",
+        "Fehlt gh oder das Netz, fehlt die Angabe ganz statt falsch zu sein",
+        "Die Empfehlung selbst ist Handarbeit und steht in bewertung-*.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Harness-Inventur: Werkzeug und Daten getrennt",
+    "output": "harness-inventur.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "hauptweg", "label": "Vom Bestand zum Dashboard", "focus": ["claudecfg", "build", "daten", "server", "browser"], "note": "Der gewöhnliche Weg: Konfiguration einlesen, ablegen, ausliefern." },
+      { "id": "zwei-harness", "label": "Beide Harness", "focus": ["claudecfg", "codexcfg", "agents", "build", "codexpy"], "note": "Claude Code und Codex teilen sich ~/.agents, deshalb steht ein Skill in beiden Bewertungen." },
+      { "id": "bewerten", "label": "Neu bewerten", "focus": ["server", "lauf", "daten"], "note": "Der Lauf arbeitet abgeschirmt; erst der geprüfte Stand geht in den Datenordner." }
+    ]
+  },
+  "components": [
+    { "id": "claudecfg", "type": "external", "label": "Claude Code", "sublabel": "~/.claude, ~/.claude.json", "pos": [60, 110], "size": [170, 66] },
+    { "id": "agents", "type": "external", "label": "Gemeinsame Skills", "sublabel": "~/.agents", "pos": [60, 256], "size": [170, 66], "tag": "npx skills" },
+    { "id": "codexcfg", "type": "external", "label": "Codex", "sublabel": "~/.codex", "pos": [60, 402], "size": [170, 66] },
+    { "id": "build", "type": "backend", "label": "build.py", "sublabel": "liest den Bestand", "pos": [430, 160], "size": [170, 66] },
+    { "id": "codexpy", "type": "backend", "label": "codex.py", "sublabel": "derselbe Bestand aus Codex", "pos": [430, 372], "size": [170, 66] },
+    { "id": "daten", "type": "database", "label": "~/.3zero-harness-inventur", "sublabel": "Bewertung, Inventar, Dashboard", "pos": [800, 256], "size": [190, 66], "tag": "deine Daten" },
+    { "id": "browser", "type": "frontend", "label": "Dashboard", "sublabel": "127.0.0.1:8765", "pos": [1150, 90], "size": [170, 66] },
+    { "id": "server", "type": "backend", "label": "server.py", "sublabel": "Ausliefern und Aktionen", "pos": [1150, 256], "size": [170, 66] },
+    { "id": "lauf", "type": "security", "label": "Hintergrundlauf", "sublabel": "claude -p bzw. codex exec", "pos": [1150, 422], "size": [170, 66], "tag": "Sandbox" }
+  ],
+  "connections": [
+    { "id": "claude-lesen", "from": "claudecfg", "to": "build", "label": "Plugins, Skills, Hooks", "variant": "emphasis" },
+    { "id": "agents-build", "from": "agents", "to": "build", "label": "auch in Claude Code" },
+    { "id": "agents-codex", "from": "agents", "to": "codexpy", "label": "auch in Codex" },
+    { "id": "codex-lesen", "from": "codexcfg", "to": "codexpy", "label": "Plugins, Skills, Apps" },
+    { "id": "build-codex", "from": "build", "to": "codexpy", "label": "bei --harness codex", "variant": "dashed", "labelDy": 70 },
+    { "id": "build-daten", "from": "build", "to": "daten", "label": "schreibt Inventar und Dashboard", "variant": "emphasis" },
+    { "id": "daten-server", "from": "daten", "to": "server", "label": "liest beides" },
+    { "id": "ausliefern", "from": "server", "to": "browser", "label": "HTTP, nur lokal", "variant": "emphasis" },
+    { "id": "lauf-starten", "from": "server", "to": "lauf", "label": "neu bewerten", "variant": "dashed", "labelDy": 55 },
+    { "id": "lauf-zurueck", "from": "lauf", "to": "daten", "label": "geprüfte Bewertung", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Werkzeug im Repo", "items": ["build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex", "server.py liefert aus und führt die gewählten Aktionen aus", "template.html ist die Oberfläche, Farben nur aus dem 3zero-Brand-Kit"] },
+    { "dot": "emerald", "title": "Datenordner", "items": ["Bewertung: Handarbeit, teuer neu zu erzeugen", "Inventar und Dashboard: erzeugt, jederzeit neu baubar", "harness.json merkt den zuletzt gestarteten Harness"] },
+    { "dot": "amber", "title": "Warum getrennt", "items": ["Die Bewertung beschreibt deinen Rechner, nicht das Werkzeug", "Seit der Trennung schreibt nichts mehr in den Projektordner", "~/.agents liest jeder Harness, deshalb steht ein Skill in beiden Bewertungen"] }
+  ]
+}
