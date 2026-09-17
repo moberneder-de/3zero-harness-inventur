@@ -237,11 +237,11 @@ def lauf(argv, cwd, timeout):
 
 
 class Inventarserver(ThreadingHTTPServer):
-    def __init__(self, port, ordner, settings, token, daten=None):
+    def __init__(self, port, ordner, settings, token, daten):
         """`ordner` ist das Werkzeug (build.py, template.html), `daten` sind die Dateien des Benutzers."""
         super().__init__(("127.0.0.1", port), Handler)
         self.ordner, self.settings, self.token = Path(ordner), Path(settings), token
-        self.daten = Path(ordner if daten is None else daten)
+        self.daten = Path(daten)
         self.hosts = {f"{h}:{self.server_address[1]}" for h in ("127.0.0.1", "localhost")}
         self.sperre = threading.Lock()  # Aktionen schreiben teils dieselbe settings.json, also nacheinander
         self.gesichert = set()

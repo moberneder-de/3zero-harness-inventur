@@ -33,6 +33,4 @@ def aktuell(ordner):
 def merken(ordner, harness_id):
     if harness_id not in HARNESSE:
         raise ValueError(f"unbekannter Harness: {harness_id}")
-    ordner = Path(ordner)
-    ordner.mkdir(parents=True, exist_ok=True)
-    (ordner / "harness.json").write_text(json.dumps({"harness": harness_id}) + "\n", encoding="utf-8")
+    (Path(ordner) / "harness.json").write_text(json.dumps({"harness": harness_id}) + "\n", encoding="utf-8")

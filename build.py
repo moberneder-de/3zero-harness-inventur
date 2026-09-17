@@ -39,6 +39,11 @@ ICON = HIER / "app-icon.svg"  # Favicon und Zeichen im Seitenkopf
 APP_ICON = HIER / "app-icon.png"  # fürs Dock, gerendert aus ICON mit render-app-icon.py
 
 
+def data_uri(inhalt, mime):
+    """Bettet Bytes in die Seite ein, damit das Dashboard eine einzelne Datei bleibt."""
+    return f"data:{mime};base64," + base64.b64encode(inhalt).decode()
+
+
 def lies_json(pfad):
     try:
         return json.loads(Path(pfad).read_text(encoding="utf-8"))
@@ -671,11 +676,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Harness-Inventur für Claude Code oder Codex")
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
     wahl = parser.parse_args(argv).harness
+    DATEN.mkdir(parents=True, exist_ok=True)
     if wahl:
         harness.merken(DATEN, wahl)
     h = wahl or harness.aktuell(DATEN)
     angaben = harness.HARNESSE[h]
-    DATEN.mkdir(parents=True, exist_ok=True)
     if h == "codex":
         import codex  # erst hier: codex.py importiert selbst aus build
         inhalt = codex.inventar()
@@ -689,11 +694,10 @@ def main(argv=None):
     svg = LOGO.read_text(encoding="utf-8")
     if LOGO_MASSE[0] not in svg:
         raise SystemExit(f"{LOGO} hat andere Maße als erwartet, Zuschnitt in LOGO_MASSE prüfen.")
-    logo = "data:image/svg+xml;base64," + base64.b64encode(svg.replace(*LOGO_MASSE).encode()).decode()
-    icon = "data:image/svg+xml;base64," + base64.b64encode(ICON.read_bytes()).decode()
-    app_icon = "data:image/png;base64," + base64.b64encode(APP_ICON.read_bytes()).decode()
     vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
-               .replace("__LOGO__", logo).replace("__ICON__", icon).replace("__APPICON__", app_icon))
+               .replace("__LOGO__", data_uri(svg.replace(*LOGO_MASSE).encode(), "image/svg+xml"))
+               .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
+               .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png")))
     (DATEN / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
 
     print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "

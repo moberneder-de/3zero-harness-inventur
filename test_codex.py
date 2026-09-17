@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import codex
+import harness
 
 
 class CodexOrdner(unittest.TestCase):
@@ -16,7 +17,7 @@ class CodexOrdner(unittest.TestCase):
         self.home = self.tmp / "home"
         self.patches = [mock.patch.object(codex, "HOME", self.home), mock.patch.object(codex, "CODEX", self.home / ".codex"),
                         mock.patch.object(codex, "AGENTS", self.home / ".agents"), mock.patch.object(codex, "CLAUDE", self.home / ".claude"),
-                        mock.patch.object(codex, "HIER", self.tmp), mock.patch.object(codex, "DATEN", self.tmp)]
+                        mock.patch.object(codex, "HIER", self.tmp), mock.patch.object(harness, "DATEN", self.tmp)]
         for p in self.patches:
             p.start()
 

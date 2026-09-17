@@ -29,7 +29,8 @@ class Server(unittest.TestCase):
             "deinstallieren": {"argv": ["touch", str(self.marker)]},
             "deaktivieren": {"argv": ["sh", "-c", "echo kaputt >&2; exit 3"]},
         }}])
-        self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim")
+        # Werkzeug und Daten im selben Ordner: die Tests legen build.py und die Dateien zusammen ab
+        self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim", self.tmp)
         self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
         self.srv.codex_skills = self.tmp / "agents-skills"  # nie das echte ~/.agents/skills treffen
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
