@@ -847,10 +847,14 @@ function renderHilfe() {
       <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>OpenAI/Codex</b> ist in Codex eingebaut.</li>
       <li>Plugin-Status: <b>aktiv</b> und <b>deaktiviert</b> nach <code>enabled</code> in config.toml, <b>im Konto</b> für Plugins aus dem ChatGPT-Konto, <b>wirkungslos</b> für openai-curated-Einträge, die Codex wegen des Online-Katalogs ignoriert, <b>nicht aktiviert</b> für Plugins ohne Eintrag.</li>
+      <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update.</li>
+      <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
+      <li>Der Tab „Empfehlungen“ zeigt nur Offenes. Steht ein Skill schon auf „abschalten“ oder „nur manuell“, erscheint er unter „Schon umgesetzt“ und zählt im Überblick nicht mehr mit.</li>
+      <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
       <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“.</li>
@@ -858,10 +862,13 @@ function renderHilfe() {
       <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
       <li>Vor der ersten Änderung legt der Server <code>config.toml.bak</code> an und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
-    </ul>`], ["Suchen", `<ul>
+    </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
+      <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
       <li>Die Suche läuft in einer Sandbox: nichts schreiben außer dem npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur zu skills.sh, npm und GitHub und nur lesend. Mit eingeschaltetem VPN kommt dieses Netz nicht durch; Codex sucht dann nur über seine Websuche und sagt das im Bericht.</li>
-      <li>Skills und Plugins installiert der Server per Knopf nach einer Bestätigung: Skills mit <code>npx skills add … --agent codex</code>, Plugins mit <code>codex plugin add</code>. MCP-Server bleiben zum Kopieren.</li>
+      <li>Skills und Plugins installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“: Skills mit <code>npx skills add … --agent codex</code>, Plugins mit <code>codex plugin add</code>. MCP-Server bleiben zum Kopieren.</li>
+      <li>Neu Installiertes erscheint danach als „neu · unbewertet“; „neu bewerten“ trägt die Bewertung nach.</li>
+      <li>Dasselbe mit Rückfragen im Gespräch: <code>$3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Codex.</li>
     </ul>`], ["Woher die Zahlen kommen", `<ul>
       <li>Nutzung: gezählt in den Codex-Sitzungsprotokollen unter ~/.codex/sessions und ~/.codex/archived_sessions. Ein Skill zählt je Sitzung einmal, wenn du ihn per $name wählst oder Codex seine SKILL.md liest; MCP-Server zählen je Aufruf.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Skills, die Codex automatisch in den Katalog lädt. Grobe Schätzung.</li>
