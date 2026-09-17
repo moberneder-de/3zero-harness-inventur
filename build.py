@@ -33,9 +33,7 @@ CODEX = HOME / ".codex"  # nur für die Frage, ob ein Skill auch in Codex lädt
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
 DATEN = harness.DATEN  # Bewertung, Inventar, Dashboard und harness.json: alles außerhalb des Repos
-LOGO = HIER.parent / "3zero-Design-Kit" / "logo" / "wordmark.svg"
-# Nur die Wortmarke: „IT- Consulting“ steht unterhalb von y=163 und fällt aus der viewBox
-LOGO_MASSE = ('width="789" height="298" viewBox="21 29 789 298"', 'width="789" height="141" viewBox="21 29 789 141"')
+LOGO = HIER / "wordmark.svg"  # Kopie aus dem 3zero-Design-Kit, viewBox schon gekürzt; siehe Kommentar in der Datei
 ICON = HIER / "app-icon.svg"  # Favicon und Zeichen im Seitenkopf
 APP_ICON = HIER / "app-icon.png"  # fürs Dock, gerendert aus ICON mit render-app-icon.py
 
@@ -696,11 +694,8 @@ def main(argv=None):
     (DATEN / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
-    svg = LOGO.read_text(encoding="utf-8")
-    if LOGO_MASSE[0] not in svg:
-        raise SystemExit(f"{LOGO} hat andere Maße als erwartet, Zuschnitt in LOGO_MASSE prüfen.")
     vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
-               .replace("__LOGO__", data_uri(svg.replace(*LOGO_MASSE).encode(), "image/svg+xml"))
+               .replace("__LOGO__", data_uri(LOGO.read_bytes(), "image/svg+xml"))
                .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
                .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png")))
     (DATEN / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")

@@ -7,7 +7,7 @@ argument-hint: "[suche <Bedarf>]"
 
 Das Dashboard hat zwei Schichten. `build.py` liest den Bestand ohne Urteil aus der Konfiguration: was installiert ist, ob es aktiv ist, woher es stammt, wie oft es genutzt wurde. Die Bewertungsdatei (siehe Harness) enthält, was Urteil braucht: deutsche Kurzbeschreibung, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise. Dieser Skill bringt die zweite Schicht auf den Stand der ersten.
 
-Ordner: `/Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur`
+Ordner: das Basisverzeichnis dieses Skills, das der Harness beim Aufruf nennt. Unten steht dafür `<Ordner>`; setze in jedem Befehl den echten Pfad ein.
 
 ## Harness
 
@@ -31,7 +31,7 @@ Beginnt die Anfrage mit **suche** (etwa `/3zero-harness-inventur suche Mermaid-D
 ## 1. Bestand einlesen
 
 ```bash
-python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness>
+python3 <Ordner>/build.py --harness <harness>
 ```
 
 Die Ausgabe nennt bis zu zwei Listen: „Noch nicht bewertet“ (neu installiert) und „Bewertet, aber nicht mehr installiert“ (inzwischen entfernt). Unter Codex schreibt `build.py` damit außerhalb des Arbeitsordners und braucht für die Update-Prüfung (`gh api`) Netz; Codex fragt dann nach Freigabe. Ohne Netz fehlt nur die Update-Angabe.
@@ -75,10 +75,10 @@ Fertig, wenn: `python3 -m json.tool ~/.3zero-harness-inventur/<Bewertungsdatei> 
 ## 5. Neu erzeugen und öffnen
 
 ```bash
-python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open ~/.3zero-harness-inventur/<Dashboard>; fi
+python3 <Ordner>/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open ~/.3zero-harness-inventur/<Dashboard>; fi
 ```
 
-Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 /Users/moberneder/Daten/600_Projekte/3zero-Harness-Inventur/server.py`.
+Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 <Ordner>/server.py`.
 
 Fertig, wenn: die Ausgabe weder unbewertete noch entfallene Einträge nennt.
 

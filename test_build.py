@@ -354,7 +354,7 @@ class HarnessWahl(unittest.TestCase):
         (self.tmp / "template.html").write_text("<script>__DATEN__</script>")
         self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
                         mock.patch.object(build, "LOGO", self.tmp / "logo.svg")]
-        (self.tmp / "logo.svg").write_text(f'<svg {build.LOGO_MASSE[0]}></svg>')
+        (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
 
