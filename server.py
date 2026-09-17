@@ -101,7 +101,9 @@ GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth
 CODEX_SUCHEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Bestand ist frisch eingelesen "
     "(inventar-codex.json), führe build.py nicht aus. Stelle keine Rückfragen: Ist der Bedarf vage, lege die naheliegende Deutung fest "
-    "und nenne sie im Bericht; deckt der Bestand ihn ab, sage das. Installiere nichts und ändere keine Dateien. "
+    "und nenne sie im Bericht; deckt der Bestand ihn ab, sage das. Installiere nichts in die Konfiguration des Benutzers und "
+    "ändere keine Dateien. Dass npx sein eigenes Paket in den Zwischenspeicher lädt, gehört zum Suchen und ist kein Installieren: "
+    "Rufe es als `npx -y skills find …` auf, damit es ohne Rückfrage nachlädt. "
     "Shell-Befehle erreichen nur skills.sh, npm und GitHub, und nur lesend. Scheitert npx skills am Netz, suche Skills über die "
     "Websuche (skills.sh, GitHub) und schreibe in den Bericht, dass npx skills nicht erreichbar war. "
     "GitHub-Daten (Sterne, letzter Push) holst du mit curl -s https://api.github.com/repos/<owner>/<repo>. "

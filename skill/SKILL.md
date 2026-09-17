@@ -104,7 +104,7 @@ Fertig, wenn: feststeht, was der Bestand schon abdeckt und was fehlt.
 
 ### S3. Suchen
 
-- Skills: `npx skills find <Stichwörter>` (zeigt Installationen je Skill), mehrere Formulierungen. Was ein Repo sonst enthält: `npx skills add <owner/repo> -l`.
+- Skills: `npx -y skills find <Stichwörter>` (zeigt Installationen je Skill), mehrere Formulierungen. Was ein Repo sonst enthält: `npx -y skills add <owner/repo> -l`. Das `-y` gilt dem Nachladen von `skills` selbst: Ohne den Schalter fragt npx, und in einem Lauf ohne Terminal scheitert der Befehl daran. Es installiert nichts in die Konfiguration.
 - Plugins: In Claude Code `claude plugin list --json --available` und in `available` nach Name und Beschreibung filtern. In Codex die Marktplatz-Dateien lesen: `~/.codex/.tmp/plugins/.agents/plugins/marketplace.json`, `~/.codex/.tmp/bundled-marketplaces/*/.agents/plugins/marketplace.json` und den Online-Katalog `~/.codex/cache/remote_plugin_catalog/*.json` (groß: mit `jq` oder `grep` nach Name und Beschreibung filtern).
 - MCP-Server: Die CLI hat keine Suche. Suche im Web nach einem offiziellen Server des Anbieters und nimm den Installationsbefehl aus dessen Doku.
 
