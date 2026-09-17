@@ -19,6 +19,7 @@ import base64
 import json
 import re
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -682,7 +683,11 @@ def main(argv=None):
     h = wahl or harness.aktuell(DATEN)
     angaben = harness.HARNESSE[h]
     if h == "codex":
-        import codex  # erst hier: codex.py importiert selbst aus build
+        # codex.py holt sich Funktionen mit `from build import …`. Als Skript gestartet heißt dieses Modul
+        # aber __main__, nicht build: Der Import führte die Modulebene ein zweites Mal aus und legte eine
+        # zweite Kopie aller Konstanten an, mit erneut gelesenen Dateien. Hier zeigen beide Namen auf dasselbe.
+        sys.modules.setdefault("build", sys.modules["__main__"])
+        import codex  # erst hier, weil codex.py selbst aus build importiert
         inhalt = codex.inventar()
     else:
         inhalt = claude_inventar()
