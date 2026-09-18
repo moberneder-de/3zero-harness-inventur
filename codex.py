@@ -317,8 +317,10 @@ def eigene_hooks(cfg):
 def mcp_server(cfg, plugin_liste, mcp_tage):
     """Eigene Server aus config.toml und die der Plugins. Status nur aus der Konfiguration: Codex prüft keine Verbindung."""
     def eintrag(eid, name, art, quelle, c, status, nutzungsname):
+        # werkzeuge und tokens bleiben None: Codex protokolliert weder die Werkzeugliste noch den Anweisungsblock
         return {"id": eid, "name": name, "art": art, "quelle": quelle, "ziel": ziel_text(c), "status": status,
-                "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname))}
+                "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname)),
+                "werkzeuge": None, "tokens": None}
 
     mcp_servers = cfg.get("mcp_servers")
     mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}

@@ -254,11 +254,45 @@ class Hooks(unittest.TestCase):
             + zeile("2026-09-12T10:00:00Z", "Stop", "pruefen", "nur für die Anzeige")
             + zeile("2026-09-11T08:00:00Z", "UserPromptSubmit", "erinnern", "Denk an die Tests")
             + "kein json, aber \"hook_success\"\n")
-        self.assertEqual(build.hook_ausgaben([datei, tmp / "fehlt.jsonl"]), {
+        self.assertEqual(build.hook_ausgaben([datei, tmp / "fehlt.jsonl"])[0], {
             ("SessionStart", "start"): {"zuletzt": "2026-09-13", "tokens": 100, "max": 200, "laeufe": 2},
             ("PostToolUse", "pruefen"): {"zuletzt": "2026-09-12", "tokens": 10, "max": 10, "laeufe": 1},
             ("UserPromptSubmit", "erinnern"): {"zuletzt": "2026-09-11", "tokens": 4, "max": 4, "laeufe": 1},
         })
+
+    def test_dauern_aus_transkripten(self):
+        def zeile(ereignis, befehl, dauer):
+            a = {"type": "hook_success", "hookEvent": ereignis, "command": befehl, "stdout": ""}
+            return json.dumps({"type": "attachment", "timestamp": "2026-09-12T08:00:00Z",
+                               "attachment": a if dauer is None else {**a, "durationMs": dauer}}) + "\n"
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text(zeile("SessionStart", "start", 10) + zeile("SessionStart", "start", 50)
+                         + zeile("SessionStart", "start", 30) + zeile("Stop", "still", 8)
+                         + zeile("Stop", "ohne", None))
+        _, dauern = build.hook_ausgaben([datei])
+        self.assertEqual(dauern, {("SessionStart", "start"): {"median": 30, "max": 50, "messungen": 3},
+                                  ("Stop", "still"): {"median": 8, "max": 8, "messungen": 1}})
+
+    def test_dauern_auch_aus_der_stop_zusammenfassung(self):
+        # hook_success speichert Claude Code nur für einen Teil der Läufe; die Zusammenfassung am Turn-Ende deckt alle Stop-Hooks ab
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text("".join(json.dumps({"type": "system", "subtype": "stop_hook_summary", "hookInfos": infos}) + "\n"
+                                 for infos in ([{"command": "still", "durationMs": 20}, {"command": "ohne"}],
+                                               [{"command": "still", "durationMs": 30}])))
+        self.assertEqual(build.hook_ausgaben([datei])[1], {("Stop", "still"): {"median": 25, "max": 30, "messungen": 2}})
+
+    def test_messen_traegt_die_dauer_ein(self):
+        hooks = build.hook_eintraege({"Stop": [{"hooks": [{"type": "command", "command": "still"}]}],
+                                      "PostToolUse": [{"hooks": [{"type": "command", "command": "ohne"}]}]},
+                                     "p@m", {"art": "Plugin"}, "/p/hooks.json")
+        build.messen(hooks, {}, {("Stop", "still"): {"median": 8, "max": 12, "messungen": 4}})
+        h = {e["ereignis"]: e for e in hooks}
+        self.assertEqual(h["Stop"]["dauer"], {"median": 8, "max": 12, "messungen": 4})
+        self.assertIsNone(h["PostToolUse"]["dauer"])
 
     def test_messen_zaehlt_nur_sessionstart_je_sitzung(self):
         hooks = build.hook_eintraege({
@@ -266,7 +300,7 @@ class Hooks(unittest.TestCase):
             "PostToolUse": [{"hooks": [{"type": "command", "command": "pruefen"}]}],
             "Stop": [{"hooks": [{"type": "command", "command": "still"}]}]}, "p@m", {"art": "Plugin"}, "/p/hooks.json")
         build.messen(hooks, {("SessionStart", "start"): {"zuletzt": "2026-09-13", "tokens": 100, "max": 200, "laeufe": 2},
-                             ("PostToolUse", "pruefen"): {"zuletzt": "2026-09-12", "tokens": 10, "max": 10, "laeufe": 1}})
+                             ("PostToolUse", "pruefen"): {"zuletzt": "2026-09-12", "tokens": 10, "max": 10, "laeufe": 1}}, {})
         h = {e["ereignis"]: e for e in hooks}
         self.assertEqual((h["SessionStart"]["tokens"], h["SessionStart"]["ausgabe"]["max"]), (100, 200))
         self.assertEqual((h["PostToolUse"]["tokens"], h["PostToolUse"]["ausgabe"]["laeufe"]), (0, 1))
@@ -346,6 +380,77 @@ class McpStatus(unittest.TestCase):
             {"serverName": "claude.ai Gmail"}, {"serverUrl": "https://example.org/*"}, "kaputt"]}), {"claude.ai Gmail"})
 
 
+class McpMessungen(unittest.TestCase):
+    def transkript(self, *zeilen):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text("".join(zeilen))
+        return datei, tmp / "fehlt.jsonl"
+
+    def test_werkzeuge_anweisungen_und_aufrufe_aus_transkripten(self):
+        def anhang(a, zeit="2026-09-10T08:00:00Z"):
+            return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": a}) + "\n"
+
+        def aufruf(name, zeit):
+            return json.dumps({"type": "assistant", "timestamp": zeit,
+                               "message": {"content": [{"type": "tool_use", "name": name}]}}) + "\n"
+
+        dateien = self.transkript(
+            anhang({"type": "deferred_tools_delta", "addedNames": ["mcp__upnote__search", "mcp__upnote__view", "WebFetch"]}),
+            anhang({"type": "deferred_tools_record", "entries": [{"name": "mcp__upnote__search"}, {"name": "mcp__docs__batch"}]}),
+            anhang({"type": "mcp_instructions_delta", "addedNames": ["upnote", "claude.ai Docs"],
+                    "addedBlocks": ["x" * 400, "y" * 40]}),
+            aufruf("mcp__upnote__search", "2026-09-11T08:00:00Z"),
+            aufruf("mcp__upnote__view", "2026-09-13T08:00:00Z"),
+            aufruf("Read", "2026-09-14T08:00:00Z"),
+            "kaputte Zeile, aber mcp__ steht drin\n")
+        self.assertEqual(build.mcp_messungen(dateien), {
+            "upnote": {"werkzeuge": 2, "tokens": 100, "nutzung": {"anzahl": 2, "zuletzt": "2026-09-13"}},
+            "docs": {"werkzeuge": 1, "tokens": 0, "nutzung": None},
+            "claude_ai_Docs": {"werkzeuge": 0, "tokens": 10, "nutzung": None},
+        })
+
+    def test_anzeigename_wird_zum_werkzeugpraefix(self):
+        self.assertEqual(build.werkzeug_praefix("claude.ai Claude Docs"), "claude_ai_Claude_Docs")
+        self.assertEqual(build.werkzeug_praefix("plugin:github:github"), "plugin_github_github")
+        self.assertEqual(build.werkzeug_praefix("mcp-registry"), "mcp-registry")
+
+    def test_eintrag_ohne_messung_bleibt_ungemessen(self):
+        cfg = {"mcpServers": {"upnote": {"command": "bun"}, "still": {"command": "x"}}}
+        messungen = {"upnote": {"werkzeuge": 8, "tokens": 120, "nutzung": {"anzahl": 3, "zuletzt": "2026-09-13"}}}
+        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
+            eintraege = {e["name"]: e for e in build.mcp_server([], None, messungen)}
+        self.assertEqual([eintraege["upnote"][k] for k in ("werkzeuge", "tokens")], [8, 120])
+        self.assertEqual(eintraege["upnote"]["nutzung"], {"anzahl": 3, "zuletzt": "2026-09-13"})
+        self.assertEqual([eintraege["still"][k] for k in ("werkzeuge", "tokens", "nutzung")], [None, None, None])
+
+
+class Verlauf(unittest.TestCase):
+    def test_kontextlast_zaehlt_nur_was_in_jeder_sitzung_laedt(self):
+        inhalt = {"skills": [{"tokens": 10}, {"tokens": 0}], "hooks": [{"tokens": 5}],
+                  "mcp": [{"tokens": 100}, {"tokens": None}], "eingebaut": [{"tokens": 2}, {}],
+                  "projekt_skills": [{"tokens": 999}], "projekt_mcp": [{"tokens": 999}]}
+        self.assertEqual(build.kontextlast(inhalt), 117)
+
+    def test_je_tag_eine_zeile_der_letzte_lauf_gilt(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        pfad = tmp / "verlauf.json"
+        build.verlauf_fortschreiben(pfad, {"datum": "2026-09-17", "kontextlast": 100})
+        build.verlauf_fortschreiben(pfad, {"datum": "2026-09-18", "kontextlast": 90})
+        reihe = build.verlauf_fortschreiben(pfad, {"datum": "2026-09-18", "kontextlast": 80})
+        self.assertEqual(reihe, [{"datum": "2026-09-17", "kontextlast": 100}, {"datum": "2026-09-18", "kontextlast": 80}])
+        self.assertEqual(json.loads(pfad.read_text(encoding="utf-8")), reihe)
+
+    def test_kaputte_datei_beginnt_neu(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        pfad = tmp / "verlauf.json"
+        pfad.write_text("kein json", encoding="utf-8")
+        self.assertEqual(build.verlauf_fortschreiben(pfad, {"datum": "2026-09-18"}), [{"datum": "2026-09-18"}])
+
+
 class HarnessWahl(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -394,6 +499,15 @@ class HarnessWahl(unittest.TestCase):
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("claude-code", "Claude Code", "2.1.272 (Claude Code)"))
         self.assertTrue((self.daten / "dashboard.html").exists())
+
+    def test_verlauf_liegt_je_harness_getrennt_und_kommt_ins_inventar(self):
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(skills=[{"tokens": 40}])), \
+                mock.patch.object(build, "version", return_value=None):
+            build.main(["--harness", "claude-code"])
+        reihe = json.loads((self.daten / "verlauf-claude-code.json").read_text())
+        self.assertEqual([r["kontextlast"] for r in reihe], [40])
+        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["verlauf"], reihe)
+        self.assertFalse((self.daten / "verlauf-codex.json").exists())
 
     def test_abgleich(self):
         alle = [{"id": "a", "bewertung": {"was": "x"}}, {"id": "b", "bewertung": None}]

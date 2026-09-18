@@ -18,6 +18,7 @@ import argparse
 import base64
 import json
 import re
+import statistics
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -245,7 +246,7 @@ def hook_eintraege(roh, schluessel, quelle, pfad, status="aktiv"):
                    for g in gruppen for h in g.get("hooks", [])]
         ergebnis.append({"id": f"hook:{schluessel}:{ereignis}", "name": ereignis, "typ": "Hook", "ereignis": ereignis,
                          "status": status, "befehle": befehle, "quelle": dict(quelle), "pfad": str(pfad),
-                         "tokens": 0, "ausgabe": None})
+                         "tokens": 0, "ausgabe": None, "dauer": None})
     return ergebnis
 
 
@@ -280,8 +281,11 @@ def transkripte():
 
 
 def hook_ausgaben(dateien):
-    """Was Hooks laut Transkript an Claude zurückgaben, je (Ereignis, Befehl): zuletzt, höchstens, Läufe mit Ausgabe."""
-    funde = {}
+    """Je (Ereignis, Befehl) zwei Messungen aus den Transkripten: was der Hook an Claude zurückgab
+    (zuletzt, höchstens, Läufe mit Ausgabe) und wie lange er lief (Median, Maximum, Messungen).
+    Laufzeiten stehen in zwei Quellen: in jeder Hook-Ausgabe und in der Zusammenfassung am Turn-Ende,
+    die auch die Stop-Hooks ohne Ausgabe erfasst."""
+    funde, zeiten = {}, {}
     for datei in dateien:
         try:
             f = open(datei, encoding="utf-8", errors="replace")
@@ -289,24 +293,41 @@ def hook_ausgaben(dateien):
             continue
         with f:
             for zeile in f:
-                if '"hook_success"' not in zeile:
+                if '"hook_success"' not in zeile and '"hookInfos"' not in zeile:
                     continue
                 try:
                     d = json.loads(zeile)
                 except ValueError:
                     continue
+                if d.get("subtype") == "stop_hook_summary":
+                    for info in d.get("hookInfos") or []:
+                        if isinstance(info.get("durationMs"), (int, float)):
+                            zeiten.setdefault(("Stop", info.get("command")), []).append(info["durationMs"])
+                    continue
                 a = d.get("attachment") or {}
-                text = an_claude(a.get("hookEvent"), a.get("stdout") or "") if a.get("type") == "hook_success" else ""
+                if a.get("type") != "hook_success":
+                    continue
+                schluessel = (a.get("hookEvent"), a.get("command"))
+                if isinstance(a.get("durationMs"), (int, float)):
+                    zeiten.setdefault(schluessel, []).append(a["durationMs"])
+                text = an_claude(a.get("hookEvent"), a.get("stdout") or "")
                 if text:
-                    funde.setdefault((a.get("hookEvent"), a.get("command")), []).append((d.get("timestamp") or "", round(len(text) / 4)))
-    return {k: {"zuletzt": max(l)[0][:10], "tokens": max(l)[1], "max": max(t for _, t in l), "laeufe": len(l)}
-            for k, l in funde.items()}
+                    funde.setdefault(schluessel, []).append((d.get("timestamp") or "", round(len(text) / 4)))
+    ausgaben = {k: {"zuletzt": max(l)[0][:10], "tokens": max(l)[1], "max": max(t for _, t in l), "laeufe": len(l)}
+                for k, l in funde.items()}
+    dauern = {k: {"median": round(statistics.median(l)), "max": max(l), "messungen": len(l)} for k, l in zeiten.items()}
+    return ausgaben, dauern
 
 
-def messen(hooks, ausgaben):
-    """Trägt die gemessenen Ausgaben ein. Kontext in jeder Sitzung kosten nur aktive SessionStart-Hooks."""
+def messen(hooks, ausgaben, dauern):
+    """Trägt die gemessenen Ausgaben und Laufzeiten ein. Kontext in jeder Sitzung kosten nur aktive SessionStart-Hooks."""
     for h in hooks:
-        funde = [ausgaben[k] for k in {(h["ereignis"], b["befehl"]) for b in h["befehle"]} if k in ausgaben]
+        schluessel = {(h["ereignis"], b["befehl"]) for b in h["befehle"]}
+        # ein Eintrag steht für ein Ereignis mit allen seinen Befehlen: sie laufen zusammen, der Median zählt zusammen
+        gemessen = [dauern[k] for k in schluessel if k in dauern]
+        h["dauer"] = {"median": sum(g["median"] for g in gemessen), "max": max(g["max"] for g in gemessen),
+                      "messungen": sum(g["messungen"] for g in gemessen)} if gemessen else None
+        funde = [ausgaben[k] for k in schluessel if k in ausgaben]
         if not funde:
             continue
         letzte = max(funde, key=lambda f: f["zuletzt"])
@@ -314,6 +335,47 @@ def messen(hooks, ausgaben):
                         "max": max(f["max"] for f in funde), "laeufe": sum(f["laeufe"] for f in funde)}
         if h["ereignis"] == "SessionStart" and h["status"] == "aktiv":
             h["tokens"] = sum(f["tokens"] for f in funde)
+
+
+def werkzeug_praefix(name):
+    """Im Transkript heißen MCP-Werkzeuge `mcp__<Server>__<Werkzeug>`, mit ersetzten Sonderzeichen."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name)
+
+
+def mcp_messungen(dateien):
+    """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Anweisungsblock in Tokens, Aufrufe.
+    Die Schemata sofort geladener Werkzeuge stehen nicht im Transkript; `tokens` misst nur den Anweisungsblock."""
+    werkzeuge, tokens, aufrufe = {}, {}, {}
+    for datei in dateien:
+        try:
+            f = open(datei, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with f:
+            for zeile in f:
+                if "mcp__" not in zeile and "mcp_instructions_delta" not in zeile:
+                    continue
+                try:
+                    d = json.loads(zeile)
+                except ValueError:
+                    continue
+                a = d.get("attachment") or {}
+                if a.get("type") in ("deferred_tools_delta", "deferred_tools_record"):
+                    namen = a.get("addedNames") or [e.get("name") for e in a.get("entries") or []]
+                    for n in namen:
+                        if isinstance(n, str) and n.startswith("mcp__"):
+                            werkzeuge.setdefault(n.split("__")[1], set()).add(n)
+                elif a.get("type") == "mcp_instructions_delta":
+                    for name, block in zip(a.get("addedNames") or [], a.get("addedBlocks") or []):
+                        tokens[werkzeug_praefix(name)] = round(len(block) / 4)
+                inhalt = (d.get("message") or {}).get("content")
+                for c in inhalt if isinstance(inhalt, list) else []:
+                    name = c.get("name") if isinstance(c, dict) and c.get("type") == "tool_use" else None
+                    if isinstance(name, str) and name.startswith("mcp__"):
+                        aufrufe.setdefault(name.split("__")[1], []).append((d.get("timestamp") or "")[:10])
+    return {s: {"werkzeuge": len(werkzeuge.get(s, ())), "tokens": tokens.get(s, 0),
+                "nutzung": {"anzahl": len(aufrufe[s]), "zuletzt": max(aufrufe[s])} if s in aufrufe else None}
+            for s in set(werkzeuge) | set(tokens) | set(aufrufe)}
 
 
 def mcp_definitionen(wurzel, manifest):
@@ -444,7 +506,7 @@ def ziel_text(c):
     return " ".join([c.get("command", "")] + [str(a) for a in c.get("args", [])]).strip()
 
 
-def mcp_server(plugin_liste, live):
+def mcp_server(plugin_liste, live, messungen=None):
     server = {}
     for name in CFG.get("claudeAiMcpEverConnected", []):
         server[name] = {"art": "claude.ai-Connector", "quelle": "claude.ai-Konto", "ziel": ""}
@@ -474,8 +536,10 @@ def mcp_server(plugin_liste, live):
             status = "unbekannt"
         if name in GESPERRT:
             status = "deaktiviert"
+        # ohne Messung bleiben die Felder None: nicht gemessen ist etwas anderes als null Werkzeuge
+        gemessen = (messungen or {}).get(werkzeug_praefix(name), {"werkzeuge": None, "tokens": None, "nutzung": None})
         ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": name in GESPERRT,
-                         "aus_in_projekten": aus_in.get(name, []), **s})
+                         "aus_in_projekten": aus_in.get(name, []), **s, **gemessen})
     return ergebnis
 
 
@@ -628,17 +692,37 @@ def version(cli):
         return None
 
 
+def kontextlast(inhalt):
+    """Tokens, die in jeder Sitzung laden. Projekt-Skills und Projekt-Server gelten nur in ihrem Projekt."""
+    return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp", "eingebaut") for e in inhalt.get(art, []))
+
+
+def verlauf_fortschreiben(pfad, eintrag):
+    """Eine Zeile je Tag: Mehrere Läufe am selben Tag überschreiben sich, sonst wüchse die Datei bei jedem Öffnen."""
+    try:
+        reihe = json.loads(Path(pfad).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        reihe = []
+    if not isinstance(reihe, list):
+        reihe = []
+    reihe = [e for e in reihe if isinstance(e, dict) and e.get("datum") != eintrag["datum"]] + [eintrag]
+    reihe.sort(key=lambda e: e["datum"])
+    Path(pfad).write_text(json.dumps(reihe, ensure_ascii=False, indent=1), encoding="utf-8")
+    return reihe
+
+
 def claude_inventar():
     plugin_liste, plugin_teile, plugin_hooks = plugins()
     skills = persoenliche_skills() + plugin_teile
     updates_markieren(skills, LOCK)
     projekte = projekt_skills((CFG.get("projects") or {}).keys())
     hooks = eigene_hooks(SETTINGS, CLAUDE / "settings.json") + plugin_hooks
-    messen(hooks, hook_ausgaben(transkripte()))
+    dateien = transkripte()
+    messen(hooks, *hook_ausgaben(dateien))
     for p in plugin_liste:
         p["tokens"] += sum(h["tokens"] for h in hooks if h.get("plugin") == f"{p['name']}@{p['marktplatz']}")
     live = mcp_live()
-    mcp = mcp_server(plugin_liste, live)
+    mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien))
     mcp_projekte = projekt_mcp(CFG.get("projects") or {})
     alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
     bewerte(alle)
@@ -689,8 +773,13 @@ def main(argv=None):
         inhalt = codex.inventar()
     else:
         inhalt = claude_inventar()
-    daten = {"erstellt": datetime.now().strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
-             "version": version(angaben["cli"]), **inhalt}
+    jetzt = datetime.now()
+    last = kontextlast(inhalt)
+    verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
+        "datum": jetzt.strftime("%Y-%m-%d"), "kontextlast": last,
+        **{art: len(inhalt.get(art, [])) for art in ("mcp", "plugins", "skills", "hooks")}})
+    daten = {"erstellt": jetzt.strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
+             "version": version(angaben["cli"]), "kontextlast": last, "verlauf": verlauf, **inhalt}
     (DATEN / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")

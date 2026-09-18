@@ -14,17 +14,26 @@
         "id": "nutzung",
         "label": "Zwei Einheiten",
         "focus": [
-          "cfg",
-          "sessions",
+          "zaehler",
           "nutzung"
         ],
         "note": "Claude Code zählt jeden Aufruf, Codex nur eine Sitzung. Dieselbe Zahl bedeutet nicht dasselbe."
+      },
+      {
+        "id": "gemessen",
+        "label": "Echt gemessen",
+        "focus": [
+          "transkripte",
+          "messwerte"
+        ],
+        "note": "Laufzeiten und MCP-Aufrufe stehen als Zahl im Transkript. Unter Codex fehlen sie ganz."
       },
       {
         "id": "schaetzung",
         "label": "Nur geschätzt",
         "focus": [
           "skillmd",
+          "transkripte",
           "kontext"
         ],
         "note": "Zeichen geteilt durch vier, keine gezählten Tokens."
@@ -34,8 +43,10 @@
         "label": "Was daraus folgt",
         "focus": [
           "nutzung",
+          "messwerte",
           "kontext",
           "entfernen",
+          "abschalten",
           "nurmanuell"
         ],
         "note": "Die Zahl liefert den Beleg; entscheiden musst du."
@@ -55,18 +66,18 @@
   ],
   "nodes": [
     {
-      "id": "cfg",
+      "id": "zaehler",
       "type": "external",
-      "label": "skillUsage",
-      "sublabel": "~/.claude.json",
+      "label": "Nutzungszähler",
+      "sublabel": "beide Harnesses",
       "stage": 0,
       "row": 0
     },
     {
-      "id": "sessions",
+      "id": "transkripte",
       "type": "external",
-      "label": "Protokolle",
-      "sublabel": "~/.codex/sessions",
+      "label": "Transkripte",
+      "sublabel": "~/.claude/projects",
       "stage": 0,
       "row": 1
     },
@@ -87,6 +98,14 @@
       "row": 0
     },
     {
+      "id": "messwerte",
+      "type": "database",
+      "label": "Messwerte",
+      "sublabel": "Laufzeit, MCP-Aufrufe",
+      "stage": 1,
+      "row": 1
+    },
+    {
       "id": "kontext",
       "type": "database",
       "label": "Kontext",
@@ -103,6 +122,14 @@
       "row": 0
     },
     {
+      "id": "abschalten",
+      "type": "backend",
+      "label": "abschalten",
+      "sublabel": "bremst jeden Turn",
+      "stage": 2,
+      "row": 1
+    },
+    {
       "id": "nurmanuell",
       "type": "backend",
       "label": "nur manuell",
@@ -113,21 +140,32 @@
   ],
   "flows": [
     {
-      "id": "f-cfg",
-      "from": "cfg",
+      "id": "f-zaehler",
+      "from": "zaehler",
       "to": "nutzung",
       "label": "Aufrufe",
-      "classification": "Claude Code",
+      "classification": "je Harness anders",
       "variant": "emphasis",
-      "route": "straight",
-      "labelDy": -14
+      "route": "straight"
     },
     {
-      "id": "f-sessions",
-      "from": "sessions",
-      "to": "nutzung",
-      "label": "Sitzungen",
-      "classification": "Codex"
+      "id": "f-messwerte",
+      "from": "transkripte",
+      "to": "messwerte",
+      "label": "durationMs",
+      "classification": "gezählt",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -16
+    },
+    {
+      "id": "f-anweisungen",
+      "from": "transkripte",
+      "to": "kontext",
+      "label": "Hooks, MCP",
+      "classification": "Schätzung",
+      "route": "vertical-channel",
+      "channelX": 243
     },
     {
       "id": "f-skillmd",
@@ -142,14 +180,24 @@
       "from": "nutzung",
       "to": "entfernen",
       "label": "ungenutzt",
-      "classification": "mit Datum"
+      "classification": "mit Datum",
+      "route": "straight"
+    },
+    {
+      "id": "e-messwerte",
+      "from": "messwerte",
+      "to": "abschalten",
+      "label": "zu langsam",
+      "classification": "14 Tage",
+      "route": "straight"
     },
     {
       "id": "e-kontext",
       "from": "kontext",
       "to": "nurmanuell",
       "label": "immer dabei",
-      "classification": "je Sitzung"
+      "classification": "je Sitzung",
+      "route": "straight"
     }
   ],
   "cards": [
@@ -167,17 +215,17 @@
       "title": "Was nur geschätzt ist",
       "items": [
         "Kontextkosten sind Zeichen geteilt durch vier, keine gezählten Tokens",
-        "Dasselbe gilt für die Hook-Wirkung aus den Transkripten der letzten Tage",
-        "Reicht für Größenordnungen, nicht zum Vergleich zweier ähnlicher Skills"
+        "Bei MCP-Servern zählt nur der Anweisungsblock; die Werkzeugschemata fehlen",
+        "Der echte Wert liegt also höher, nie niedriger als die gezeigte Zahl"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Nicht im Bild, aber belastbar",
+      "title": "Was Codex nicht hergibt",
       "items": [
-        "„Update verfügbar“ vergleicht per gh api zwei Prüfsummen: gleich oder nicht",
-        "Fehlt gh oder das Netz, fehlt die Angabe ganz statt falsch zu sein",
-        "Die Empfehlung selbst ist Handarbeit und steht in bewertung-*.json"
+        "Codex protokolliert weder Werkzeuglisten noch Laufzeiten seiner Hooks",
+        "Diese Felder bleiben leer und stehen im Dashboard als „nicht gemessen“",
+        "Nicht gemessen ist etwas anderes als eine gemessene Null"
       ]
     }
   ]

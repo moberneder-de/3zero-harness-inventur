@@ -79,6 +79,8 @@ h3 { font-size: 16px; font-weight: 600; }
 .balken .spur { height: 10px; }
 .balken .fuellung { height: 10px; background: var(--cyan); border-radius: 0 2px 2px 0; min-width: 2px; }
 .balken .wert { text-align: right; color: var(--text-dark); font-variant-numeric: tabular-nums; }
+.verlauf svg { display: block; width: 100%; height: auto; }
+.verlauf .enden { display: flex; justify-content: space-between; color: var(--text-light); font-variant-numeric: tabular-nums; }
 
 .tabelle { overflow-x: auto; margin-top: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -295,7 +297,8 @@ function statusBadge(s) {
 }
 function nutzungText(e) {
   if (e.typ === "Agent" || e.typ === "Hook") return '<span class="leer">nicht erfasst</span>';
-  if (e.id.startsWith("mcp:") && (!CODEX || !("nutzung" in e))) return '<span class="leer">nicht erfasst</span>';
+  // Claude Code zählt MCP-Aufrufe aus den Transkripten: gemessen ist ein Server, wenn er dort vorkam (werkzeuge ist dann eine Zahl)
+  if (e.id.startsWith("mcp:") && (CODEX ? !("nutzung" in e) : typeof e.werkzeuge !== "number")) return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
   const n = e.nutzung;
   return n ? `${zahl(n.anzahl)}× <span class="klein">· ${datum(n.zuletzt)}</span>` : '<span class="leer">nie</span>';
@@ -327,8 +330,8 @@ function typText(e) {
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 /* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand */
 const umgesetzt = e => ({ "abschalten": e.override === "off" || (CODEX && e.status === "aus"), "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
-const JE_SITZUNG = [...D.skills, ...D.hooks, ...EINGEBAUT];
-const tokensGesamt = JE_SITZUNG.reduce((s, e) => s + e.tokens, 0);
+const JE_SITZUNG = [...D.skills, ...D.hooks, ...EINGEBAUT, ...D.mcp];
+const tokensGesamt = D.kontextlast;
 const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt ? s + (e.tokens || 0) : s, 0);
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
@@ -405,20 +408,20 @@ function renderUeberblick() {
 
   const summen = new Map();
   JE_SITZUNG.filter(e => e.tokens > 0).forEach(e => {
-    const k = e.plugin ? `Plugin ${e.plugin.split("@")[0]}` : (e.quelle?.autor || "unbekannt");
+    const k = e.id?.startsWith("mcp:") ? "MCP-Server" : e.plugin ? `Plugin ${e.plugin.split("@")[0]}` : (e.quelle?.autor || "unbekannt");
     const v = summen.get(k) || { tokens: 0, anzahl: 0 };
     v.tokens += e.tokens; v.anzahl += 1; summen.set(k, v);
   });
   const reihen = [...summen.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
   const max = reihen.length ? reihen[0][1].tokens : 1;
   const balken = `<div class="balken"><h3>Kontextlast nach Herkunft</h3>
-    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, und Text, den SessionStart-Hooks einspielen (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
       <span class="wert">≈ ${zahl(v.tokens)}</span></div>`).join("")}
   </div>`;
-  return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + balken);
+  return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + balken + verlauf());
 }
 
 /* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
@@ -489,29 +492,60 @@ function renderGruppen() {
     `<div class="karten">${karten}</div>`);
 }
 
+/* Ein Punkt je Tag, an dem build.py lief: zeigt, ob das Aufräumen die Kontextlast senkt.
+   Mit weniger als zwei Tagen gibt es nichts zu zeigen. */
+function verlauf() {
+  const reihe = D.verlauf || [];
+  if (reihe.length < 2) return "";
+  const werte = reihe.map(e => e.kontextlast);
+  const hoch = Math.max(...werte), tief = Math.min(...werte), spanne = hoch - tief || 1;
+  const punkt = (e, i) => [(20 + i / (reihe.length - 1) * 720).toFixed(1), (108 - (e.kontextlast - tief) / spanne * 96).toFixed(1)];
+  const punkte = reihe.map(punkt);
+  const erste = reihe[0], letzte = reihe[reihe.length - 1];
+  const diff = letzte.kontextlast - erste.kontextlast;
+  const trend = diff === 0 ? "gleich geblieben" : diff < 0 ? `${zahl(-diff)} Tokens weniger` : `${zahl(diff)} Tokens mehr`;
+  return `<div class="balken verlauf"><h3>Kontextlast über die Zeit</h3>
+    <p class="klein" style="margin:0 0 10px">Ein Punkt je Tag, an dem die Inventur lief. Seit ${datum(erste.datum)} ${trend}.</p>
+    <svg viewBox="0 0 760 128" role="img" aria-label="Kontextlast je Inventurlauf, ${zahl(erste.kontextlast)} bis ${zahl(letzte.kontextlast)} Tokens">
+      <polyline points="${punkte.map(p => p.join(",")).join(" ")}" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+      ${punkte.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--cyan)"><title>${datum(reihe[i].datum)}: ≈ ${zahl(reihe[i].kontextlast)} Tokens</title></circle>`).join("")}
+    </svg>
+    <div class="klein enden"><span>${datum(erste.datum)} · ≈ ${zahl(erste.kontextlast)}</span><span>${datum(letzte.datum)} · ≈ ${zahl(letzte.kontextlast)}</span></div>
+  </div>`;
+}
+
 function detailZeile(spalten, paare) {
   const dl = paare.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
   return `<tr class="detail" hidden><td colspan="${spalten}"><dl>${dl}</dl></td></tr>`;
 }
 
+/* null heißt „nicht gemessen“ und ist etwas anderes als eine gemessene Null: Codex protokolliert
+   weder Werkzeugliste noch Anweisungsblock, in Claude Code fehlt beides für nie geladene Server. */
+const ungemessen = '<span class="leer">nicht gemessen</span>';
+
 function renderMcp() {
   const ausIn = n => n ? ` <span class="klein">· aus in ${n} ${n === 1 ? "Projekt" : "Projekten"}</span>` : "";
+  const werkzeuge = m => typeof m.werkzeuge === "number" ? zahl(m.werkzeuge) : ungemessen;
+  const kontext = m => typeof m.tokens === "number" ? (m.tokens ? "≈ " + zahl(m.tokens) : '<span class="leer">–</span>') : ungemessen;
   const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td>
-      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
-    detailZeile(5 + SP, [
+      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td>
+      <td class="zahl">${werkzeuge(m)}</td><td class="zahl">${kontext(m)}</td><td class="zahl">${nutzungText(m)}</td>
+      <td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
+    detailZeile(8 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
-      ["Genutzt", CODEX ? nutzungText(m) : ""],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
       ["Begründung", txt(m.bewertung?.grund || "")],
       ["Entfernen", befehlZeile(m.befehl)],
     ])).join("");
   return abschnitt("mcp", "Global eingetragene Server und ihr Status",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je("Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. " +
-      "„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.",
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th class="zahl">Werkzeuge</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Genutzt</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    je(`Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. ` +
+      `„Werkzeuge“ und „Genutzt“ stammen aus den Transkripten der letzten ${D.hook_tage} Tage; Server, die dort nie geladen wurden, stehen als „nicht gemessen“. ` +
+      `„Kontext je Sitzung“ misst den Anweisungsblock des Servers. Die Werkzeugnamen kommen dazu, ihre Schemata nur bei sofort geladenen Werkzeugen — beides steht nicht im Transkript, der echte Wert liegt also höher. ` +
+      `„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.`,
       "Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins; was nur in einem Projekt gilt, steht unter Projekte. Status aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest. " +
-      "„Genutzt“ in den Details zählt MCP-Aufrufe in den Codex-Sitzungen. Zeile anklicken für Details."));
+      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht. Zeile anklicken für Details."));
 }
 
 function renderPlugins() {
@@ -659,22 +693,24 @@ function renderProjekte() {
 function renderHooks() {
   const herkunft = h => h.plugin ? `Plugin ${h.plugin.split("@")[0]}` : h.quelle.autor;
   const ausgabe = h => h.ausgabe ? `≈ ${zahl(h.ausgabe.tokens)} <span class="klein">· ${zahl(h.ausgabe.laeufe)}× · ${datum(h.ausgabe.zuletzt)}</span>` : '<span class="leer">keine erfasst</span>';
+  const dauer = h => h.dauer ? `${zahl(h.dauer.median)} ms <span class="klein">· ${zahl(h.dauer.messungen)}×</span>` : ungemessen;
   const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
   const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name"><strong>${esc(h.name)}</strong></td>
       <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="klein">${h.befehle.length === 1 ? "1 Befehl" : `${h.befehle.length} Befehle`}</td>
-      <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td>
+      <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
       <td>${was(h)}</td><td>${empfBadge(h)}</td></tr>` +
-    detailZeile(8, [
+    detailZeile(9, [
       ["Befehle", befehle(h)],
       ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
+      ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.hook_tage} Tagen` : ""],
       ["Begründung", txt(h.bewertung?.grund || "")],
       ["Datei", `<code>${esc(h.pfad)}</code>`],
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
-      "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben, misst das Dashboard noch nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
+    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
+      "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
 
 function renderHinweise() {

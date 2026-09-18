@@ -214,6 +214,11 @@ class Mcp(CodexOrdner):
         self.assertEqual((server["mcp:node_repl"]["gesperrt"], server["mcp:node_repl"]["aus_in_projekten"]), (False, []))
         self.assertNotIn(GEHEIM, json.dumps(list(server.values())))
 
+    def test_werkzeuge_und_kontext_bleiben_ungemessen(self):
+        # Codex protokolliert weder die Werkzeugliste eines Servers noch seinen Anweisungsblock
+        (server,) = codex.mcp_server({"mcp_servers": {"node_repl": {"command": "n"}}}, [], {})
+        self.assertEqual([server["werkzeuge"], server["tokens"]], [None, None])
+
     def test_kaputte_mcp_servers_bricht_nicht_ab(self):
         self.assertEqual(codex.mcp_server({"mcp_servers": ["x"]}, [], {}), [])
 

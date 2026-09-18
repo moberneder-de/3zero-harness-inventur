@@ -14,10 +14,10 @@ from pathlib import Path
 DATEN = Path.home() / ".3zero-harness-inventur"
 
 HARNESSE = {
-    "claude-code": {"name": "Claude Code", "cli": "claude",
-                    "inventar": "inventar.json", "dashboard": "dashboard.html", "bewertung": "bewertung-claude-code.json"},
-    "codex": {"name": "Codex", "cli": "codex",
-              "inventar": "inventar-codex.json", "dashboard": "dashboard-codex.html", "bewertung": "bewertung-codex.json"},
+    "claude-code": {"name": "Claude Code", "cli": "claude", "inventar": "inventar.json", "dashboard": "dashboard.html",
+                    "bewertung": "bewertung-claude-code.json", "verlauf": "verlauf-claude-code.json"},
+    "codex": {"name": "Codex", "cli": "codex", "inventar": "inventar-codex.json", "dashboard": "dashboard-codex.html",
+              "bewertung": "bewertung-codex.json", "verlauf": "verlauf-codex.json"},
 }
 STANDARD = "claude-code"
 
