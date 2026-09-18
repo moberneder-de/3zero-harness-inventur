@@ -7,6 +7,8 @@ argument-hint: "[suche <Bedarf>]"
 
 Das Dashboard hat zwei Schichten. `build.py` liest den Bestand ohne Urteil aus der Konfiguration: was installiert ist, ob es aktiv ist, woher es stammt, wie oft es genutzt wurde. Die Bewertungsdatei (siehe Harness) enthält, was Urteil braucht: deutsche Kurzbeschreibung, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise. Dieser Skill bringt die zweite Schicht auf den Stand der ersten.
 
+Alles, was du dabei schreibst, ist auf Deutsch: die Bewertungstexte, die Hinweise, die Vorschläge beim Suchen und der Bericht an den Benutzer am Ende. Englisch bleiben nur Eigennamen, Dateipfade und Befehle.
+
 `<Projektordner>`: der Ordner mit `build.py` und `server.py`. Der Harness nennt beim Aufruf nicht ihn, sondern das Basisverzeichnis dieses Skills — das ist `<Projektordner>/skill`. Nimm davon den übergeordneten Ordner und löse einen Symlink dabei auf; setze das Ergebnis unten in jeden Befehl ein.
 
 ## Harness
