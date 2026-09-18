@@ -401,7 +401,7 @@ function renderUeberblick() {
     <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server ${je("verbunden", "aktiv")} / eingetragen</div></div>
     <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
     <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
-    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen und SessionStart-Hooks</div></div>
+    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks und MCP-Anweisungen</div></div>
     <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
     <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
   </div>`;
@@ -734,9 +734,9 @@ function warteschlange() {
 function renderAktionen() {
   const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
   document.getElementById("aktionen").innerHTML = `
-    ${AKTIONEN ? `<button type="button" class="btn btn-primary" id="alle-ausfuehren"${beschaeftigt || !offen ? " disabled" : ""}>alle ${offen} ausführen</button>` : ""}
-    <button type="button" class="btn btn-outline" id="neu-einlesen" title="Bestand neu einlesen (build.py)"${beschaeftigt ? " disabled" : ""}>neu einlesen</button>
-    <button type="button" class="btn btn-outline" id="bewerten" title="${je("Claude", esc(D.harness_name))} zieht die Bewertung nach (${je("/", "$")}3zero-harness-inventur)"${beschaeftigt ? " disabled" : ""}>neu bewerten</button>`;
+    ${AKTIONEN ? `<button type="button" class="btn btn-primary" id="alle-ausfuehren" title="Führt die in der Spalte „Aktion“ gewählten Änderungen nacheinander aus"${beschaeftigt || !offen ? " disabled" : ""}>${offen ? `${offen} ${offen === 1 ? "Aktion" : "Aktionen"} ausführen` : "keine Aktion gewählt"}</button>` : ""}
+    <button type="button" class="btn btn-outline" id="neu-einlesen" title="Liest die Konfiguration neu ein (build.py), dauert Sekunden"${beschaeftigt ? " disabled" : ""}>Bestand neu einlesen</button>
+    <button type="button" class="btn btn-outline" id="bewerten" title="${je("Claude", esc(D.harness_name))} liest den Bestand und urteilt neu (${je("/", "$")}3zero-harness-inventur), dauert Minuten"${beschaeftigt ? " disabled" : ""}>Bewertung neu erstellen</button>`;
 }
 /* Claudes Zusammenfassung kommt als Markdown: Absätze, Listen, **fett**, `code` */
 function markdown(text) {
@@ -976,8 +976,11 @@ function kopiere(text, knopf) {
   else notweg();
 }
 
+/* „2026-09-18 22:57“ wird zu „18.09.2026 22:57“ */
+const zeitpunkt = s => esc(s.slice(8, 10) + "." + s.slice(5, 7) + "." + s.slice(0, 4) + " " + s.slice(11));
 document.getElementById("stand").innerHTML =
-  `${esc(D.harness_name)} · Bestand vom ${esc(D.erstellt.slice(8, 10) + "." + D.erstellt.slice(5, 7) + "." + D.erstellt.slice(0, 4) + " " + D.erstellt.slice(11))} · Bewertung vom ${datum(D.bewertung_stand)}` +
+  `${esc(D.harness_name)} · Bestand vom ${zeitpunkt(D.erstellt)} · Bewertung vom ` +
+  (D.bewertung_erstellt ? zeitpunkt(D.bewertung_erstellt) : datum(D.bewertung_stand)) +
   (D.version ? ` · ${esc(D.version)}` : "");
 document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();

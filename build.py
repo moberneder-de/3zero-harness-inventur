@@ -692,6 +692,14 @@ def version(cli):
         return None
 
 
+def datei_stand(pfad):
+    """Wann die Datei zuletzt geschrieben wurde. Die Bewertung trägt selbst nur ein Datum."""
+    try:
+        return datetime.fromtimestamp(Path(pfad).stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    except OSError:
+        return None
+
+
 def kontextlast(inhalt):
     """Tokens, die in jeder Sitzung laden. Projekt-Skills und Projekt-Server gelten nur in ihrem Projekt."""
     return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp", "eingebaut") for e in inhalt.get(art, []))
@@ -779,7 +787,8 @@ def main(argv=None):
         "datum": jetzt.strftime("%Y-%m-%d"), "kontextlast": last,
         **{art: len(inhalt.get(art, [])) for art in ("mcp", "plugins", "skills", "hooks")}})
     daten = {"erstellt": jetzt.strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
-             "version": version(angaben["cli"]), "kontextlast": last, "verlauf": verlauf, **inhalt}
+             "version": version(angaben["cli"]), "kontextlast": last, "verlauf": verlauf,
+             "bewertung_erstellt": datei_stand(DATEN / angaben["bewertung"]), **inhalt}
     (DATEN / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")

@@ -1,7 +1,9 @@
 import json
+import os
 import shutil
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -508,6 +510,24 @@ class HarnessWahl(unittest.TestCase):
         self.assertEqual([r["kontextlast"] for r in reihe], [40])
         self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["verlauf"], reihe)
         self.assertFalse((self.daten / "verlauf-codex.json").exists())
+
+    def test_bewertung_traegt_die_uhrzeit_der_datei(self):
+        # der Skill schreibt nur ein Datum in `stand`; wann der Lauf durchkam, sagt die Änderungszeit
+        datei = self.daten / "bewertung-claude-code.json"
+        datei.write_text('{"stand": "2026-09-17"}', encoding="utf-8")
+        os.utime(datei, (1789000000, 1789000000))
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), \
+                mock.patch.object(build, "version", return_value=None):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        erwartet = datetime.fromtimestamp(1789000000).strftime("%Y-%m-%d %H:%M")
+        self.assertEqual(daten["bewertung_erstellt"], erwartet)
+
+    def test_ohne_bewertungsdatei_keine_uhrzeit(self):
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), \
+                mock.patch.object(build, "version", return_value=None):
+            build.main(["--harness", "claude-code"])
+        self.assertIsNone(json.loads((self.daten / "inventar.json").read_text())["bewertung_erstellt"])
 
     def test_abgleich(self):
         alle = [{"id": "a", "bewertung": {"was": "x"}}, {"id": "b", "bewertung": None}]
