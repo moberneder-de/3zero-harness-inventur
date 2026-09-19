@@ -42,7 +42,11 @@ h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 .hero .logo { display: block; width: 132px; height: auto; }
 .hero h1 { color: var(--cool-gray); font: 600 19px/1.1 var(--body); text-transform: uppercase; letter-spacing: .16em; }
 .hero .rechts { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-.hero p { margin: 0; color: #d6d6d6; font-size: 12.5px; text-align: right; }
+.hero p { margin: 0; color: #d6d6d6; font-size: 12.5px; }
+.hero .marke p { margin-top: 3px; }
+/* Knopf und seine Zeitangabe sind eine Einheit und brechen zusammen um */
+.knopfstapel { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.knopfstapel .zeit { color: #b4b4b4; font-size: 11.5px; white-space: nowrap; }
 .wrap { margin: 0; } /* linksbündig über die volle Fensterbreite */
 
 nav { background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
@@ -128,7 +132,7 @@ button.kopieren:hover, button.zeilenknopf:hover { border-color: var(--cyan); col
 .btn-outline:hover { background: var(--cyan); color: #fff; }
 button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .aktionsleiste { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
-.hero .aktionsleiste { margin-left: auto; }
+.hero .aktionsleiste { margin-left: auto; align-items: flex-start; } /* Knöpfe auf einer Linie, die Zeitangaben hängen darunter */
 .hero .btn { padding: 7px 14px; font-size: 12.5px; }
 .hero .btn-outline { background: transparent; color: #fff; border-color: rgba(255,255,255,.45); }
 .hero .btn-outline:hover { background: var(--cyan); border-color: var(--cyan); color: #fff; }
@@ -212,8 +216,8 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 <div class="seitenkopf">
 <header class="hero"><div class="wrap">
   <img class="icon" src="__ICON__" width="52" height="52" alt="" aria-hidden="true">
-  <div class="marke"><img class="logo" src="__LOGO__" alt="3zero" width="132" height="24"><h1>Harness-Inventur</h1></div>
-  <div class="rechts"><div class="aktionsleiste" id="aktionen"></div><p id="stand"></p></div>
+  <div class="marke"><img class="logo" src="__LOGO__" alt="3zero" width="132" height="24"><h1>Harness-Inventur</h1><p id="stand"></p></div>
+  <div class="rechts"><div class="aktionsleiste" id="aktionen"></div></div>
 </div></header>
 <nav aria-label="Abschnitte"><div class="wrap">
   <a href="#ueberblick">Überblick</a>
@@ -250,6 +254,10 @@ const AKTIONEN = !!TOKEN;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 const datum = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : "–";
+/* „2026-09-18 23:35“ wird zu „18.09.2026 23:35“ */
+const zeitpunkt = s => s ? `${datum(s)} ${s.slice(11)}` : "–";
+/* Die Bewertungsdatei trägt selbst nur ein Datum; die Uhrzeit kommt aus ihrer Änderungszeit */
+const BEWERTET = D.bewertung_erstellt ? zeitpunkt(D.bewertung_erstellt) : datum(D.bewertung_stand);
 const zahl = n => Number(n || 0).toLocaleString("de-DE");
 const link = (url, text) => /^https:\/\//.test(url || "") ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text || url)}</a>` : esc(text || "");
 const kopierKnopf = text => `<button type="button" class="kopieren" data-copy="${esc(text)}">kopieren</button>`;
@@ -733,10 +741,14 @@ function warteschlange() {
 /* Knöpfe sitzen im festen Kopf, also in jedem Tab und bei jeder Scrollposition erreichbar */
 function renderAktionen() {
   const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
+  /* Jeder Knopf steht über seiner Zeitangabe: so ist sichtbar, was er auffrischt */
+  const stapel = (knopf, zeit) => `<div class="knopfstapel">${knopf}${zeit ? `<span class="zeit">${zeit}</span>` : ""}</div>`;
   document.getElementById("aktionen").innerHTML = `
-    ${AKTIONEN ? `<button type="button" class="btn btn-primary" id="alle-ausfuehren" title="Führt die in der Spalte „Aktion“ gewählten Änderungen nacheinander aus"${beschaeftigt || !offen ? " disabled" : ""}>${offen ? `${offen} ${offen === 1 ? "Aktion" : "Aktionen"} ausführen` : "keine Aktion gewählt"}</button>` : ""}
-    <button type="button" class="btn btn-outline" id="neu-einlesen" title="Liest die Konfiguration neu ein (build.py), dauert Sekunden"${beschaeftigt ? " disabled" : ""}>Bestand neu einlesen</button>
-    <button type="button" class="btn btn-outline" id="bewerten" title="${je("Claude", esc(D.harness_name))} liest den Bestand und urteilt neu (${je("/", "$")}3zero-harness-inventur), dauert Minuten"${beschaeftigt ? " disabled" : ""}>Bewertung neu erstellen</button>`;
+    ${AKTIONEN ? stapel(`<button type="button" class="btn btn-primary" id="alle-ausfuehren" title="Führt die in der Spalte „Aktion“ gewählten Änderungen nacheinander aus"${beschaeftigt || !offen ? " disabled" : ""}>${offen ? `${offen} ${offen === 1 ? "Aktion" : "Aktionen"} ausführen` : "keine Aktion gewählt"}</button>`) : ""}
+    ${stapel(`<button type="button" class="btn btn-outline" id="neu-einlesen" title="Liest die Konfiguration neu ein (build.py), dauert Sekunden"${beschaeftigt ? " disabled" : ""}>Bestand neu einlesen</button>`,
+      `eingelesen ${zeitpunkt(D.erstellt)}`)}
+    ${stapel(`<button type="button" class="btn btn-outline" id="bewerten" title="${je("Claude", esc(D.harness_name))} liest den Bestand und urteilt neu (${je("/", "$")}3zero-harness-inventur), dauert Minuten"${beschaeftigt ? " disabled" : ""}>Bewertung neu erstellen</button>`,
+      `bewertet ${BEWERTET}`)}`;
 }
 /* Claudes Zusammenfassung kommt als Markdown: Absätze, Listen, **fett**, `code` */
 function markdown(text) {
@@ -976,12 +988,11 @@ function kopiere(text, knopf) {
   else notweg();
 }
 
-/* „2026-09-18 22:57“ wird zu „18.09.2026 22:57“ */
-const zeitpunkt = s => esc(s.slice(8, 10) + "." + s.slice(5, 7) + "." + s.slice(0, 4) + " " + s.slice(11));
-document.getElementById("stand").innerHTML =
-  `${esc(D.harness_name)} · Bestand vom ${zeitpunkt(D.erstellt)} · Bewertung vom ` +
-  (D.bewertung_erstellt ? zeitpunkt(D.bewertung_erstellt) : datum(D.bewertung_stand)) +
-  (D.version ? ` · ${esc(D.version)}` : "");
+/* Die Version nennt den Harness oft schon: „2.1.273 (Claude Code)“ steht sonst neben „Claude Code“ */
+const version = (D.version || "").replace(` (${D.harness_name})`, "").trim();
+document.getElementById("stand").innerHTML = esc(D.harness_name) + (version ? ` · ${esc(version)}` : "")
+  /* als Datei geöffnet gibt es keine Knopfleiste, die die Zeitangaben tragen könnte */
+  + (AKTIONEN ? "" : ` · Bestand vom ${zeitpunkt(D.erstellt)} · Bewertung vom ${BEWERTET}`);
 document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();
 skillsFiltern();
