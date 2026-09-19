@@ -7,26 +7,35 @@
 <link rel="icon" href="__ICON__">
 <link rel="apple-touch-icon" href="__APPICON__">
 <style>
-/* Werte aus dem 3zero-Design-Kit (BRAND.md / brand-tokens.css) */
+/* Werte aus dem 3zero-Design-Kit (BRAND.md / brand-tokens.css).
+   Das Kit kennt keine dunkle Palette. Seine einzige dunkle Fläche ist --hero (#2a2a2a); die trägt hier die Karten.
+   Nur drei Werte sind abgeleitet und stehen so nicht im Kit: Seitengrund, Linien und die Zeile unter dem Mauszeiger.
+   light-dark() nimmt den zweiten Wert, sobald color-scheme dunkel ist — der Knopf im Kopf schaltet nur das um. */
 :root {
+  color-scheme: light dark;
   --cyan: #00afd0;
-  --cyan-dark: #0096b4;
+  --cyan-dark: light-dark(#0096b4, #00afd0);
   --cool-gray: #9b9ea0;
-  --text: #555555;
-  --text-dark: #333333;
-  --text-light: #6f6f6f;
-  --bg: #ffffff;
-  --bg-gray: #f3f3f3;
+  --text: light-dark(#555555, #e0e0e0);
+  --text-dark: light-dark(#333333, #ffffff);
+  --text-light: light-dark(#6f6f6f, #9b9ea0);
+  --bg: light-dark(#ffffff, #1f1f1f);
+  --bg-gray: light-dark(#f3f3f3, #2a2a2a);
+  --bg-hover: light-dark(#fafafa, #262626);
   --hero: #2a2a2a;
-  --border-light: #e0e0e0;
+  --border-light: light-dark(#e0e0e0, #3d3d3d);
   --cyan-10: rgba(0,175,208,.1);
   --cyan-20: rgba(0,175,208,.2);
-  --shadow-nav: 0 1px 4px rgba(0,0,0,.06);
-  --shadow-hover: 0 4px 16px rgba(0,0,0,.08);
+  --schatten: light-dark(rgba(0,0,0,.06), rgba(0,0,0,.45));
+  --schatten-stark: light-dark(rgba(0,0,0,.08), rgba(0,0,0,.5));
+  --shadow-nav: 0 1px 4px var(--schatten);
+  --shadow-hover: 0 4px 16px var(--schatten-stark);
   --body: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --radius: 3px;
 }
+:root[data-thema="hell"] { color-scheme: light; }
+:root[data-thema="dunkel"] { color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--body); }
 a { color: var(--cyan-dark); }
@@ -39,11 +48,14 @@ h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 .hero .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .hero .icon { display: block; flex: none; align-self: flex-start; } /* bündig mit der Oberkante des Schriftzugs, nicht zur höheren Knopfleiste zentriert */
 .hero .marke { display: flex; flex-direction: column; gap: 3px; }
+/* Titel, Marke und Harness-Name mittig zueinander, trotz 19px gegen 15px Schriftgröße */
+.hero .titelzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 16px; }
 .hero .logo { display: block; width: 132px; height: auto; }
 .hero h1 { color: var(--cool-gray); font: 600 19px/1.1 var(--body); text-transform: uppercase; letter-spacing: .16em; }
 .hero .rechts { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .hero p { margin: 0; color: #d6d6d6; font-size: 12.5px; }
-.hero .marke p { margin-top: 3px; }
+.hero .marke p { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #e4e4e4; }
+.harness-marke { flex: none; width: 17px; height: 17px; }
 /* Knopf und seine Zeitangabe sind eine Einheit und brechen zusammen um */
 .knopfstapel { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .knopfstapel .zeit { color: #b4b4b4; font-size: 11.5px; white-space: nowrap; }
@@ -83,6 +95,10 @@ h3 { font-size: 16px; font-weight: 600; }
 .balken .spur { height: 10px; }
 .balken .fuellung { height: 10px; background: var(--cyan); border-radius: 0 2px 2px 0; min-width: 2px; }
 .balken .wert { text-align: right; color: var(--text-dark); font-variant-numeric: tabular-nums; }
+.kontext-titel { margin: 28px 0 0; }
+.unterreiter.schmal { max-width: 760px; }
+.balken.im-reiter { margin-top: 14px; }
+.balken.im-reiter h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } /* die Überschrift steht schon auf dem Reiter */
 .verlauf svg { display: block; width: 100%; height: auto; }
 .verlauf .enden { display: flex; justify-content: space-between; color: var(--text-light); font-variant-numeric: tabular-nums; }
 
@@ -96,7 +112,7 @@ td.name { min-width: 150px; }
 td.name strong { color: var(--text-dark); font-weight: 600; overflow-wrap: break-word; }
 td.zahl, th.zahl { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.haupt { cursor: pointer; }
-tr.haupt:hover td { background: #fafafa; }
+tr.haupt:hover td { background: var(--bg-hover); }
 tr.offen td { background: var(--bg-gray); border-bottom-color: transparent; }
 tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
 /* contain: der Inhalt der aufgeklappten Zeile zählt nicht zur Spaltenbreite, sonst verschieben sich beim Aufklappen die Spalten */
@@ -106,12 +122,12 @@ tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
 .nowrap { white-space: nowrap; }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; padding: 2px 8px; border-radius: 2px; white-space: nowrap; line-height: 1.5; }
-.e-entfernen { background: var(--text-dark); color: #fff; border: 1px solid var(--text-dark); }
-.e-abschalten { background: #fff; color: var(--text-dark); border: 1px solid var(--text-dark); }
-.e-manuell { background: #fff; color: var(--text-dark); border: 1px dashed var(--text-dark); }
-.e-pruefen { background: #fff; color: var(--text-dark); border: 1px solid var(--cyan); }
+.e-entfernen { background: var(--text-dark); color: var(--bg); border: 1px solid var(--text-dark); }
+.e-abschalten { background: var(--bg); color: var(--text-dark); border: 1px solid var(--text-dark); }
+.e-manuell { background: var(--bg); color: var(--text-dark); border: 1px dashed var(--text-dark); }
+.e-pruefen { background: var(--bg); color: var(--text-dark); border: 1px solid var(--cyan); }
 .e-behalten { background: var(--cyan-10); color: var(--text-dark); border: 1px solid var(--cyan-20); }
-.e-neu { background: #fff; color: var(--text-light); border: 1px dashed var(--cool-gray); }
+.e-neu { background: var(--bg); color: var(--text-light); border: 1px dashed var(--cool-gray); }
 .badge .geerbt { font-weight: 400; opacity: .8; }
 .status { white-space: nowrap; font-size: 13.5px; }
 .st-an span { color: var(--cyan); }
@@ -123,12 +139,12 @@ tr.detail td { background: var(--bg-gray); padding: 4px 10px 18px; }
 
 .befehl { display: flex; gap: 8px; align-items: flex-start; }
 .befehl code { flex: 1; }
-button.kopieren, button.zeilenknopf { font: 600 12px var(--body); color: var(--text-dark); background: #fff; border: 1px solid var(--cool-gray); border-radius: 2px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+button.kopieren, button.zeilenknopf { font: 600 12px var(--body); color: var(--text-dark); background: var(--bg); border: 1px solid var(--cool-gray); border-radius: 2px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
 button.kopieren:hover, button.zeilenknopf:hover { border-color: var(--cyan); color: var(--cyan-dark); }
 .btn { font: 600 14px var(--body); text-transform: uppercase; letter-spacing: .05em; padding: 10px 22px; border-radius: var(--radius); border: 1px solid transparent; cursor: pointer; }
 .btn-primary { background: var(--cyan); color: #fff; }
 .btn-primary:hover { background: var(--cyan-dark); }
-.btn-outline { background: #fff; color: var(--cyan); border-color: var(--cyan); }
+.btn-outline { background: var(--bg); color: var(--cyan); border-color: var(--cyan); }
 .btn-outline:hover { background: var(--cyan); color: #fff; }
 button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .aktionsleiste { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
@@ -136,6 +152,10 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .hero .btn { padding: 7px 14px; font-size: 12.5px; }
 .hero .btn-outline { background: transparent; color: #fff; border-color: rgba(255,255,255,.45); }
 .hero .btn-outline:hover { background: var(--cyan); border-color: var(--cyan); color: #fff; }
+/* Sitzt im Kopf und wirkt auch ohne Server, deshalb fest im HTML statt in der Aktionsleiste */
+.thema { align-self: flex-start; flex: none; background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: var(--radius); color: #fff; padding: 6px; line-height: 0; cursor: pointer; }
+.thema:hover { background: var(--cyan); border-color: var(--cyan); }
+.thema svg { display: block; width: 18px; height: 18px; }
 
 .meldung { background: var(--bg-gray); border-left: 3px solid var(--cyan); padding: 14px 20px 16px; margin-top: 24px; max-width: 900px; font-size: 14.5px; }
 .meldung .zeile { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
@@ -149,7 +169,7 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .meldung .inhalt.gekuerzt { max-height: 50vh; overflow: auto; }
 .meldung .inhalt > :last-child { margin-bottom: 0; }
 .suchfeld { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
-.suchfeld textarea { flex: 1 1 320px; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: #fff; resize: vertical; }
+.suchfeld textarea { flex: 1 1 320px; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: var(--bg); resize: vertical; }
 .suchfeld .btn:disabled { opacity: .5; cursor: default; }
 /* Dialog: gebaut wie die Service-Card des Brand-Kits, dahinter der Hero-Overlay; ohne Schatten, das Kit kennt sie nur als Hover-Rückmeldung */
 dialog.frage { border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 28px 24px; width: min(520px, calc(100vw - 40px)); color: var(--text); }
@@ -159,7 +179,7 @@ dialog.frage p { margin: 0 0 10px; }
 dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
 .kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
-select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: #fff; }
+select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: var(--bg); }
 select.wahl.gesetzt { border-color: var(--cyan); font-weight: 600; }
 td details summary { white-space: nowrap; cursor: pointer; }
 td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 420px; }
@@ -169,7 +189,7 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .empf-gruppe > p { margin: 6px 0 0; font-size: 14px; max-width: 760px; }
 
 .karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 18px; margin-top: 16px; }
-.karte { background: #fff; border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 24px 22px; transition: box-shadow .15s; }
+.karte { background: var(--bg); border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 24px 22px; transition: box-shadow .15s; }
 .karte:hover { box-shadow: var(--shadow-hover); }
 .karte p { font-size: 14.5px; margin: 8px 0 0; }
 .karte ul { list-style: none; padding: 0; margin: 14px 0 0; border-top: 1px solid var(--border-light); }
@@ -180,7 +200,7 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .karte .fazit b { color: var(--text-dark); }
 
 .filter { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; font-size: 14px; }
-.filter input[type=search], .filter select { font: 14px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 6px 9px; background: #fff; }
+.filter input[type=search], .filter select { font: 14px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 6px 9px; background: var(--bg); }
 .filter input[type=search] { min-width: 220px; flex: 1 1 220px; max-width: 340px; }
 .filter label { display: inline-flex; gap: 6px; align-items: center; }
 .filter .anzahl { color: var(--text-light); margin-left: auto; }
@@ -211,13 +231,22 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
   .detail dt { margin-top: 6px; }
 }
 </style>
+<script>
+/* Noch vor dem ersten Zeichnen: Eine gespeicherte Wahl gilt sofort, sonst bleibt die Systemeinstellung.
+   Käme das erst am Seitenende, blitzte die falsche Darstellung kurz auf. */
+try {
+  const w = localStorage.getItem("3zero-harness-inventur:thema");
+  if (w === "hell" || w === "dunkel") document.documentElement.dataset.thema = w;
+} catch (_) { /* ohne Speicher gilt die Systemeinstellung */ }
+</script>
 </head>
 <body>
 <div class="seitenkopf">
 <header class="hero"><div class="wrap">
   <img class="icon" src="__ICON__" width="52" height="52" alt="" aria-hidden="true">
-  <div class="marke"><img class="logo" src="__LOGO__" alt="3zero" width="132" height="24"><h1>Harness-Inventur</h1><p id="stand"></p></div>
+  <div class="marke"><img class="logo" src="__LOGO__" alt="3zero" width="132" height="24"><div class="titelzeile"><h1>Harness-Inventur</h1><p id="stand"></p></div></div>
   <div class="rechts"><div class="aktionsleiste" id="aktionen"></div></div>
+  <button type="button" class="thema" id="thema" aria-label="Darstellung wechseln"></button>
 </div></header>
 <nav aria-label="Abschnitte"><div class="wrap">
   <a href="#ueberblick">Überblick</a>
@@ -256,6 +285,13 @@ const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 const datum = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : "–";
 /* „2026-09-18 23:35“ wird zu „18.09.2026 23:35“ */
 const zeitpunkt = s => s ? `${datum(s)} ${s.slice(11)}` : "–";
+/* Marken der beiden Harnesses, nur zur Kennzeichnung des inventarisierten Werkzeugs.
+   Claude: Simple Icons 16.28.0 (CC0). OpenAI: offizielles Brand-Asset. Beide über den Skill archify bezogen.
+   Schwarz wäre auf dem dunklen Kopf unsichtbar, deshalb trägt die OpenAI-Blüte Weiß statt ihres Hex 000000. */
+const HARNESS_MARKE = {
+  "claude-code": { viewBox: 24, farbe: "#D97757", pfad: "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" },
+  "codex": { viewBox: 20, farbe: "#fff", pfad: "M11.248 18.25q-.825 0-1.568-.314a4.3 4.3 0 0 1-1.32-.874 4 4 0 0 1-1.304.214 4 4 0 0 1-2.046-.544 4.27 4.27 0 0 1-1.518-1.485 4 4 0 0 1-.56-2.095q0-.48.131-1.04A4.4 4.4 0 0 1 2.04 10.71a4.07 4.07 0 0 1 .017-3.4 4.2 4.2 0 0 1 1.056-1.418 3.8 3.8 0 0 1 1.6-.842 3.9 3.9 0 0 1 .76-1.683q.593-.759 1.451-1.188a4.04 4.04 0 0 1 1.832-.429q.825 0 1.567.313.742.314 1.32.875a4 4 0 0 1 1.304-.215q1.106 0 2.046.545a4.14 4.14 0 0 1 1.501 1.485q.578.941.578 2.095 0 .48-.132 1.04.66.61 1.023 1.419.363.792.363 1.666 0 .892-.38 1.717a4.3 4.3 0 0 1-1.072 1.435 3.8 3.8 0 0 1-1.584.825 3.8 3.8 0 0 1-.775 1.683 4.06 4.06 0 0 1-1.436 1.188 4.04 4.04 0 0 1-1.832.429m-4.076-2.062q.825 0 1.435-.347l3.103-1.782a.36.36 0 0 0 .164-.313v-1.42L7.881 14.62a.67.67 0 0 1-.726 0l-3.118-1.798a.5.5 0 0 1-.017.115v.198q0 .841.396 1.551.413.693 1.139 1.089a3.2 3.2 0 0 0 1.617.412m.165-2.69a.4.4 0 0 0 .181.05q.083 0 .165-.05l1.238-.71-3.977-2.31a.7.7 0 0 1-.363-.643v-3.58q-.825.362-1.32 1.122a2.9 2.9 0 0 0-.495 1.65q0 .809.413 1.55.412.743 1.072 1.123zm3.91 3.663q.875 0 1.585-.396a2.96 2.96 0 0 0 1.534-2.64v-3.564a.32.32 0 0 0-.165-.297l-1.254-.726v4.604a.7.7 0 0 1-.363.643l-3.119 1.799a3 3 0 0 0 1.783.577m.627-6.039V8.878L10.01 7.822 8.129 8.878v2.244l1.881 1.056zM7.057 5.859a.7.7 0 0 1 .363-.644l3.119-1.798a3 3 0 0 0-1.782-.578q-.874 0-1.584.396A2.96 2.96 0 0 0 6.05 4.324a3.07 3.07 0 0 0-.396 1.551v3.547q0 .199.165.314l1.237.726zm8.383 7.887q.825-.364 1.303-1.123.495-.758.495-1.65a3.15 3.15 0 0 0-.412-1.55q-.413-.743-1.073-1.123l-3.086-1.782q-.099-.065-.181-.049a.3.3 0 0 0-.165.05l-1.238.692 3.993 2.327a.6.6 0 0 1 .264.264.64.64 0 0 1 .1.363zm-3.317-8.382a.63.63 0 0 1 .726 0l3.135 1.831v-.297q0-.792-.396-1.501a2.86 2.86 0 0 0-1.105-1.155q-.71-.43-1.65-.43-.825 0-1.436.347L8.294 5.941a.36.36 0 0 0-.165.314v1.418z" },
+};
 /* Die Bewertungsdatei trägt selbst nur ein Datum; die Uhrzeit kommt aus ihrer Änderungszeit */
 const BEWERTET = D.bewertung_erstellt ? zeitpunkt(D.bewertung_erstellt) : datum(D.bewertung_stand);
 const zahl = n => Number(n || 0).toLocaleString("de-DE");
@@ -422,14 +458,23 @@ function renderUeberblick() {
   });
   const reihen = [...summen.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
   const max = reihen.length ? reihen[0][1].tokens : 1;
-  const balken = `<div class="balken"><h3>Kontextlast nach Herkunft</h3>
+  /* Die Zeitreihe braucht zwei Tage; solange es die nicht gibt, steht der Balken allein und behält seine Überschrift */
+  const zeit = verlauf();
+  const balken = `<div class="balken${zeit ? " im-reiter" : ""}" id="kontext-herkunft"><h3>Kontextlast nach Herkunft</h3>
     <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
       <span class="wert">≈ ${zahl(v.tokens)}</span></div>`).join("")}
   </div>`;
-  return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + balken + verlauf());
+  const kontext = zeit
+    ? `<h2 class="kontext-titel">Kontextlast</h2>
+       <div class="unterreiter schmal" role="tablist">
+         <button type="button" role="tab" aria-controls="kontext-herkunft" aria-selected="true">nach Herkunft</button>
+         <button type="button" role="tab" aria-controls="kontext-zeit" aria-selected="false">über die Zeit</button>
+       </div>${balken}${zeit}`
+    : balken;
+  return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + kontext);
 }
 
 /* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
@@ -506,13 +551,15 @@ function verlauf() {
   const reihe = D.verlauf || [];
   if (reihe.length < 2) return "";
   const werte = reihe.map(e => e.kontextlast);
-  const hoch = Math.max(...werte), tief = Math.min(...werte), spanne = hoch - tief || 1;
-  const punkt = (e, i) => [(20 + i / (reihe.length - 1) * 720).toFixed(1), (108 - (e.kontextlast - tief) / spanne * 96).toFixed(1)];
+  const hoch = Math.max(...werte), tief = Math.min(...werte), spanne = hoch - tief;
+  /* Bei lauter gleichen Werten gäbe es keine Spanne: die Linie läge sonst am unteren Rand statt in der Mitte */
+  const y = v => spanne ? 108 - (v - tief) / spanne * 96 : 60;
+  const punkt = (e, i) => [(20 + i / (reihe.length - 1) * 720).toFixed(1), y(e.kontextlast).toFixed(1)];
   const punkte = reihe.map(punkt);
   const erste = reihe[0], letzte = reihe[reihe.length - 1];
   const diff = letzte.kontextlast - erste.kontextlast;
   const trend = diff === 0 ? "gleich geblieben" : diff < 0 ? `${zahl(-diff)} Tokens weniger` : `${zahl(diff)} Tokens mehr`;
-  return `<div class="balken verlauf"><h3>Kontextlast über die Zeit</h3>
+  return `<div class="balken verlauf im-reiter" id="kontext-zeit" hidden><h3>Kontextlast über die Zeit</h3>
     <p class="klein" style="margin:0 0 10px">Ein Punkt je Tag, an dem die Inventur lief. Seit ${datum(erste.datum)} ${trend}.</p>
     <svg viewBox="0 0 760 128" role="img" aria-label="Kontextlast je Inventurlauf, ${zahl(erste.kontextlast)} bis ${zahl(letzte.kontextlast)} Tokens">
       <polyline points="${punkte.map(p => p.join(",")).join(" ")}" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
@@ -990,7 +1037,32 @@ function kopiere(text, knopf) {
 
 /* Die Version nennt den Harness oft schon: „2.1.273 (Claude Code)“ steht sonst neben „Claude Code“ */
 const version = (D.version || "").replace(` (${D.harness_name})`, "").trim();
-document.getElementById("stand").innerHTML = esc(D.harness_name) + (version ? ` · ${esc(version)}` : "")
+/* Darstellung umschalten. Ohne eigene Wahl folgt die Seite der Systemeinstellung; die Wahl überlebt das Neuladen. */
+const THEMA_SPEICHER = "3zero-harness-inventur:thema";
+const MOND = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const SONNE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></svg>';
+let themaWahl = null;
+try { themaWahl = localStorage.getItem(THEMA_SPEICHER); } catch (_) { /* ohne Speicher gilt die Systemeinstellung */ }
+const istDunkel = () => themaWahl ? themaWahl === "dunkel" : matchMedia("(prefers-color-scheme: dark)").matches;
+function themaZeigen() {
+  const knopf = document.getElementById("thema");
+  knopf.innerHTML = istDunkel() ? SONNE : MOND;
+  knopf.title = istDunkel() ? "Auf helle Darstellung wechseln" : "Auf dunkle Darstellung wechseln";
+}
+document.getElementById("thema").addEventListener("click", () => {
+  themaWahl = istDunkel() ? "hell" : "dunkel";
+  try { localStorage.setItem(THEMA_SPEICHER, themaWahl); } catch (_) { /* dann gilt sie nur für diese Seite */ }
+  document.documentElement.dataset.thema = themaWahl;
+  themaZeigen();
+});
+/* Ohne eigene Wahl folgt der Knopf dem System, auch wenn es sich während der Sitzung ändert */
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!themaWahl) themaZeigen(); });
+themaZeigen();
+
+const marke = HARNESS_MARKE[D.harness];
+document.getElementById("stand").innerHTML =
+  (marke ? `<svg class="harness-marke" viewBox="0 0 ${marke.viewBox} ${marke.viewBox}" aria-hidden="true"><path d="${marke.pfad}" fill="${marke.farbe}"></path></svg>` : "") +
+  esc(D.harness_name) + (version ? ` · ${esc(version)}` : "")
   /* als Datei geöffnet gibt es keine Knopfleiste, die die Zeitangaben tragen könnte */
   + (AKTIONEN ? "" : ` · Bestand vom ${zeitpunkt(D.erstellt)} · Bewertung vom ${BEWERTET}`);
 document.getElementById("app").innerHTML =
