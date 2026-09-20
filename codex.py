@@ -51,13 +51,35 @@ def nur_manuell(ordner):
     return re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", text, re.M) is not None
 
 
+def yaml_beschreibung(ordner):
+    """Codex kennt neben SKILL.md ein zweites Format: agents/openai.yaml mit einem interface-Block.
+    Gebraucht wird daraus nur die kurze Beschreibung — sie ist es, die in jede Sitzung lädt."""
+    try:
+        text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    m = re.search(r"^\s+short_description:\s*(.+?)\s*$", text, re.M)
+    return m.group(1).strip("\"'") if m else ""
+
+
+def skill_datei(ordner):
+    """Die Datei, an der ein Skill hängt: SKILL.md, sonst agents/openai.yaml. None, wenn der Ordner keiner ist."""
+    for rel in ("SKILL.md", "agents/openai.yaml"):
+        datei = Path(ordner) / rel
+        if datei.is_file():
+            return datei
+    return None
+
+
 def skill_eintrag(anzeige, datei, aus, aktiv=True):
     """Ein Skill. `aus` sind die abgeschalteten (Pfade, Namen); `aktiv` ist False, wenn sein Plugin nicht lädt."""
+    ordner = Path(datei).parent.parent if Path(datei).name == "openai.yaml" else Path(datei).parent
     fm = frontmatter(datei)
     beschreibung = fm.get("description") if isinstance(fm.get("description"), str) else ""
+    beschreibung = beschreibung or yaml_beschreibung(ordner)
     pfade, namen = aus
     status = "aktiv" if aktiv and str(Path(datei).resolve()) not in pfade and anzeige not in namen else "aus"
-    aufruf = "nur $" if nur_manuell(Path(datei).parent) else "automatisch + $"
+    aufruf = "nur $" if nur_manuell(ordner) else "automatisch + $"
     im_kontext = status == "aktiv" and aufruf != "nur $"
     meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
     return {
@@ -88,8 +110,8 @@ def eigene_skills(aus, lock, autoren):
         if not wurzel.is_dir():
             continue
         for ordner in sorted(wurzel.iterdir()):
-            datei = ordner / "SKILL.md"
-            if ordner.name.startswith(".") or ordner.name in namen or not datei.is_file():
+            datei = skill_datei(ordner)
+            if ordner.name.startswith(".") or ordner.name in namen or datei is None:
                 continue
             namen.add(ordner.name)
             e = skill_eintrag(ordner.name, datei, aus)
@@ -116,8 +138,8 @@ def eingebaute(aus, bewertung):
     """Die Skills, die Codex selbst in ~/.codex/skills/.system einspielt. Das deutsche `was` pflegt der Skill in bewertung-codex.json."""
     was = {b.get("name"): b.get("was") for b in bewertung.get("eingebaut", []) if isinstance(b, dict)}
     ergebnis = []
-    for datei in sorted((CODEX / "skills" / ".system").glob("*/SKILL.md")):
-        e = skill_eintrag(datei.parent.name, datei, aus)
+    for ordner in sorted(o for o in (CODEX / "skills" / ".system").glob("*") if skill_datei(o)):
+        e = skill_eintrag(ordner.name, skill_datei(ordner), aus)
         ergebnis.append({"name": e["name"], "was": was.get(e["name"]) or e["beschreibung"],
                          "aufruf": e["aufruf"], "tokens": e["tokens"], "pfad": e["pfad"]})
     return ergebnis
@@ -128,12 +150,14 @@ def sitzungen():
 
 
 def nutzungsschluessel(pfad):
-    """Ein Skill-Pfad, bei Plugins ohne Marktplatz und Version (.../cache/<Marktplatz>/<Plugin>/<Version>/…).
+    """Der Ordner eines Skills, bei Plugins ohne Marktplatz und Version (.../cache/<Marktplatz>/<Plugin>/<Version>/…).
+    Der Ordner statt der Datei, weil dieselbe Sache mal als SKILL.md und mal als agents/openai.yaml vorliegt.
     Beide ändern sich, ohne dass der Skill ein anderer wird: `sites` wanderte von openai-bundled nach
     openai-curated-remote und von 0.1.43 auf 0.1.65. Sonst zeigte der Eintrag auf den neuen Ort, die
     gezählten Sitzungen auf den alten, und jedes Plugin stand auf „nie genutzt“. Zwei gleichnamige Plugins
     aus verschiedenen Marktplätzen teilen sich dadurch ihre Nutzung — seltener und kleiner als der Fehler."""
-    p = Path(pfad).resolve()
+    p = Path(pfad)
+    p = (p.parent.parent if p.name == "openai.yaml" else p.parent).resolve()
     cache = (CODEX / "plugins" / "cache").resolve()
     try:
         teile = p.relative_to(cache).parts

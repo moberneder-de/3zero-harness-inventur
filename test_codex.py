@@ -83,6 +83,30 @@ class Skills(CodexOrdner):
         self.assertGreater(eingebaut[0]["tokens"], 0)
 
 
+class ZweitesFormat(CodexOrdner):
+    """Codex kennt neben SKILL.md ein zweites Format: agents/openai.yaml mit interface-Block, ohne SKILL.md.
+    openai-docs liegt so vor und fehlte dadurch ganz im Inventar, obwohl es benutzt wurde."""
+
+    YAML = ('interface:\n  display_name: "OpenAI Docs"\n'
+            '  short_description: "Doku zu Codex und den Modellen"\n  icon_small: "./assets/x.svg"\n')
+
+    def test_eingebauter_skill_ohne_skill_md(self):
+        self.schreibe(self.home / ".codex/skills/.system/openai-docs/agents/openai.yaml", self.YAML)
+        eingebaut = codex.eingebaute((set(), set()), {})
+        self.assertEqual([(b["name"], b["was"]) for b in eingebaut], [("openai-docs", "Doku zu Codex und den Modellen")])
+        self.assertGreater(eingebaut[0]["tokens"], 0)
+
+    def test_eigener_skill_ohne_skill_md(self):
+        self.schreibe(self.home / ".agents/skills/openai-docs/agents/openai.yaml", self.YAML)
+        skills = codex.eigene_skills((set(), set()), {}, {})
+        self.assertEqual([(s["name"], s["beschreibung"], s["aufruf"]) for s in skills],
+                         [("openai-docs", "Doku zu Codex und den Modellen", "automatisch + $")])
+
+    def test_ordner_ohne_beides_zaehlt_nicht(self):
+        self.schreibe(self.home / ".agents/skills/leer/README.md", "nichts")
+        self.assertEqual(codex.eigene_skills((set(), set()), {}, {}), [])
+
+
 class Nutzung(CodexOrdner):
     def zeile(self, tag, payload):
         return json.dumps({"timestamp": f"{tag}T10:00:00Z", "type": "event_msg", "payload": payload})
@@ -99,7 +123,7 @@ class Nutzung(CodexOrdner):
                              "\n".join([self.zeile("2026-09-03", gewaehlt), self.zeile("2026-09-03", mcp)]))
         self.assertEqual(sorted(codex.sitzungen()), sorted([eins, zwei]))
         skills, server = codex.nutzung_zaehlen(codex.sitzungen())
-        self.assertEqual(codex.nutzung(skills.get(str(skill.resolve()))), {"anzahl": 2, "zuletzt": "2026-09-03"})
+        self.assertEqual(codex.nutzung(skills.get(codex.nutzungsschluessel(skill))), {"anzahl": 2, "zuletzt": "2026-09-03"})
         self.assertEqual(codex.nutzung(server.get("node_repl")), {"anzahl": 2, "zuletzt": "2026-09-03"})
         self.assertIsNone(codex.nutzung(None))
 
@@ -114,6 +138,13 @@ class Nutzung(CodexOrdner):
         skills, _ = codex.nutzung_zaehlen(codex.sitzungen())
         self.assertEqual(codex.nutzung(skills.get(codex.nutzungsschluessel(neu))), {"anzahl": 1, "zuletzt": "2026-09-01"})
 
+    def test_nutzungsschluessel_haengt_am_ordner_nicht_an_der_datei(self):
+        """Ein Skill kann als SKILL.md oder als agents/openai.yaml vorliegen, und das Format wechselt: openai-docs
+        wurde als SKILL.md gelesen und liegt heute als openai.yaml. Beides muss denselben Skill bezeichnen."""
+        ordner = self.home / ".codex/skills/.system/openai-docs"
+        self.assertEqual(codex.nutzungsschluessel(ordner / "SKILL.md"),
+                         codex.nutzungsschluessel(ordner / "agents" / "openai.yaml"))
+
     def test_nutzungsschluessel_laesst_marktplatz_und_version_weg(self):
         cache = self.home / ".codex/plugins/cache"
         self.assertEqual(codex.nutzungsschluessel(cache / "openai-bundled/sites/0.1.43/skills/x/SKILL.md"),
@@ -121,7 +152,7 @@ class Nutzung(CodexOrdner):
         self.assertNotEqual(codex.nutzungsschluessel(cache / "m/sites/1/skills/x/SKILL.md"),
                             codex.nutzungsschluessel(cache / "m/anderes/1/skills/x/SKILL.md"))
         eigen = self.schreibe(self.home / ".agents/skills/archify/SKILL.md", "---\n---\n")
-        self.assertEqual(codex.nutzungsschluessel(eigen), str(eigen.resolve()))
+        self.assertEqual(codex.nutzungsschluessel(eigen), str(eigen.parent.resolve()))
         self.assertNotEqual(codex.nutzungsschluessel(cache / "m/p/1/skills/x/SKILL.md"),
                             codex.nutzungsschluessel(cache / "m/p/1/skills/y/SKILL.md"))
 
