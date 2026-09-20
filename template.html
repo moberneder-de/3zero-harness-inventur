@@ -414,6 +414,7 @@ function befehlText(e, a) {
   if (s.skill_aus) return `~/.codex/config.toml → [[skills.config]] path = ${JSON.stringify(s.skill_aus)}, enabled = false`;
   if (s.nur_manuell) return `${s.nur_manuell}/agents/openai.yaml → policy: allow_implicit_invocation: false`;
   if (s.papierkorb) return `${s.papierkorb} → Papierkorb`;
+  if (s.hook_entfernen) return `~/.claude/settings.json → ${s.hook_entfernen === "statusLine" ? '"statusLine"' : `"hooks" → "${s.hook_entfernen}"`} entfernen`;
   /* Einfache Anführungszeichen wie shellwort() in build.py: in doppelten blieben `, $ und \ wirksam,
      ein Projektpfad mit $(…) führte beim Einfügen ins Terminal etwas anderes aus, als dasteht. */
   const wort = x => /^[\w@%+=:,./-]+$/.test(x) ? x : "'" + String(x).replaceAll("'", "'\\''") + "'";
@@ -773,8 +774,8 @@ function renderHooks() {
   const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name"><strong>${esc(h.name)}</strong></td>
       <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="klein">${h.befehle.length === 1 ? "1 Befehl" : `${h.befehle.length} Befehle`}</td>
       <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
-      <td>${was(h)}</td><td>${empfBadge(h)}</td></tr>` +
-    detailZeile(9, [
+      <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
+    detailZeile(9 + SP, [
       ["Befehle", befehle(h)],
       ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
       ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.hook_tage} Tagen` : ""],
@@ -783,7 +784,7 @@ function renderHooks() {
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th>Empfehlung</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
       "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
@@ -1020,7 +1021,7 @@ function renderHilfe() {
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab „Empfehlungen“ oder alles über „alle … ausführen“ im Kopf, nach einer Bestätigung.</li>
       <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Bei Plugins immer, per <code>claude plugin update</code>: Ob ein Update bereitsteht, sagt erst der Befehl. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
-      <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
+      <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb. Eigene Hooks und die Statuszeile nimmt der Server aus ~/.claude/settings.json; einen einzelnen Hook nur abschalten kann Claude Code nicht. Zurück führt die Sicherung.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
       <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>

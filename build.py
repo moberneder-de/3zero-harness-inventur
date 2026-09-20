@@ -699,10 +699,14 @@ def befehl(e, empfehlung):
 
 def aktionen(e):
     """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert,
-    deniedMcpServers-Eintrag (`sperren`) oder Papierkorb (`papierkorb`). Aktionen, die schon gelten, fehlen."""
+    deniedMcpServers-Eintrag (`sperren`), Papierkorb (`papierkorb`) oder ein Hook-Block aus settings.json (`hook_entfernen`).
+    Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
     if eid.startswith("hook:"):
-        return {}
+        if e.get("plugin"):
+            return {}  # kommt mit dem Plugin und geht mit ihm
+        # Einen einzelnen Hook kann Claude Code nicht abschalten, nur alle zusammen (disableAllHooks). Bleibt das Entfernen.
+        return {"deinstallieren": {"hook_entfernen": "statusLine" if e["ereignis"] == "Statuszeile" else e["ereignis"]}}
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
         # aktualisieren immer: Ob ein Update bereitsteht, zeigt `claude plugin list` nicht, der Befehl sagt es selbst.

@@ -379,7 +379,8 @@ class Inventarserver(ThreadingHTTPServer):
     def schritt(self, eid, aktion):
         """(Name, Schritt) aus dem Inventar des aktuellen Harness, oder None, wenn der Eintrag diese Aktion nicht anbietet."""
         inventar = json.loads(self.datei("inventar").read_text(encoding="utf-8"))
-        for e in inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", []) + inventar.get("projekt_mcp", []):
+        for e in (inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", [])
+                  + inventar.get("projekt_mcp", []) + inventar.get("hooks", [])):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
                 return e["name"], e["aktionen"][aktion]
         return None
@@ -516,6 +517,20 @@ class Inventarserver(ThreadingHTTPServer):
         self.settings_aendern(aendern)
         return {"ok": True, "ausgabe": "deniedMcpServers: " + json.dumps(eintrag, ensure_ascii=False)}
 
+    def hook_entfernen(self, schluessel):
+        """Nimmt den Block eines Ereignisses (oder die Statuszeile) aus settings.json; zurück führt die Sicherung."""
+        ort = lambda daten: daten if schluessel == "statusLine" else daten.get("hooks")
+        vorhanden = ort(json.loads(self.settings.read_text(encoding="utf-8")))
+        if not isinstance(vorhanden, dict) or schluessel not in vorhanden:
+            return {"ok": False, "ausgabe": f"{schluessel} steht nicht in {self.settings}"}  # ohne die Datei anzufassen
+
+        def aendern(daten):
+            del ort(daten)[schluessel]
+            if daten.get("hooks") == {}:
+                del daten["hooks"]
+        self.settings_aendern(aendern)
+        return {"ok": True, "ausgabe": f"{self.settings} → {schluessel} entfernt"}
+
     def ausfuehren(self, name, schritt):
         with self.sperre:
             if "override" in schritt:
@@ -530,6 +545,8 @@ class Inventarserver(ThreadingHTTPServer):
                 return self.nur_manuell_datei(schritt["nur_manuell"])
             if "papierkorb" in schritt:
                 return in_den_papierkorb(schritt["papierkorb"])
+            if "hook_entfernen" in schritt:
+                return self.hook_entfernen(schritt["hook_entfernen"])
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):

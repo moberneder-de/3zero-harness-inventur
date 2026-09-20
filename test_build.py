@@ -128,8 +128,16 @@ class Aktionen(unittest.TestCase):
         self.assertNotIn("aktualisieren", build.aktionen({**skill("grilling"), "update": False}))
         self.assertNotIn("aktualisieren", build.aktionen(skill("grilling")))
 
-    def test_hook_ohne_aktionen(self):
-        self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
+    def test_eigener_hook_laesst_sich_entfernen(self):
+        """Einen einzelnen Hook kann Claude Code nicht abschalten, nur alle zusammen (disableAllHooks). Bleibt das Entfernen."""
+        stop = {"id": "hook:einstellungen:Stop", "typ": "Hook", "ereignis": "Stop"}
+        self.assertEqual(build.aktionen(stop), {"deinstallieren": {"hook_entfernen": "Stop"}})
+        zeile = {"id": "hook:einstellungen:statusLine", "typ": "Hook", "ereignis": "Statuszeile"}
+        self.assertEqual(build.aktionen(zeile), {"deinstallieren": {"hook_entfernen": "statusLine"}})
+
+    def test_plugin_hook_ohne_aktionen(self):
+        """Er kommt mit dem Plugin und geht mit ihm."""
+        self.assertEqual(build.aktionen({"id": "hook:p@m:Stop", "typ": "Hook", "ereignis": "Stop", "plugin": "p@m"}), {})
 
 
 class PluginBestand(unittest.TestCase):

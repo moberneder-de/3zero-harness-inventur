@@ -82,9 +82,9 @@ class Server(unittest.TestCase):
         config.write_text('model = "gpt-test"\nmodel_reasoning_effort = "high"\n')
         self.srv.codex_config = config
 
-    def schreibe_inventar(self, plugins, skills=(), mcp=()):
+    def schreibe_inventar(self, plugins, skills=(), mcp=(), hooks=()):
         """Schreibt die Inventar-Datei des gerade aktiven Harness (inventar.json oder inventar-codex.json)."""
-        inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills)}
+        inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills), "hooks": list(hooks)}
         datei = self.tmp / harness.HARNESSE[harness.aktuell(self.tmp)]["inventar"]
         datei.write_text(json.dumps(inventar))
 
@@ -295,6 +295,22 @@ class Server(unittest.TestCase):
             self.assertTrue(neustart.ausfuehren("tdd", {"override": "off"})["ok"])
         self.assertEqual({d.name: d.read_text() for d in self.tmp.glob("settings.json.bak*")},
                          {"settings.json.bak-20260920-170000": SETTINGS_VORHER, "settings.json.bak-20260920-180000": nach_der_ersten})
+
+    def test_hook_entfernen_nimmt_nur_dieses_ereignis(self):
+        vorher = {"env": {"A": "1"}, "statusLine": {"type": "command", "command": "zeile.sh"},
+                  "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}],
+                            "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "pruefen.sh"}]}]}}
+        self.settings.write_text(json.dumps(vorher, indent=2) + "\n")
+        self.schreibe_inventar([], hooks=[
+            {"id": f"hook:einstellungen:{e}", "name": e, "aktionen": {"deinstallieren": {"hook_entfernen": e}}}
+            for e in ("Stop", "PreToolUse", "statusLine")])
+        self.assertTrue(self.ausfuehren("hook:einstellungen:Stop", "deinstallieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {**vorher, "hooks": {"PreToolUse": vorher["hooks"]["PreToolUse"]}})
+        self.assertFalse(self.ausfuehren("hook:einstellungen:Stop", "deinstallieren")[1]["ok"])  # gibt es nicht mehr
+        self.assertTrue(self.ausfuehren("hook:einstellungen:PreToolUse", "deinstallieren")[1]["ok"])
+        self.assertTrue(self.ausfuehren("hook:einstellungen:statusLine", "deinstallieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {"env": {"A": "1"}})  # ein leeres "hooks" bleibt nicht stehen
+        self.assertEqual(json.loads(self.sicherung(self.settings).read_text()), vorher)
 
     def test_override_ohne_bisherige_overrides(self):
         self.settings.write_text("{}\n")
