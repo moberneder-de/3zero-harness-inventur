@@ -166,6 +166,32 @@ class PluginBestand(unittest.TestCase):
         self.assertEqual(build.marktplatz_datei({"installLocation": ""}), {})
 
 
+class GleichnamigePlugins(unittest.TestCase):
+    """Gibt es ein Plugin in zwei Marktplätzen, tragen seine Skills den Marktplatz in der ID, damit eine Aktion
+    nicht das falsche trifft. Claude Code selbst führt sie aber ohne: `sites:foo`, nicht `sites@markt:foo`.
+    Nutzung und skillOverrides gingen dadurch verloren."""
+
+    def test_nutzung_und_override_kommen_ohne_marktplatz(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "SKILL.md"
+        datei.write_text("---\ndescription: tut etwas\n---\n")
+        with mock.patch.object(build, "OVERRIDES", {"sites:foo": "off"}), \
+                mock.patch.object(build, "NUTZUNG", {"sites:foo": {"usageCount": 7, "lastUsedAt": 1789000000000}}):
+            e = build.skill_eintrag("sites@openai-bundled:foo", "Skill", datei, schluessel="sites:foo")
+        self.assertEqual(e["id"], "skill:sites@openai-bundled:foo")  # eindeutig für Aktionen
+        self.assertEqual((e["status"], e["override"], e["tokens"]), ("aus", "off", 0))
+        self.assertEqual(e["nutzung"]["anzahl"], 7)
+
+    def test_ohne_schluessel_gilt_der_anzeigename(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "SKILL.md"
+        datei.write_text("---\ndescription: x\n---\n")
+        with mock.patch.object(build, "OVERRIDES", {"einzeln": "off"}), mock.patch.object(build, "NUTZUNG", {}):
+            self.assertEqual(build.skill_eintrag("einzeln", "Skill", datei)["status"], "aus")
+
+
 class MehrfacheNamen(unittest.TestCase):
     def test_nur_namen_aus_mehreren_marktplaetzen(self):
         """Kommt derselbe Plugin-Name zweimal vor, gehört der Marktplatz in die IDs seiner Bestandteile."""

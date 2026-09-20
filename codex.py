@@ -61,7 +61,10 @@ def nur_manuell(ordner):
         text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8")
     except OSError:
         return False
-    return re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", text, re.M) is not None
+    # nur im policy-Block: Ein gleichnamiger Schlüssel unter defaults: oder interface: bedeutet etwas anderes
+    # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
+    block = re.search(r"^policy:[^\S\n]*\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
+    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", block.group(1), re.M) is not None
 
 
 def yaml_beschreibung(ordner):

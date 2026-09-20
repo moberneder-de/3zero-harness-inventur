@@ -111,11 +111,13 @@ def nutzung(anzeige):
     return {"anzahl": n.get("usageCount", 0), "zuletzt": datum_ms(n.get("lastUsedAt"))}
 
 
-def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True):
-    """Ein Skill, Befehl oder Agent. `anzeige` ist der Name, unter dem Claude Code ihn führt."""
+def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True, schluessel=None):
+    """Ein Skill, Befehl oder Agent. `anzeige` ist der Name im Dashboard, `schluessel` der, unter dem Claude Code
+    ihn führt — bei gleichnamigen Plugins trägt nur die Anzeige den Marktplatz, Nutzung und Overrides nicht."""
+    schluessel = schluessel or anzeige
     fm = frontmatter(datei)
     beschreibung = fm.get("description") if isinstance(fm.get("description"), str) else ""
-    override = OVERRIDES.get(anzeige, "on")
+    override = OVERRIDES.get(schluessel, "on")
     status = "aktiv" if plugin_aktiv and override != "off" else "aus"
     if str(fm.get("disable-model-invocation", "")).lower() == "true" or override == "user-invocable-only":
         aufruf = "nur /"
@@ -128,7 +130,7 @@ def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True):
     im_kontext = status == "aktiv" and aufruf != "nur /"
     tokens = 0
     if im_kontext:
-        text = anzeige if override == "name-only" else f"- {anzeige}: {beschreibung}"
+        text = schluessel if override == "name-only" else f"- {schluessel}: {beschreibung}"
         tokens = round(len(text) / 4)
     praefix = "agent" if typ == "Agent" else "skill"
     meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
@@ -142,9 +144,11 @@ def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True):
         "aufruf": aufruf,
         "im_kontext": im_kontext,
         "tokens": tokens,
-        "nutzung": nutzung(anzeige),
+        "nutzung": nutzung(schluessel),
         "pfad": str(datei),
         "meta_autor": meta.get("author"),
+        # nur wenn er abweicht: Er sagt, unter welchem Namen skillOverrides und skillUsage den Eintrag führen
+        **({"schluessel": schluessel} if schluessel != anzeige else {}),
     }
 
 
@@ -469,11 +473,11 @@ def plugins():
         teile = []
         for d in skill_dateien:
             if d.is_file():
-                teile.append(skill_eintrag(f"{praefix}:{d.parent.name}", "Skill", d, aktiv))
+                teile.append(skill_eintrag(f"{praefix}:{d.parent.name}", "Skill", d, aktiv, f"{name}:{d.parent.name}"))
         for d in sorted(wurzel.glob("commands/*.md")):
-            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Befehl", d, aktiv))
+            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Befehl", d, aktiv, f"{name}:{d.stem}"))
         for d in sorted(wurzel.glob("agents/*.md")):
-            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Agent", d, aktiv))
+            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Agent", d, aktiv, f"{name}:{d.stem}"))
         for t in teile:
             t["plugin"] = pid
             t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}
@@ -784,7 +788,7 @@ def claude_inventar():
 
     unbewertet, entfallen = abgleich(alle, BEWERTUNG)
     # Overrides gelten nach Namen, auch für Projekt- und eingebaute Skills
-    verwaist = sorted(set(OVERRIDES) - {e["name"] for e in skills + projekte + eingebaut})
+    verwaist = sorted(set(OVERRIDES) - {e.get("schluessel", e["name"]) for e in skills + projekte + eingebaut})
     return {
         "live_status": live is not None,
         "bewertung_stand": BEWERTUNG.get("stand"),

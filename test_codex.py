@@ -107,6 +107,28 @@ class ZweitesFormat(CodexOrdner):
         self.assertEqual(codex.eigene_skills((set(), set()), {}, {}), [])
 
 
+class NurManuell(CodexOrdner):
+    """`allow_implicit_invocation: false` zählt nur unter `policy:`. Die alte Regex traf jeden eingerückten
+    Schlüssel: Ein Skill mit einem `defaults:`-Block galt als „nur $“, bekam 0 Tokens und verlor seine Aktion,
+    obwohl Codex ihn automatisch lädt. Der Server schreibt den Wert ausdrücklich nur in den policy-Block."""
+
+    def yaml(self, text):
+        ordner = self.home / ".agents/skills/x"
+        self.schreibe(ordner / "agents" / "openai.yaml", text)
+        return ordner
+
+    def test_unter_policy_zaehlt(self):
+        self.assertTrue(codex.nur_manuell(self.yaml("policy:\n  allow_implicit_invocation: false\n")))
+
+    def test_unter_einem_anderen_block_zaehlt_nicht(self):
+        self.assertFalse(codex.nur_manuell(self.yaml(
+            "defaults:\n  allow_implicit_invocation: false\npolicy:\n  allow_implicit_invocation: true\n")))
+
+    def test_ohne_datei_und_ohne_schluessel(self):
+        self.assertFalse(codex.nur_manuell(self.home / ".agents/skills/gibt-es-nicht"))
+        self.assertFalse(codex.nur_manuell(self.yaml("policy:\n  andere: false\n")))
+
+
 class KaputteConfig(CodexOrdner):
     """Eine kaputte config.toml ergab still „alles aus, nichts eingetragen“: keine MCP-Server, alle Plugins
     nicht aktiviert, keine Projekte. Die nächste Bewertung schriebe Empfehlungen auf dieser Grundlage."""

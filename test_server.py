@@ -337,6 +337,15 @@ class Server(unittest.TestCase):
                          [("echt", "claude mcp add gamma -s user -- npx -y @gamma/mcp"),
                           ("kette", ""), ("ersetzung", ""), ("fremd", "")])
 
+    def test_nur_manuell_gesetzt_zaehlt_nur_den_policy_block(self):
+        """Die Erfolgskontrolle nach dem Schreiben: Ein gleichnamiger Schlüssel unter defaults: ließe einen
+        fehlgeschlagenen Schreibvorgang als Erfolg durchgehen. Dieselbe Prüfung macht codex.nur_manuell."""
+        self.assertTrue(server.nur_manuell_gesetzt("policy:\n  allow_implicit_invocation: false\n"))
+        self.assertTrue(server.nur_manuell_gesetzt("policy:\n  x: 1\n# Kommentar\n  allow_implicit_invocation: false\n"))
+        self.assertFalse(server.nur_manuell_gesetzt("defaults:\n  allow_implicit_invocation: false\n"))
+        self.assertFalse(server.nur_manuell_gesetzt(
+            "policy:\n  allow_implicit_invocation: true\ndefaults:\n  allow_implicit_invocation: false\n"))
+
     def test_sicherer_befehl(self):
         self.assertTrue(server.sicherer_befehl("npx skills add owner/repo --skill x -g -y --agent claude-code"))
         self.assertTrue(server.sicherer_befehl("codex mcp add q -- bun run q.ts"))

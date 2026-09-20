@@ -223,6 +223,15 @@ def claude_json(ausgabe):
         return None
 
 
+def nur_manuell_gesetzt(text):
+    """Steht `allow_implicit_invocation: false` im policy-Block? Nur dort zählt es. Ein gleichnamiger Schlüssel
+    unter defaults: oder interface: ließe sonst einen fehlgeschlagenen Schreibvorgang als Erfolg durchgehen.
+    Dieselbe Prüfung macht `nur_manuell` in codex.py beim Einlesen — die beiden gehören zusammen."""
+    # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
+    block = re.search(r"^policy:[^\S\n]*\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
+    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", block.group(1), re.M) is not None
+
+
 def gueltige_bewertung(kopie):
     """Die Arbeitskopie, wenn sie ein JSON-Objekt ist; sonst None. Ein Symlink zählt nicht: er könnte auf eine Datei außerhalb zeigen."""
     if not kopie.is_file() or kopie.is_symlink():
@@ -424,7 +433,7 @@ class Inventarserver(ThreadingHTTPServer):
             datei.parent.mkdir(parents=True, exist_ok=True)
             text = "policy:\n  allow_implicit_invocation: false\n"
         self.schreiben(datei, text)
-        if not re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", datei.read_text(encoding="utf-8"), re.M):
+        if not nur_manuell_gesetzt(datei.read_text(encoding="utf-8")):
             if alt is not None:
                 self.schreiben(datei, alt)
             else:
