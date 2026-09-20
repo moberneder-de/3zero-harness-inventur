@@ -107,6 +107,20 @@ class ZweitesFormat(CodexOrdner):
         self.assertEqual(codex.eigene_skills((set(), set()), {}, {}), [])
 
 
+class KaputteConfig(CodexOrdner):
+    """Eine kaputte config.toml ergab still „alles aus, nichts eingetragen“: keine MCP-Server, alle Plugins
+    nicht aktiviert, keine Projekte. Die nächste Bewertung schriebe Empfehlungen auf dieser Grundlage."""
+
+    def test_kaputte_datei_faellt_auf(self):
+        self.schreibe(self.home / ".codex/config.toml", "[kaputt\n")
+        self.assertFalse(codex.config_lesbar())
+
+    def test_heile_datei_und_fehlende_datei_sind_in_ordnung(self):
+        self.assertTrue(codex.config_lesbar())  # es gibt sie nicht, das ist kein Fehler
+        self.schreibe(self.home / ".codex/config.toml", 'model = "gpt-5"\n')
+        self.assertTrue(codex.config_lesbar())
+
+
 class Nutzung(CodexOrdner):
     def zeile(self, tag, payload):
         return json.dumps({"timestamp": f"{tag}T10:00:00Z", "type": "event_msg", "payload": payload})
@@ -304,7 +318,7 @@ class Inventar(CodexOrdner):
             "skill:grilling": {"was": "Fragt nach.", "empfehlung": "behalten"}, "skill:weg": {"was": "alt"}}}))
         with mock.patch.object(codex, "updates_markieren"):
             daten = codex.inventar()
-        self.assertEqual(sorted(daten), ["bewertung_stand", "eingebaut", "entfallen", "gruppen", "hinweise", "hook_tage", "hooks",
+        self.assertEqual(sorted(daten), ["bewertung_stand", "config_lesbar", "eingebaut", "entfallen", "gruppen", "hinweise", "hook_tage", "hooks",
                                          "live_status", "mcp", "overrides_verwaist", "plugins", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
         self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
                          (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))

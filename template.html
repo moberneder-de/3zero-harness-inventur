@@ -449,6 +449,7 @@ function renderUeberblick() {
   if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong>${idListe(D.unbewertet)}`);
   if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong>${idListe(D.entfallen)}`);
   if (D.live_status === false) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
+  if (D.config_lesbar === false) banner.push("<strong><code>~/.codex/config.toml</code> ließ sich nicht lesen:</strong> MCP-Server, aktivierte Plugins, abgeschaltete Skills und Projekte fehlen deshalb unten. Erst die Datei richtigstellen, dann neu einlesen — sonst bewertet der Skill einen halben Bestand.");
   const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in ${esc(D.harness_name)} <code>${je("/", "$")}3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
   const kpis = `<div class="kpis">

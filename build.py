@@ -403,10 +403,31 @@ def mcp_messungen(dateien):
 
 def mcp_definitionen(wurzel, manifest):
     roh = lies_json(wurzel / ".mcp.json")
-    server = roh.get("mcpServers", roh)
+    # Ohne `mcpServers` gilt die Datei nur dann als Servertabelle, wenn jeder Wert wie eine Serverangabe aussieht:
+    # `{"servers": …, "inputs": …}` (die VS-Code-Schreibweise) ergäbe sonst einen Eintrag namens „servers“.
+    ist_server = lambda c: isinstance(c, dict) and ("command" in c or "url" in c)
+    if isinstance(roh.get("mcpServers"), dict):
+        server = roh["mcpServers"]
+    else:
+        server = roh if roh and all(ist_server(c) for c in roh.values()) else {}
     if isinstance(manifest.get("mcpServers"), dict):
         server = {**server, **manifest["mcpServers"]}
     return {n: c for n, c in server.items() if isinstance(c, dict)}
+
+
+def marktplatz_datei(mkt_info):
+    """Die marketplace.json eines Marktplatzes. Ohne Ortsangabe nichts lesen: `Path("")` wäre der Arbeitsordner."""
+    ort = mkt_info.get("installLocation")
+    return lies_json(Path(ort) / ".claude-plugin" / "marketplace.json") if ort else {}
+
+
+def plugin_skill_dateien(wurzel, mkt_eintrag, manifest):
+    """Welche SKILL.md zum Plugin gehören. Nennt der Marktplatz sie, gelten seine Angaben. Sonst hilft nur der
+    Ordner — aber nur, wenn er dem Plugin gehört: Repo-Marktplätze teilen einen Checkout, und dort lägen die
+    Skills aller Plugins des Repos mit. Ein eigenes .claude-plugin/plugin.json unterscheidet beide Fälle."""
+    if mkt_eintrag.get("skills"):
+        return [wurzel / p / "SKILL.md" for p in mkt_eintrag["skills"]]
+    return sorted(wurzel.glob("skills/*/SKILL.md")) if manifest else []
 
 
 def mehrfache_namen(pids):
@@ -429,7 +450,7 @@ def plugins():
         wurzel = Path(inst["installPath"])
         manifest = lies_json(wurzel / ".claude-plugin" / "plugin.json")
         mkt_info = marktplaetze.get(mkt, {})
-        mkt_datei = lies_json(Path(mkt_info.get("installLocation", "")) / ".claude-plugin" / "marketplace.json")
+        mkt_datei = marktplatz_datei(mkt_info)
         mkt_eintrag = next((p for p in mkt_datei.get("plugins", []) if p.get("name") == name), {})
 
         if aktiviert.get(pid) is True:
@@ -444,10 +465,7 @@ def plugins():
         autor = autor.get("name") if isinstance(autor, dict) else str(autor)
         autor = BEWERTUNG.get("autoren", {}).get(autor, autor)
 
-        if mkt_eintrag.get("skills"):
-            skill_dateien = [wurzel / p / "SKILL.md" for p in mkt_eintrag["skills"]]
-        else:
-            skill_dateien = sorted(wurzel.glob("skills/*/SKILL.md"))
+        skill_dateien = plugin_skill_dateien(wurzel, mkt_eintrag, manifest)
         teile = []
         for d in skill_dateien:
             if d.is_file():

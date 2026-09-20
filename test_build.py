@@ -131,6 +131,41 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(build.aktionen({"id": "hook:einstellungen:Stop", "typ": "Hook"}), {})
 
 
+class PluginBestand(unittest.TestCase):
+    def ordner(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        return tmp
+
+    def test_mcp_json_in_der_vscode_schreibweise_ist_kein_server(self):
+        """`{"servers": …, "inputs": …}` liegt in gemischten Repos oft neben .mcp.json; als Servertabelle gelesen
+        ergäbe das einen Eintrag namens „servers“ mit leerem Ziel und einer Aktion, die ins Leere läuft."""
+        tmp = self.ordner()
+        (tmp / ".mcp.json").write_text(json.dumps({"servers": {"q": {"command": "bun"}}, "inputs": []}))
+        self.assertEqual(build.mcp_definitionen(tmp, {}), {})
+
+    def test_mcp_json_als_blanke_tabelle_zaehlt_weiter(self):
+        tmp = self.ordner()
+        (tmp / ".mcp.json").write_text(json.dumps({"q": {"command": "bun"}, "fern": {"url": "https://x/mcp"}}))
+        self.assertEqual(sorted(build.mcp_definitionen(tmp, {})), ["fern", "q"])
+
+    def test_ohne_marktplatz_eintrag_nur_eigene_skills(self):
+        """Repo-Marktplätze teilen einen Checkout: dort liegen die Skills aller Plugins des Repos. Ohne
+        Marktplatz-Eintrag und ohne eigenes Manifest lässt sich nicht sagen, welche zum Plugin gehören."""
+        tmp = self.ordner()
+        for name in ("xlsx", "docx", "fremd"):
+            (tmp / "skills" / name).mkdir(parents=True)
+            (tmp / "skills" / name / "SKILL.md").write_text("---\n---\n")
+        self.assertEqual(build.plugin_skill_dateien(tmp, {}, {}), [])
+        self.assertEqual([d.parent.name for d in build.plugin_skill_dateien(tmp, {}, {"name": "x"})],
+                         ["docx", "fremd", "xlsx"])
+        self.assertEqual([d.parent.name for d in build.plugin_skill_dateien(tmp, {"skills": ["skills/xlsx"]}, {})], ["xlsx"])
+
+    def test_marktplatz_ohne_ort_liest_nichts_aus_dem_arbeitsordner(self):
+        self.assertEqual(build.marktplatz_datei({}), {})
+        self.assertEqual(build.marktplatz_datei({"installLocation": ""}), {})
+
+
 class MehrfacheNamen(unittest.TestCase):
     def test_nur_namen_aus_mehreren_marktplaetzen(self):
         """Kommt derselbe Plugin-Name zweimal vor, gehört der Marktplatz in die IDs seiner Bestandteile."""

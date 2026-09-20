@@ -29,6 +29,19 @@ def lies_toml(pfad):
         return {}
 
 
+def config_lesbar():
+    """Ob ~/.codex/config.toml sich lesen ließ. Sonst stünde das halbe Dashboard still auf „nichts eingetragen“:
+    keine MCP-Server, alle Plugins nicht aktiviert, keine Projekte. Dass es sie nicht gibt, ist kein Fehler."""
+    datei = CODEX / "config.toml"
+    if not datei.is_file():
+        return True
+    try:
+        tomllib.loads(datei.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def abgeschaltete(cfg):
     """[[skills.config]] mit enabled = false, als (Pfade, Namen). Codex vergleicht Pfade aufgelöst, also ohne Symlinks."""
     pfade, namen = set(), set()
@@ -526,6 +539,7 @@ def inventar():
     unbewertet, entfallen = abgleich(alle, bewertung)
     return {
         "live_status": None,
+        "config_lesbar": config_lesbar(),
         "bewertung_stand": bewertung.get("stand"),
         "overrides_verwaist": [],
         "mcp": mcp,
