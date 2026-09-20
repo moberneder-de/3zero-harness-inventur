@@ -284,7 +284,8 @@ def hook_ausgaben(dateien):
     """Je (Ereignis, Befehl) zwei Messungen aus den Transkripten: was der Hook an Claude zurückgab
     (zuletzt, höchstens, Läufe mit Ausgabe) und wie lange er lief (Median, Maximum, Messungen).
     Laufzeiten stehen in zwei Quellen: in jeder Hook-Ausgabe und in der Zusammenfassung am Turn-Ende,
-    die auch die Stop-Hooks ohne Ausgabe erfasst."""
+    die auch die Stop-Hooks ohne Ausgabe erfasst. Ein Stop-Hook mit Ausgabe steht in beiden, deshalb
+    zählt je Sekunde und Dauer nur ein Lauf — zwei gleich lange Läufe in derselben Sekunde gelten als einer."""
     funde, zeiten = {}, {}
     for datei in dateien:
         try:
@@ -299,23 +300,27 @@ def hook_ausgaben(dateien):
                     d = json.loads(zeile)
                 except ValueError:
                     continue
+                sekunde = (d.get("timestamp") or "")[:19]
                 if d.get("subtype") == "stop_hook_summary":
                     for info in d.get("hookInfos") or []:
                         if isinstance(info.get("durationMs"), (int, float)):
-                            zeiten.setdefault(("Stop", info.get("command")), []).append(info["durationMs"])
+                            zeiten.setdefault(("Stop", info.get("command")), set()).add((sekunde, info["durationMs"]))
                     continue
                 a = d.get("attachment") or {}
                 if a.get("type") != "hook_success":
                     continue
                 schluessel = (a.get("hookEvent"), a.get("command"))
                 if isinstance(a.get("durationMs"), (int, float)):
-                    zeiten.setdefault(schluessel, []).append(a["durationMs"])
+                    zeiten.setdefault(schluessel, set()).add((sekunde, a["durationMs"]))
                 text = an_claude(a.get("hookEvent"), a.get("stdout") or "")
                 if text:
                     funde.setdefault(schluessel, []).append((d.get("timestamp") or "", round(len(text) / 4)))
     ausgaben = {k: {"zuletzt": max(l)[0][:10], "tokens": max(l)[1], "max": max(t for _, t in l), "laeufe": len(l)}
                 for k, l in funde.items()}
-    dauern = {k: {"median": round(statistics.median(l)), "max": max(l), "messungen": len(l)} for k, l in zeiten.items()}
+    dauern = {}
+    for k, laeufe in zeiten.items():
+        werte = [dauer for _, dauer in laeufe]
+        dauern[k] = {"median": round(statistics.median(werte)), "max": max(werte), "messungen": len(werte)}
     return ausgaben, dauern
 
 

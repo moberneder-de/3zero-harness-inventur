@@ -287,6 +287,25 @@ class Hooks(unittest.TestCase):
                                                [{"command": "still", "durationMs": 30}])))
         self.assertEqual(build.hook_ausgaben([datei])[1], {("Stop", "still"): {"median": 25, "max": 30, "messungen": 2}})
 
+    def test_derselbe_lauf_zaehlt_nur_einmal(self):
+        # Ein Stop-Hook mit Ausgabe steht in beiden Quellen: in seiner Ausgabe und in der Zusammenfassung am Turn-Ende
+        def ausgabe(zeit, dauer):
+            return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": {
+                "type": "hook_success", "hookEvent": "Stop", "command": "beides", "stdout": "", "durationMs": dauer}}) + "\n"
+
+        def zusammenfassung(zeit, dauer):
+            return json.dumps({"type": "system", "subtype": "stop_hook_summary", "timestamp": zeit,
+                               "hookInfos": [{"command": "beides", "durationMs": dauer}]}) + "\n"
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text(
+            ausgabe("2026-09-12T08:00:00.634Z", 20) + zusammenfassung("2026-09-12T08:00:00.635Z", 20)
+            + ausgabe("2026-09-12T09:00:00.000Z", 40) + zusammenfassung("2026-09-12T09:00:00.000Z", 40)
+            + zusammenfassung("2026-09-12T10:00:00.000Z", 90))
+        self.assertEqual(build.hook_ausgaben([datei])[1],
+                         {("Stop", "beides"): {"median": 40, "max": 90, "messungen": 3}})
+
     def test_messen_traegt_die_dauer_ein(self):
         hooks = build.hook_eintraege({"Stop": [{"hooks": [{"type": "command", "command": "still"}]}],
                                       "PostToolUse": [{"hooks": [{"type": "command", "command": "ohne"}]}]},
