@@ -318,6 +318,24 @@ class Server(unittest.TestCase):
         self.assertFalse(cwd.is_relative_to(Path.home()))
         self.assertNotEqual(cwd, Path(tempfile.gettempdir()).resolve())
 
+    def test_suchen_sperrt_zugangsdaten_fuers_lesen(self):
+        """Der Lauf liest fremde Webseiten und erreicht mit WebFetch jede Adresse: Ohne Sperre könnte eine präparierte
+        Seite ihn Zugangsdaten lesen und verschicken lassen. Dieselben Pfade wie bei Codex, als deny in einer eigenen
+        Einstellungsdatei — sie gilt für Read, Grep und Glob (nachgemessen)."""
+        self.claude_ersatz(json.dumps({"structured_output": {"bericht": "x", "kandidaten": []}}))
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace(
+            "cat <<", f'v=""; for a in "$@"; do [ "$v" = "--settings" ] && cp "$a" "{self.tmp}/einstellungen"; v="$a"; done\ncat <<', 1))
+        self.assertTrue(self.suchen()[1]["ok"])
+        gesperrt = json.loads((self.tmp / "einstellungen").read_text())["permissions"]["deny"]
+        for pfad in server.GESPERRT_LESEN:
+            with self.subTest(pfad=pfad):
+                self.assertIn(f"Read(~/{pfad})", gesperrt)  # als Datei
+                self.assertIn(f"Read(~/{pfad}/**)", gesperrt)  # als Ordner
+        argv = (self.tmp / "argv").read_text().split("\n")
+        einstellungen = Path(argv[argv.index("--settings") + 1]).resolve()
+        self.assertFalse(einstellungen.is_relative_to(Path.home()))
+
     def test_suchen_prueft_die_kandidaten(self):
         _, antwort = self.suchen()
         self.assertEqual([(k["name"], k["installierbar"]) for k in antwort["kandidaten"]],

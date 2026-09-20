@@ -113,6 +113,10 @@ SUCHEN_DOMAINS = ("skills.sh", "registry.npmjs.org", "github.com", "api.github.c
 GESPERRT_LESEN = (".ssh", ".gnupg", ".aws", ".netrc", ".config/gh", ".codex/auth.json", ".claude/.credentials.json",
                    ".npmrc", ".pypirc", ".claude.json", ".codex/config.toml", ".docker/config.json", ".kube/config", ".git-credentials",
                    ".codex/sessions", ".codex/archived_sessions", ".codex/history.jsonl", ".claude/projects")
+# Die Claude-Suche liest fremde Webseiten und erreicht mit WebFetch jede Adresse. Dieselben Pfade wie bei Codex,
+# je als Datei und als Ordner. Wirksam ist wie beim Bewerten nur `deny` in einer eigenen Einstellungsdatei; es gilt
+# für Read, Grep und Glob (nachgemessen). `jq` liest Dateien außerhalb des Arbeitsordners ohnehin nicht, nur Pipes.
+SUCHEN_SPERREN = {"permissions": {"deny": [regel for p in GESPERRT_LESEN for regel in (f"Read(~/{p})", f"Read(~/{p}/**)")]}}
 CODEX_SUCHEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server und läuft in Codex (Harness codex). Der Bestand ist frisch eingelesen "
     "(inventar-codex.json), führe build.py nicht aus. Stelle keine Rückfragen: Ist der Bedarf vage, lege die naheliegende Deutung fest "
@@ -547,7 +551,9 @@ class Inventarserver(ThreadingHTTPServer):
         # Ein frischer Ordner statt direkt $TMPDIR: eine Codex-Bewertung darf $TMPDIR beschreiben, ein injizierter
         # Lauf könnte dort also etwas ablegen, das dieser ungesicherte Claude-Lauf sonst mit ausführen würde.
         with tempfile.TemporaryDirectory() as tmp:
-            r = lauf(argv, tmp, 1200)
+            einstellungen = Path(tmp) / "settings.json"
+            einstellungen.write_text(json.dumps(SUCHEN_SPERREN), encoding="utf-8")
+            r = lauf([*argv, "--settings", str(einstellungen)], tmp, 1200)
         ergebnis = (claude_json(r["stdout"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}

@@ -1022,7 +1022,7 @@ function renderHilfe() {
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
-      <li>Die Suche läuft ohne Rückfragen und nur mit Lese- und Suchrechten: Sie liest fremde Webseiten und darf deshalb nichts schreiben und nichts installieren.</li>
+      <li>Die Suche läuft ohne Rückfragen und nur mit Lese- und Suchrechten: Sie liest fremde Webseiten und darf deshalb nichts schreiben und nichts installieren; Zugangsdaten wie <code>~/.ssh</code>, <code>~/.aws</code> und <code>~/.claude.json</code> kann sie nicht lesen.</li>
       <li>Skills und Plugins aus dem Ergebnis installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“. Den Befehl baut er selbst aus Repo und Name, nie aus Claudes Text. MCP-Server bleiben zum Kopieren, weil jeder Anbieter sie anders einrichtet.</li>
       <li>Neu Installiertes erscheint danach als „neu · unbewertet“; „neu bewerten“ trägt die Bewertung nach.</li>
       <li>Dasselbe mit Rückfragen im Gespräch: <code>/3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Claude Code.</li>
