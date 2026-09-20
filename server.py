@@ -35,13 +35,28 @@ HIER = Path(__file__).resolve().parent
 PORT = 8765
 TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
 
-# Bewertung nachziehen: Claude Code ohne Oberfläche, nur mit den Rechten, die der Skill braucht
-BEWERTEN = [
-    "claude", "-p", "/3zero-harness-inventur", "--model", "opus", "--output-format", "json",
-    "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash(python3 *)",
-    "--append-system-prompt", "Dieser Lauf kommt aus dem Dashboard-Server. Das Dashboard ist bereits "
-    "geöffnet: baue es in Schritt 5 nur neu, öffne es nicht. Ändere nichts außer bewertung-claude-code.json.",
-]
+# Bewertung nachziehen: Claude Code ohne Oberfläche. Der Lauf liest fremde Skill-Texte und Hook-Skripte, die
+# eine Anweisung an ihn enthalten können, deshalb bekommt er weder Bash noch Write: kein Befehl, keine neue Datei.
+# `Edit` bleibt, ist aber wirkungslos außerhalb des Arbeitsordners, weil BEWERTEN_SPERREN das Home sperrt —
+# pfadgebundene Regeln in --allowedTools greifen nicht, `deny` in einer eigenen Einstellungsdatei greift (nachgemessen).
+# build.py führt der Server davor und danach selbst aus, wie beim Codex-Lauf.
+BEWERTEN_SPERREN = {"permissions": {"deny": ["Edit(~/**)", "Write(~/**)"]}}
+BEWERTEN_HINWEIS = (
+    "Dieser Lauf kommt aus dem Dashboard-Server. Der Server hat build.py gerade ausgeführt, die Ausgabe steht unten, "
+    "und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus und öffne nichts. "
+    "Du arbeitest in einer Arbeitskopie ({arbeitsordner}), nicht im Datenordner ({daten}): Ändere nur "
+    "{arbeitsordner}/bewertung-claude-code.json. Das Inventar liegt in {daten}, die Skill-Dateien im Projektordner; beides nur lesen. "
+    "Du hast keine Befehle zur Verfügung: Prüfe die Datei am Ende durch Lesen, nicht mit python3. "
+    "Stelle keine Rückfragen. "
+    "Deine Schlussnachricht ist der Bericht für das Dashboard: höchstens zehn Zeilen Markdown mit den drei Punkten aus Schritt 6."
+)
+
+
+def bewerten_argv(arbeitsordner, daten, einstellungen, build_ausgabe):
+    return ["claude", "-p", f"/3zero-harness-inventur\n\nAusgabe von build.py:\n{build_ausgabe}",
+            "--model", "opus", "--output-format", "json", "--settings", str(einstellungen),
+            "--allowedTools", "Read", "Edit", "Glob", "Grep",
+            "--append-system-prompt", BEWERTEN_HINWEIS.format(arbeitsordner=arbeitsordner, daten=daten)]
 
 # Suchen liest fremde Inhalte aus dem Netz, deshalb nur Lese- und Suchrechte: kein Schreiben, kein python3, kein gh.
 # Installiert wird nicht von Claude, sondern über /api/installieren mit Befehlen, die der Server selbst baut.
@@ -206,6 +221,23 @@ def claude_json(ausgabe):
         return json.loads(ausgabe[ausgabe.find("{"):ausgabe.rfind("}") + 1])
     except ValueError:
         return None
+
+
+def gueltige_bewertung(kopie):
+    """Die Arbeitskopie, wenn sie ein JSON-Objekt ist; sonst None. Ein Symlink zählt nicht: er könnte auf eine Datei außerhalb zeigen."""
+    if not kopie.is_file() or kopie.is_symlink():
+        return None
+    try:
+        bewertung = json.loads(kopie.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return bewertung if isinstance(bewertung, dict) else None
+
+
+def zurueckschreiben(bewertung, ziel):
+    neu = ziel.with_name(ziel.name + ".neu")
+    neu.write_text(json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(neu, ziel)
 
 
 def installierbar(k):
@@ -415,11 +447,31 @@ class Inventarserver(ThreadingHTTPServer):
             return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
 
     def bewerten(self):
+        """Wie bei Codex: Der Lauf bekommt kein Bash und kein Write und arbeitet auf einer Kopie der Bewertung
+        in einem Temp-Ordner; nur ein gültiges JSON-Objekt geht zurück. build.py führt der Server davor und danach."""
         if self.harness() == "codex":
             return self.bewerten_codex()
         with self.sperre:
-            r = lauf(BEWERTEN, self.ordner, 1200)
-        return {"ok": r["ok"], "ausgabe": claude_text(r["ausgabe"])}
+            r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+            if not r["ok"]:
+                return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
+            bewertung_datei = self.daten / harness.HARNESSE["claude-code"]["bewertung"]
+            with tempfile.TemporaryDirectory() as tmp:
+                arbeitsordner = Path(tmp)
+                kopie = arbeitsordner / bewertung_datei.name
+                kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
+                einstellungen = arbeitsordner / "settings.json"
+                einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
+                c = lauf(bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"]), arbeitsordner, 1200)
+                text = claude_text(c["ausgabe"])
+                if not c["ok"]:
+                    return {"ok": False, "ausgabe": text}
+                bewertung = gueltige_bewertung(kopie)
+                if bewertung is None:
+                    return {"ok": False, "ausgabe": "Der Lauf hat keine gültige bewertung-claude-code.json hinterlassen: " + text}
+                zurueckschreiben(bewertung, bewertung_datei)
+            n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+        return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def bewerten_codex(self):
         """build.py liest mit Netz ein (claude mcp list, gh); Codex läuft ohne Netz, deshalb baut der Server davor und danach.
@@ -440,18 +492,10 @@ class Inventarserver(ThreadingHTTPServer):
                 text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
                 if not c["ok"]:
                     return {"ok": False, "ausgabe": text}
-                kopie = arbeitsordner / "bewertung-codex.json"
-                bewertung = None
-                if kopie.is_file() and not kopie.is_symlink():  # ein Symlink könnte auf eine Datei außerhalb zeigen
-                    try:
-                        bewertung = json.loads(kopie.read_text(encoding="utf-8"))
-                    except (OSError, ValueError):
-                        bewertung = None
-                if not isinstance(bewertung, dict):
+                bewertung = gueltige_bewertung(arbeitsordner / "bewertung-codex.json")
+                if bewertung is None:
                     return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
-                neu = bewertung_datei.with_name(bewertung_datei.name + ".neu")
-                neu.write_text(json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                os.replace(neu, bewertung_datei)
+                zurueckschreiben(bewertung, bewertung_datei)
             n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 

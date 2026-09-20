@@ -30,6 +30,7 @@ class Server(unittest.TestCase):
             "deaktivieren": {"argv": ["sh", "-c", "echo kaputt >&2; exit 3"]},
         }}])
         # Werkzeug und Daten im selben Ordner: die Tests legen build.py und die Dateien zusammen ab
+        (self.tmp / "build.py").write_text("")  # beide Bewertungsläufe rufen es davor und danach auf
         self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim", self.tmp)
         self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
         self.srv.codex_skills = self.tmp / "agents-skills"  # nie das echte ~/.agents/skills treffen
@@ -45,13 +46,15 @@ class Server(unittest.TestCase):
 
     pfad_vorher = None
 
-    def claude_ersatz(self, ausgabe, code=0, name="claude"):
-        """Legt ein Skript in den PATH, das seine Argumente in <tmp>/argv und seinen Ordner in <tmp>/cwd protokolliert."""
+    def claude_ersatz(self, ausgabe, code=0, name="claude", bewertung=None):
+        """Legt ein Skript in den PATH, das seine Argumente in <tmp>/argv und seinen Ordner in <tmp>/cwd protokolliert.
+        `bewertung` schreibt es als bewertung-claude-code.json in den aktuellen Ordner (die Arbeitskopie)."""
         ordner = self.tmp / "bin"
         ordner.mkdir(exist_ok=True)
         skript = ordner / name
-        skript.write_text(f'#!/bin/sh\nfor a in "$@"; do echo "$a"; done > "{self.tmp}/argv"\npwd > "{self.tmp}/cwd"\n'
-                          f'cat <<\'ENDE\'\n{ausgabe}\nENDE\nexit {code}\n')
+        kopie = (f'cat > bewertung-claude-code.json <<\'BEWERTUNG\'\n{bewertung}\nBEWERTUNG\n' if bewertung is not None else "")
+        skript.write_text(f'#!/bin/sh\nfor a in "$@"; do echo "$a"; done > "{self.tmp}/argv"\npwd > "{self.tmp}/cwd"\n' + kopie
+                          + f'cat <<\'ENDE\'\n{ausgabe}\nENDE\nexit {code}\n')
         skript.chmod(0o755)
         if self.pfad_vorher is None:
             self.pfad_vorher = os.environ["PATH"]
@@ -208,16 +211,35 @@ class Server(unittest.TestCase):
             time.sleep(0.1)
         self.fail("Bewertung wurde nicht fertig")
 
-    def test_bewerten_startet_claude_eng_begrenzt(self):
-        self.claude_ersatz('{"type":"result","is_error":false,"result":"2 neu, 1 weg."}')
+    def test_bewerten_startet_claude_ohne_befehle_und_ausserhalb_des_datenordners(self):
+        bewertung = self.tmp / "bewertung-claude-code.json"
+        bewertung.write_text('{"stand": "2026-09-01"}')
+        self.claude_ersatz('{"type":"result","is_error":false,"result":"2 neu, 1 weg."}', bewertung='{"stand": "2026-09-20"}')
         status, stand = self.bewerten()
         self.assertEqual((status, stand), (200, {"laeuft": False, "ok": True, "ausgabe": "2 neu, 1 weg."}))
         argv = (self.tmp / "argv").read_text().split("\n")
-        self.assertEqual(argv[:3], ["-p", "/3zero-harness-inventur", "--model"])
-        for erwartet in ("opus", "Read", "Edit", "Write", "Bash(python3 *)"):
+        for erwartet in ("opus", "Read", "Edit", "Glob", "Grep", "--settings"):
             self.assertIn(erwartet, argv)
-        self.assertNotIn("--dangerously-skip-permissions", argv)
-        self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), self.tmp.resolve())
+        for verboten in ("Write", "Bash(python3 *)", "--dangerously-skip-permissions"):
+            self.assertNotIn(verboten, argv)
+        # der Lauf arbeitet auf einer Kopie außerhalb des Datenordners, und nur gültiges JSON kommt zurück
+        arbeitsordner = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertNotEqual(arbeitsordner, self.tmp.resolve())
+        self.assertEqual(json.loads(bewertung.read_text()), {"stand": "2026-09-20"})
+
+    def test_bewerten_sperrt_das_ganze_home(self):
+        """Pfadregeln in --allowedTools begrenzen Edit nicht (nachgemessen); wirksam ist nur deny in einer eigenen
+        Einstellungsdatei. Sie sperrt alles unter ~, sodass nur die Arbeitskopie im Temp-Ordner beschreibbar bleibt."""
+        self.assertEqual(server.BEWERTEN_SPERREN, {"permissions": {"deny": ["Edit(~/**)", "Write(~/**)"]}})
+
+    def test_bewerten_verwirft_was_kein_json_objekt_ist(self):
+        bewertung = self.tmp / "bewertung-claude-code.json"
+        bewertung.write_text('{"stand": "2026-09-01"}')
+        self.claude_ersatz('{"type":"result","is_error":false,"result":"fertig"}', bewertung='kein json')
+        _, stand = self.bewerten()
+        self.assertFalse(stand["ok"])
+        self.assertIn("keine gültige bewertung-claude-code.json", stand["ausgabe"])
+        self.assertEqual(json.loads(bewertung.read_text()), {"stand": "2026-09-01"})
 
     def test_bewerten_ohne_token_startet_nichts(self):
         self.claude_ersatz('{"result":"egal"}')
