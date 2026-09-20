@@ -334,10 +334,11 @@ class Inventarserver(ThreadingHTTPServer):
         return None
 
     def sichern(self, datei):
-        """Einmal je Datei eine Sicherung <datei>.bak, bevor der Server sie zum ersten Mal ändert."""
+        """Einmal je Datei und Serverlauf eine Sicherung <datei>.bak-<Zeitstempel>, bevor der Server sie zum ersten Mal
+        ändert. Mit festem Namen überschrieb der nächste Lauf sie mit dem Stand, den der Server selbst schon geändert hatte."""
         if datei in self.gesichert:
             return
-        shutil.copy2(datei, datei.with_name(datei.name + ".bak"))  # übernimmt Rechte und Zeitstempel
+        shutil.copy2(datei, datei.with_name(f"{datei.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}"))  # übernimmt Rechte und Zeitstempel
         self.gesichert.add(datei)
 
     def schreiben(self, datei, text):

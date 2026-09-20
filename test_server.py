@@ -107,6 +107,11 @@ class Server(unittest.TestCase):
         status, inhalt = self.anfrage("POST", "/api/ausfuehren", {"id": eid, "aktion": aktion}, **kw)
         return status, (json.loads(inhalt) if status == 200 else inhalt)
 
+    def sicherung(self, datei):
+        """Die eine Sicherung <datei>.bak-<Zeitstempel> neben der Datei."""
+        (treffer,) = datei.parent.glob(datei.name + ".bak-*")
+        return treffer
+
     def test_seite_bekommt_token(self):
         status, html = self.anfrage("GET", "/", token=None)
         self.assertEqual(status, 200)
@@ -190,7 +195,21 @@ class Server(unittest.TestCase):
         self.assertTrue(self.ausfuehren("skill:tdd", "nur manuell")[1]["ok"])
         self.assertEqual(self.settings.read_text(), '{\n  "env": {\n    "A": "1"\n  },\n  "skillOverrides": {\n'
                          '    "alt": "off",\n    "grilling": "off",\n    "tdd": "user-invocable-only"\n  }\n}\n')
-        self.assertEqual((self.tmp / "settings.json.bak").read_text(), SETTINGS_VORHER)
+        self.assertEqual(self.sicherung(self.settings).read_text(), SETTINGS_VORHER)
+
+    def test_sicherung_ueberlebt_den_neustart(self):
+        """Mit festem Namen sicherte der Server nach einem Neustart den Stand, den er selbst schon geändert hatte,
+        über den ursprünglichen. Je Serverlauf deshalb eine eigene Sicherung mit Zeitstempel."""
+        self.schreibe_inventar([], skills=[
+            {"id": "skill:grilling", "name": "grilling", "aktionen": {"deaktivieren": {"override": "off"}}}])
+        with mock.patch.object(server.time, "strftime", side_effect=["20260920-170000", "20260920-180000"]):
+            self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+            nach_der_ersten = self.settings.read_text()
+            neustart = server.Inventarserver(0, self.tmp, self.settings, "geheim", self.tmp)
+            self.addCleanup(neustart.server_close)
+            self.assertTrue(neustart.ausfuehren("tdd", {"override": "off"})["ok"])
+        self.assertEqual({d.name: d.read_text() for d in self.tmp.glob("settings.json.bak*")},
+                         {"settings.json.bak-20260920-170000": SETTINGS_VORHER, "settings.json.bak-20260920-180000": nach_der_ersten})
 
     def test_override_ohne_bisherige_overrides(self):
         self.settings.write_text("{}\n")
@@ -233,7 +252,7 @@ class Server(unittest.TestCase):
             self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual(json.loads(self.settings.read_text()),
                          {"deniedMcpServers": [{"serverName": "alt"}, {"serverName": "claude.ai Gmail"}]})
-        self.assertEqual((self.tmp / "settings.json.bak").read_text(), vorher)
+        self.assertEqual(self.sicherung(self.settings).read_text(), vorher)
 
     def test_kaputte_settings_bleiben_unangetastet(self):
         self.settings.write_text("{ kaputt")
@@ -731,7 +750,7 @@ enabled = true
         status, antwort = self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertIn("enabled = false", config.read_text())
-        self.assertEqual((self.tmp / "config.toml.bak").read_text(), self.CONFIG)
+        self.assertEqual(self.sicherung(self.tmp / "config.toml").read_text(), self.CONFIG)
 
     def test_kaputte_config_bleibt_unangetastet(self):
         config = self.mit_config()
@@ -774,7 +793,7 @@ enabled = true
         text = (ordner / "agents/openai.yaml").read_text()
         self.assertIn("allow_implicit_invocation: false", text)
         self.assertIn("display_name: Teach", text)
-        self.assertEqual((ordner / "agents/openai.yaml.bak").read_text().count("true"), 1)
+        self.assertEqual(self.sicherung(ordner / "agents/openai.yaml").read_text().count("true"), 1)
         # ohne Datei legt der Server eine neue an
         leer = self.tmp / "skills/neu"
         leer.mkdir(parents=True)
@@ -806,7 +825,7 @@ enabled = true
             "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}}}])
         self.assertTrue(self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")[1]["ok"])
         self.assertEqual(config.stat().st_mode & 0o777, 0o600)
-        self.assertEqual((self.tmp / "config.toml.bak").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.sicherung(self.tmp / "config.toml").stat().st_mode & 0o777, 0o600)
 
     def test_neu_angelegte_openai_yaml_bekommt_0600(self):
         self.mit_config()
@@ -852,7 +871,7 @@ enabled = true
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertIn("Inline-Notation", antwort["ausgabe"])
         self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
-        self.assertFalse((ordner / "agents/openai.yaml.bak").exists())
+        self.assertEqual(list((ordner / "agents").glob("openai.yaml.bak*")), [])
 
     def test_nur_manuell_skalares_policy_wird_abgelehnt(self):
         self.mit_config()
@@ -865,7 +884,7 @@ enabled = true
         status, antwort = self.ausfuehren("skill:skalar", "nur manuell")
         self.assertEqual((status, antwort["ok"]), (200, False))
         self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
-        self.assertFalse((ordner / "agents/openai.yaml.bak").exists())
+        self.assertEqual(list((ordner / "agents").glob("openai.yaml.bak*")), [])
 
     def test_nur_manuell_kommentar_auf_spalte_0_beendet_block_nicht(self):
         """Die bestehende allow_implicit_invocation-Zeile steht nach einem Kommentar auf Spalte 0: ohne den Fix

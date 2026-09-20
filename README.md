@@ -58,7 +58,7 @@ Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualis
 
 Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext.
 
-Vor der ersten Änderung an einer Konfigurationsdatei legt er `<datei>.bak` an, schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Alles wirkt ab der nächsten Sitzung.
+Vor der ersten Änderung an einer Konfigurationsdatei legt er eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, von Hand aufzuräumen), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Alles wirkt ab der nächsten Sitzung.
 
 ## Beide Harness
 

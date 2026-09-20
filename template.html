@@ -981,7 +981,7 @@ function renderHilfe() {
       <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code.</li>
       <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
-      <li>Vor der ersten Änderung legt der Server <code>config.toml.bak</code> an und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
+      <li>Vor der ersten Änderung legt der Server eine Sicherung <code>config.toml.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf, und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
@@ -1020,7 +1020,7 @@ function renderHilfe() {
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
-      <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server <code>settings.json.bak</code> an. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
+      <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
