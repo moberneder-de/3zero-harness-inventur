@@ -571,6 +571,21 @@ class McpStatus(unittest.TestCase):
         self.assertEqual([(e["name"], e["art"]) for e in eintraege], [("upnote", "User")])
         self.assertNotIn("projekte", eintraege[0])
 
+    def test_gleichnamige_plugins_behalten_beide_ihre_server(self):
+        """Der zweite überschrieb sonst still den ersten. Die ID trägt den Marktplatz; Claude Code selbst führt den Server
+        aber ohne, deshalb hängen Live-Status, Sperre und Messung am `schluessel` — wie bei den Skills solcher Plugins."""
+        def pl(markt):
+            return {**plugin("aktiv"), "name": "sites", "marktplatz": markt, "mcp": {"web": {"command": markt}}}
+        live = {"plugin:sites:web": {"ziel": "x", "zustand": "✔ Connected"}}
+        with mock.patch.object(build, "CFG", {}), mock.patch.object(build, "GESPERRT", set()):
+            eintraege = build.mcp_server([pl("a"), pl("b"), {**plugin("aktiv"), "mcp": {"s": {"command": "c"}}}], live,
+                                         {"plugin_sites_web": {"werkzeuge": 3, "tokens": 40, "nutzung": None}})
+        self.assertEqual([(e["id"], e.get("schluessel"), e["status"], e["werkzeuge"]) for e in eintraege], [
+            ("mcp:plugin:sites@a:web", "plugin:sites:web", "verbunden", 3),
+            ("mcp:plugin:sites@b:web", "plugin:sites:web", "verbunden", 3),
+            ("mcp:plugin:superpowers:s", None, "unbekannt", None)])
+        self.assertEqual(build.aktionen(eintraege[0]), {"deaktivieren": {"sperren": {"serverName": "plugin:sites:web"}}})
+
     def test_nur_serverName_eintraege_zaehlen(self):
         self.assertEqual(build.gesperrte_namen({"deniedMcpServers": [
             {"serverName": "claude.ai Gmail"}, {"serverUrl": "https://example.org/*"}, "kaputt"]}), {"claude.ai Gmail"})

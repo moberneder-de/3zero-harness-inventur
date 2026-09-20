@@ -576,13 +576,18 @@ def mcp_server(plugin_liste, live, messungen=None):
         server[name] = {"art": "claude.ai-Connector", "quelle": "claude.ai-Konto", "ziel": ""}
     for name, c in (CFG.get("mcpServers") or {}).items():
         server[name] = {"art": "User", "quelle": "~/.claude.json", "ziel": ziel_text(c)}
+    mehrfach = mehrfache_namen(f"{pl['name']}@{pl['marktplatz']}" for pl in plugin_liste)
     for pl in plugin_liste:
+        pid = f"{pl['name']}@{pl['marktplatz']}"
         for sname, c in pl["mcp"].items():
-            server[f"plugin:{pl['name']}:{sname}"] = {
+            # bei gleichem Namen in zwei Marktplätzen mit Marktplatz, sonst überschriebe der zweite den ersten.
+            # Claude Code führt den Server ohne: Live-Status, Sperre und Messung hängen deshalb am `schluessel`.
+            server[f"plugin:{pid if pl['name'] in mehrfach else pl['name']}:{sname}"] = {
                 "art": "Plugin",
-                "quelle": f"{pl['name']}@{pl['marktplatz']}",
+                "quelle": pid,
                 "ziel": ziel_text(c),
                 "plugin_status": pl["status"],
+                **({"schluessel": f"plugin:{pl['name']}:{sname}"} if pl["name"] in mehrfach else {}),
             }
     aus_in = {}
     for pfad, p in (CFG.get("projects") or {}).items():
@@ -591,19 +596,20 @@ def mcp_server(plugin_liste, live, messungen=None):
 
     ergebnis = []
     for name, s in sorted(server.items()):
-        if live is not None and name in live:
-            status = zustand_deutsch(live[name]["zustand"])
-            s["ziel"] = s["ziel"] or live[name]["ziel"]
+        echt = s.get("schluessel", name)  # der Name, unter dem Claude Code den Server führt
+        if live is not None and echt in live:
+            status = zustand_deutsch(live[echt]["zustand"])
+            s["ziel"] = s["ziel"] or live[echt]["ziel"]
         elif s.get("plugin_status") and s["plugin_status"] != "aktiv":
             status = "inaktiv (Plugin aus)"
         else:
             status = "unbekannt"
-        if name in GESPERRT:
+        if echt in GESPERRT:
             status = "deaktiviert"
         # ohne Messung bleiben die Felder None: nicht gemessen ist etwas anderes als null Werkzeuge
-        gemessen = (messungen or {}).get(werkzeug_praefix(name), {"werkzeuge": None, "tokens": None, "nutzung": None})
-        ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": name in GESPERRT,
-                         "aus_in_projekten": aus_in.get(name, []), **s, **gemessen})
+        gemessen = (messungen or {}).get(werkzeug_praefix(echt), {"werkzeuge": None, "tokens": None, "nutzung": None})
+        ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": echt in GESPERRT,
+                         "aus_in_projekten": aus_in.get(echt, []), **s, **gemessen})
     return ergebnis
 
 
@@ -709,7 +715,7 @@ def aktionen(e):
         if e["art"] == "User":
             a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}
         if not e.get("gesperrt"):
-            a["deaktivieren"] = {"sperren": {"serverName": e["name"]}}
+            a["deaktivieren"] = {"sperren": {"serverName": e.get("schluessel", e["name"])}}
         return a
     if e["typ"] == "Agent":
         return {}
