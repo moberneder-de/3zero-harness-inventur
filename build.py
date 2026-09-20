@@ -699,8 +699,8 @@ def befehl(e, empfehlung):
 
 def aktionen(e):
     """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert,
-    deniedMcpServers-Eintrag (`sperren`), Papierkorb (`papierkorb`) oder ein Hook-Block aus settings.json (`hook_entfernen`).
-    Aktionen, die schon gelten, fehlen."""
+    deniedMcpServers-Eintrag (`sperren`, zurück mit `entsperren`), Papierkorb (`papierkorb`) oder ein Hook-Block aus
+    settings.json (`hook_entfernen`). Ein Override `None` nimmt den Eintrag weg. Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
     if eid.startswith("hook:"):
         if e.get("plugin"):
@@ -715,6 +715,8 @@ def aktionen(e):
              "deinstallieren": {"argv": ["claude", "plugin", "uninstall", pid]}}
         if e["status"] == "aktiv":
             a["deaktivieren"] = {"argv": ["claude", "plugin", "disable", pid]}
+        else:
+            a["einschalten"] = {"argv": ["claude", "plugin", "enable", pid]}
         return a
     if eid.startswith("mcp:") and e.get("projekt"):
         # Sperren per deniedMcpServers gilt global nach Namen, deshalb nur deinstallieren; ohne Ordner geht nicht einmal das
@@ -726,8 +728,11 @@ def aktionen(e):
         a = {}
         if e["art"] == "User":
             a["deinstallieren"] = {"argv": ["claude", "mcp", "remove", e["name"], "-s", "user"]}
-        if not e.get("gesperrt"):
-            a["deaktivieren"] = {"sperren": {"serverName": e.get("schluessel", e["name"])}}
+        sperre = {"serverName": e.get("schluessel", e["name"])}
+        if e.get("gesperrt"):
+            a["einschalten"] = {"entsperren": sperre}
+        else:
+            a["deaktivieren"] = {"sperren": sperre}
         return a
     if e["typ"] == "Agent":
         return {}
@@ -754,6 +759,11 @@ def aktionen(e):
         a["deaktivieren"] = {"override": "off"}
     if e["aufruf"] != "nur /":
         a["nur manuell"] = {"override": "user-invocable-only"}
+    # Die Gegen-Aktionen nehmen den Override weg. Nur wo er der Grund ist: disable-model-invocation steht in der Datei des Skills.
+    if e["override"] == "off":
+        a["einschalten"] = {"override": None}
+    if e["override"] == "user-invocable-only":
+        a["wieder automatisch"] = {"override": None}
     return a
 
 

@@ -45,7 +45,7 @@ class Aktionen(unittest.TestCase):
     def test_nicht_aktives_plugin_bietet_kein_deaktivieren(self):
         for status in ("deaktiviert", "nicht aktiviert"):
             with self.subTest(status):
-                self.assertEqual(list(build.aktionen(plugin(status))), ["aktualisieren", "deinstallieren"])
+                self.assertEqual(list(build.aktionen(plugin(status))), ["aktualisieren", "deinstallieren", "einschalten"])
 
     def test_skill_aus_skills_cli(self):
         self.assertEqual(build.aktionen(skill("grilling")), {
@@ -64,8 +64,27 @@ class Aktionen(unittest.TestCase):
             self.assertNotIn("gemeinsam", build.aktionen(eigen)["deinstallieren"])
 
     def test_was_schon_gilt_wird_nicht_angeboten(self):
-        self.assertEqual(list(build.aktionen(skill("find-skills", override="off"))), ["deinstallieren", "nur manuell"])
+        self.assertEqual(list(build.aktionen(skill("find-skills", override="off"))), ["deinstallieren", "nur manuell", "einschalten"])
         self.assertEqual(list(build.aktionen(skill("ask-matt", aufruf="nur /"))), ["deinstallieren", "deaktivieren"])
+
+    def test_was_aus_ist_laesst_sich_wieder_einschalten(self):
+        """Die Gegen-Aktion steht im Inventar wie jede andere: Sie geht jederzeit, auch nach einem Neustart des Servers.
+        Ein Rückgängig-Knopf bräuchte ein Gedächtnis, das mit dem Server endet."""
+        self.assertEqual(build.aktionen(skill("find-skills", override="off"))["einschalten"], {"override": None})
+        self.assertEqual(build.aktionen(skill("ask-matt", override="user-invocable-only", aufruf="nur /"))["wieder automatisch"], {"override": None})
+        for p in ("deaktiviert", "nicht aktiviert"):
+            self.assertEqual(build.aktionen(plugin(p))["einschalten"], {"argv": ["claude", "plugin", "enable", "superpowers@claude-plugins-official"]})
+        gesperrt = {**mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"), "gesperrt": True}
+        self.assertEqual(build.aktionen(gesperrt), {"einschalten": {"entsperren": {"serverName": "claude.ai Gmail"}}})
+        doppelt = {**mcp("plugin:sites@a:web", "Plugin", "sites@a"), "gesperrt": True, "schluessel": "plugin:sites:web"}
+        self.assertEqual(build.aktionen(doppelt), {"einschalten": {"entsperren": {"serverName": "plugin:sites:web"}}})
+
+    def test_was_an_ist_bietet_kein_einschalten(self):
+        """Auch nicht, was aus anderem Grund nur per / läuft: disable-model-invocation steht in der Datei des Skills."""
+        for e in (skill("grilling"), skill("fest", aufruf="nur /"), skill("kurz", override="name-only"), plugin("aktiv"),
+                  mcp("sentry", "User", "~/.claude.json")):
+            with self.subTest(e["id"]):
+                self.assertFalse({"einschalten", "wieder automatisch"} & set(build.aktionen(e)))
 
     def test_lokaler_skill_wandert_als_ordner_in_den_papierkorb(self):
         e = skill("3zero-style", quelle_art="lokal", pfad="/Users/x/.claude/skills/3zero-style/SKILL.md")
@@ -105,7 +124,7 @@ class Aktionen(unittest.TestCase):
 
     def test_gesperrter_mcp_server_bietet_kein_deaktivieren(self):
         e = {**mcp("claude.ai Gmail", "claude.ai-Connector", "claude.ai-Konto"), "gesperrt": True}
-        self.assertEqual(build.aktionen(e), {})
+        self.assertNotIn("deaktivieren", build.aktionen(e))
 
     def test_projekt_skill_nur_deinstallierbar_im_projekt(self):
         cli = {**skill("seo-audit", pfad="/x/Kit/.claude/skills/seo-audit/SKILL.md"), "id": "skill:Kit/seo-audit", "projekt": "/x/Kit"}

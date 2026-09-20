@@ -382,7 +382,8 @@ class Inventarserver(ThreadingHTTPServer):
         for e in (inventar["mcp"] + inventar["plugins"] + inventar["skills"] + inventar.get("projekt_skills", [])
                   + inventar.get("projekt_mcp", []) + inventar.get("hooks", [])):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
-                return e["name"], e["aktionen"][aktion]
+                # schluessel: der Name, unter dem Claude Code den Eintrag führt (bei gleichnamigen Plugins ohne Marktplatz)
+                return e.get("schluessel", e["name"]), e["aktionen"][aktion]
         return None
 
     def sichern(self, datei):
@@ -457,15 +458,46 @@ class Inventarserver(ThreadingHTTPServer):
         fehler = self.config_aendern((alt if alt.endswith("\n") else alt + "\n") + block, pruefen)
         return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [[skills.config]] path = {json.dumps(pfad)}, enabled = false"}
 
-    def nur_manuell_datei(self, ordner):
+    def skill_einschalten(self, pfad):
+        """Die Gegen-Aktion zu skill_abschalten(): stellt `enabled` in jedem [[skills.config]]-Block dieses Pfads auf true.
+        Der Block bleibt stehen, damit die Datei sonst Zeichen für Zeichen gleich bleibt."""
+        if not self.codex_config.is_file():
+            return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
+        ziel = Path(pfad).expanduser().resolve()  # Codex vergleicht Pfade aufgelöst, also ohne Symlinks
+        schaltet_ab = lambda daten: any(
+            isinstance(e, dict) and e.get("enabled", True) is False and isinstance(e.get("path"), str)
+            and Path(e["path"]).expanduser().resolve() == ziel for e in (daten.get("skills") or {}).get("config") or [])
+        alt = self.codex_config.read_text(encoding="utf-8")
+        if not schaltet_ab(tomllib.loads(alt)):
+            return {"ok": False, "ausgabe": f"Kein [[skills.config]]-Block schaltet {pfad} ab"}
+        zeilen = alt.splitlines()
+        kopf = re.compile(r"\s*\[\[skills\.config\]\]\s*(#.*)?")
+        for start in [i for i, z in enumerate(zeilen) if kopf.fullmatch(z)]:
+            ende = next((i for i in range(start + 1, len(zeilen)) if zeilen[i].lstrip().startswith("[")), len(zeilen))
+            try:
+                block = tomllib.loads("\n".join(zeilen[start + 1:ende]))
+            except ValueError:
+                continue
+            if isinstance(block.get("path"), str) and Path(block["path"]).expanduser().resolve() == ziel:
+                for i in range(start + 1, ende):
+                    if re.match(r"\s*enabled\s*=", zeilen[i]):
+                        zeilen[i] = "enabled = true"
+        fehler = self.config_aendern("\n".join(zeilen) + "\n", lambda daten: not schaltet_ab(daten))
+        return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [[skills.config]] path = {json.dumps(str(pfad))}, enabled = true"}
+
+    def nur_manuell_datei(self, ordner, manuell=True):
         """agents/openai.yaml im Skill-Ordner: policy.allow_implicit_invocation = false, damit Codex den Skill
         nur noch per $name lädt. Ändert nur innerhalb des policy:-Blocks (Einrückung 0 bis zur nächsten nicht
         leeren Zeile mit Einrückung 0) und übernimmt dessen Einrückung; alles andere bleibt erhalten. Schreibt
-        bei fehlgeschlagener Prüfung den ursprünglichen Stand zurück, wie config_aendern es für config.toml tut."""
+        bei fehlgeschlagener Prüfung den ursprünglichen Stand zurück, wie config_aendern es für config.toml tut.
+        `manuell=False` ist die Gegen-Aktion „wieder automatisch“ und stellt denselben Schlüssel auf true."""
         if not (Path(ordner) / "SKILL.md").is_file():
             return {"ok": False, "ausgabe": f"{ordner} enthält keine SKILL.md"}
         datei = Path(ordner) / "agents" / "openai.yaml"
         alt = datei.read_text(encoding="utf-8") if datei.is_file() else None
+        wert = "false" if manuell else "true"
+        if not manuell and not (alt is not None and nur_manuell_gesetzt(alt)):
+            return {"ok": False, "ausgabe": f"{datei} stellt den Skill nicht auf nur manuell"}
         if alt is not None:
             zeilen = alt.splitlines()
             start = next((i for i, z in enumerate(zeilen) if re.match(r"^policy:\s*", z)), None)
@@ -483,7 +515,7 @@ class Inventarserver(ThreadingHTTPServer):
                 for i in range(start + 1, ende):
                     if muster.match(zeilen[i]):
                         einrueckung = zeilen[i][:len(zeilen[i]) - len(zeilen[i].lstrip())]
-                        zeilen[i] = f"{einrueckung}allow_implicit_invocation: false"
+                        zeilen[i] = f"{einrueckung}allow_implicit_invocation: {wert}"
                         break
                 else:
                     folge = next((z for z in zeilen[start + 1:ende] if z.strip()), None)
@@ -495,15 +527,19 @@ class Inventarserver(ThreadingHTTPServer):
             datei.parent.mkdir(parents=True, exist_ok=True)
             text = "policy:\n  allow_implicit_invocation: false\n"
         self.schreiben(datei, text)
-        if not nur_manuell_gesetzt(datei.read_text(encoding="utf-8")):
+        if nur_manuell_gesetzt(datei.read_text(encoding="utf-8")) != manuell:
             if alt is not None:
                 self.schreiben(datei, alt)
             else:
                 datei.unlink()
             return {"ok": False, "ausgabe": f"{datei} nicht geändert"}
-        return {"ok": True, "ausgabe": f"{datei} → policy: allow_implicit_invocation: false"}
+        return {"ok": True, "ausgabe": f"{datei} → policy: allow_implicit_invocation: {wert}"}
 
     def override_setzen(self, name, wert):
+        """`wert` None nimmt den Override weg: die Gegen-Aktion zu „deaktivieren“ und „nur manuell“."""
+        if wert is None:
+            return self.settings_eintrag_entfernen("skillOverrides", name)
+
         def aendern(daten):
             daten.setdefault("skillOverrides", {})[name] = wert
         self.settings_aendern(aendern)
@@ -516,6 +552,22 @@ class Inventarserver(ThreadingHTTPServer):
                 liste.append(eintrag)
         self.settings_aendern(aendern)
         return {"ok": True, "ausgabe": "deniedMcpServers: " + json.dumps(eintrag, ensure_ascii=False)}
+
+    def settings_eintrag_entfernen(self, feld, eintrag):
+        """Nimmt einen Schlüssel aus skillOverrides oder einen Eintrag aus deniedMcpServers; ein leeres Feld bleibt nicht stehen."""
+        vorhanden = json.loads(self.settings.read_text(encoding="utf-8")).get(feld)
+        if not isinstance(vorhanden, (dict, list)) or eintrag not in vorhanden:
+            return {"ok": False, "ausgabe": f"{json.dumps(eintrag, ensure_ascii=False)} steht nicht in {feld}"}  # ohne die Datei anzufassen
+
+        def aendern(daten):
+            if isinstance(daten[feld], dict):
+                del daten[feld][eintrag]
+            else:
+                daten[feld].remove(eintrag)
+            if not daten[feld]:
+                del daten[feld]
+        self.settings_aendern(aendern)
+        return {"ok": True, "ausgabe": f"{feld}: {json.dumps(eintrag, ensure_ascii=False)} entfernt"}
 
     def hook_entfernen(self, schluessel):
         """Nimmt den Block eines Ereignisses (oder die Statuszeile) aus settings.json; zurück führt die Sicherung."""
@@ -537,12 +589,18 @@ class Inventarserver(ThreadingHTTPServer):
                 return self.override_setzen(name, schritt["override"])
             if "sperren" in schritt:
                 return self.mcp_sperren(schritt["sperren"])
+            if "entsperren" in schritt:
+                return self.settings_eintrag_entfernen("deniedMcpServers", schritt["entsperren"])
             if "toml" in schritt:
                 return self.toml_setzen(**schritt["toml"])
             if "skill_aus" in schritt:
                 return self.skill_abschalten(schritt["skill_aus"])
+            if "skill_an" in schritt:
+                return self.skill_einschalten(schritt["skill_an"])
             if "nur_manuell" in schritt:
                 return self.nur_manuell_datei(schritt["nur_manuell"])
+            if "automatisch" in schritt:
+                return self.nur_manuell_datei(schritt["automatisch"], manuell=False)
             if "papierkorb" in schritt:
                 return in_den_papierkorb(schritt["papierkorb"])
             if "hook_entfernen" in schritt:
@@ -822,7 +880,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(400, {"ok": False, "ausgabe": "Diese Aktion bietet der Eintrag nicht an."})
         try:
             ergebnis = self.server.ausfuehren(*treffer)
-        except (OSError, ValueError, AttributeError, TypeError) as fehler:
+        except (OSError, ValueError, AttributeError, TypeError, KeyError) as fehler:  # KeyError: ein Schritt, den dieser Server nicht kennt
             ergebnis = {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"}
         self.antworte(200, ergebnis)
 

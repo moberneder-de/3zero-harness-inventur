@@ -94,7 +94,8 @@ def skill_eintrag(anzeige, datei, aus, aktiv=True):
     beschreibung = fm.get("description") if isinstance(fm.get("description"), str) else ""
     beschreibung = beschreibung or yaml_beschreibung(ordner)
     pfade, namen = aus
-    status = "aktiv" if aktiv and str(Path(datei).resolve()) not in pfade and anzeige not in namen else "aus"
+    abgeschaltet = str(Path(datei).resolve()) in pfade
+    status = "aktiv" if aktiv and not abgeschaltet and anzeige not in namen else "aus"
     aufruf = "nur $" if nur_manuell(ordner) else "automatisch + $"
     im_kontext = status == "aktiv" and aufruf != "nur $"
     meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
@@ -111,6 +112,8 @@ def skill_eintrag(anzeige, datei, aus, aktiv=True):
         "nutzung": None,
         "pfad": str(datei),
         "meta_autor": meta.get("author"),
+        # nur dann lässt er sich über das Dashboard wieder einschalten: Der Block in config.toml hängt am Pfad
+        **({"abgeschaltet": True} if abgeschaltet else {}),
     }
 
 
@@ -469,29 +472,34 @@ def toml_schluessel(name):
 
 def aktionen(e):
     """Was sich über das Dashboard umsetzen lässt: Befehl (`argv`), ein Wert in config.toml (`toml`),
-    ein [[skills.config]]-Block (`skill_aus`), agents/openai.yaml (`nur_manuell`) oder der Papierkorb (`papierkorb`).
-    Was schon gilt, fehlt."""
+    ein [[skills.config]]-Block (`skill_aus`, zurück mit `skill_an`), agents/openai.yaml (`nur_manuell`, zurück mit
+    `automatisch`) oder der Papierkorb (`papierkorb`). Was schon gilt, fehlt."""
     eid = e["id"]
     if eid.startswith("hook:"):
         return {}
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
         a = {"deinstallieren": {"argv": ["codex", "plugin", "remove", pid]}}
+        schalter = {"tabelle": f"plugins.{toml_schluessel(pid)}", "schluessel": "enabled"}
         if e["status"] == "aktiv":
             # „im Konto“ steht im Konto, nicht in config.toml; „wirkungslos“ und „nicht aktiviert“ laden ohnehin nicht
-            a["deaktivieren"] = {"toml": {"tabelle": f"plugins.{toml_schluessel(pid)}", "schluessel": "enabled", "wert": "false"}}
+            a["deaktivieren"] = {"toml": {**schalter, "wert": "false"}}
+        if e["status"] == "deaktiviert":
+            a["einschalten"] = {"toml": {**schalter, "wert": "true"}}
         return a
     if eid.startswith("mcp:"):
         if e.get("projekt"):
             return {}  # steht in der config.toml des Projekts, nicht in der globalen
         if e["art"] == "Plugin":
-            if e["status"] != "aktiv":
-                return {}
             tabelle = f'plugins.{toml_schluessel(e["quelle"])}.mcp_servers.{toml_schluessel(e["name"].rsplit(":", 1)[-1])}'
-            return {"deaktivieren": {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "false"}}}
-        a = {"deinstallieren": {"argv": ["codex", "mcp", "remove", e["name"]]}}
+            a = {}
+        else:
+            tabelle = f"mcp_servers.{toml_schluessel(e['name'])}"
+            a = {"deinstallieren": {"argv": ["codex", "mcp", "remove", e["name"]]}}
         if e["status"] == "aktiv":
-            a["deaktivieren"] = {"toml": {"tabelle": f"mcp_servers.{toml_schluessel(e['name'])}", "schluessel": "enabled", "wert": "false"}}
+            a["deaktivieren"] = {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "false"}}
+        if e["status"] == "deaktiviert":
+            a["einschalten"] = {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "true"}}
         return a
     if e.get("projekt"):
         # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
@@ -513,9 +521,14 @@ def aktionen(e):
             a["deinstallieren"] = schritt
     if e["status"] != "aus":
         a["deaktivieren"] = {"skill_aus": e["pfad"]}
-    if e["aufruf"] != "nur $" and not e.get("plugin"):
+    if e.get("abgeschaltet"):
+        a["einschalten"] = {"skill_an": e["pfad"]}
+    if not e.get("plugin"):
         # agents/openai.yaml im Plugin-Ordner überschriebe das Plugin beim nächsten Update
-        a["nur manuell"] = {"nur_manuell": str(Path(e["pfad"]).parent)}
+        if e["aufruf"] != "nur $":
+            a["nur manuell"] = {"nur_manuell": str(Path(e["pfad"]).parent)}
+        else:
+            a["wieder automatisch"] = {"automatisch": str(Path(e["pfad"]).parent)}
     return a
 
 

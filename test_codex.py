@@ -60,6 +60,7 @@ class Skills(CodexOrdner):
         self.assertEqual((g["aufruf"], g["status"], g["id"]), ("automatisch + $", "aktiv", "skill:grilling"))
         self.assertGreater(g["tokens"], 0)
         self.assertEqual((skills["kopie"]["status"], skills["kopie"]["tokens"], skills["kopie"]["quelle"]["art"]), ("aus", 0, "lokal"))
+        self.assertEqual((skills["kopie"].get("abgeschaltet"), skills["grilling"].get("abgeschaltet")), (True, None))
         self.assertEqual((skills["inventur"]["aufruf"], skills["inventur"]["tokens"], skills["inventur"]["quelle"]["art"]), ("nur $", 0, "Symlink"))
 
     def test_geteilte_skills_erkennen(self):
@@ -437,8 +438,11 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(codex.aktionen(p), {
             "deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]},
             "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}})
-        self.assertEqual(codex.aktionen({**p, "status": "deaktiviert"}),
-                         {"deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]}})
+        self.assertEqual(codex.aktionen({**p, "status": "deaktiviert"}), {
+            "deinstallieren": {"argv": ["codex", "plugin", "remove", "documents@openai-primary-runtime"]},
+            "einschalten": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "true"}}})
+        # ohne Eintrag in config.toml: Wie Codex ein Plugin dort anlegt, legt `codex plugin add` fest, nicht der Server
+        self.assertEqual(sorted(codex.aktionen({**p, "status": "nicht aktiviert"})), ["deinstallieren"])
         konto = {"id": "plugin:sites@openai-curated-remote", "name": "sites", "marktplatz": "openai-curated-remote", "status": "im Konto"}
         self.assertEqual(codex.aktionen(konto), {"deinstallieren": {"argv": ["codex", "plugin", "remove", "sites@openai-curated-remote"]}})
         self.assertEqual(codex.aktionen({"id": 'plugin:a"b@m', "name": 'a"b', "marktplatz": "m", "status": "aktiv"})["deaktivieren"],
@@ -449,14 +453,17 @@ class Aktionen(unittest.TestCase):
         self.assertEqual(codex.aktionen(eigen), {
             "deinstallieren": {"argv": ["codex", "mcp", "remove", "node_repl"]},
             "deaktivieren": {"toml": {"tabelle": "mcp_servers.node_repl", "schluessel": "enabled", "wert": "false"}}})
-        self.assertEqual(codex.aktionen({**eigen, "status": "deaktiviert"}),
-                         {"deinstallieren": {"argv": ["codex", "mcp", "remove", "node_repl"]}})
+        self.assertEqual(codex.aktionen({**eigen, "status": "deaktiviert"}), {
+            "deinstallieren": {"argv": ["codex", "mcp", "remove", "node_repl"]},
+            "einschalten": {"toml": {"tabelle": "mcp_servers.node_repl", "schluessel": "enabled", "wert": "true"}}})
         self.assertEqual(codex.aktionen({"id": "mcp:computer use", "name": "computer use", "art": "User", "status": "aktiv"})["deaktivieren"],
                          {"toml": {"tabelle": 'mcp_servers."computer use"', "schluessel": "enabled", "wert": "false"}})
         plugin = {"id": "mcp:plugin:documents:docs", "name": "plugin:documents:docs", "art": "Plugin",
                   "quelle": "documents@openai-primary-runtime", "status": "aktiv"}
         self.assertEqual(codex.aktionen(plugin), {"deaktivieren": {"toml": {
             "tabelle": 'plugins."documents@openai-primary-runtime".mcp_servers.docs', "schluessel": "enabled", "wert": "false"}}})
+        self.assertEqual(codex.aktionen({**plugin, "status": "deaktiviert"}), {"einschalten": {"toml": {
+            "tabelle": 'plugins."documents@openai-primary-runtime".mcp_servers.docs', "schluessel": "enabled", "wert": "true"}}})
         self.assertEqual(codex.aktionen({**plugin, "status": "inaktiv (Plugin aus)"}), {})
         self.assertEqual(codex.aktionen({"id": "mcp:Kit/q", "name": "q", "art": ".codex/config.toml", "projekt": "/x/Kit", "status": "eingetragen"}), {})
 
@@ -471,8 +478,12 @@ class Aktionen(unittest.TestCase):
         eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "name": "pdf", "quelle": {"art": "lokal"}}
         self.assertEqual(codex.aktionen(eigen)["deinstallieren"],
                          {"papierkorb": "/h/.codex/skills/pdf"})
-        aus = {**cli, "status": "aus", "aufruf": "nur $"}
-        self.assertEqual(sorted(codex.aktionen(aus)), ["deinstallieren"])
+        aus = {**cli, "status": "aus", "aufruf": "nur $", "abgeschaltet": True}
+        self.assertEqual({a: s for a, s in codex.aktionen(aus).items() if a != "deinstallieren"}, {
+            "einschalten": {"skill_an": "/h/.agents/skills/grilling/SKILL.md"},
+            "wieder automatisch": {"automatisch": "/h/.agents/skills/grilling"}})
+        # aus, weil sein Plugin nicht lädt oder weil config.toml ihn nach Namen abschaltet: dafür gibt es keinen Pfad-Block
+        self.assertEqual(sorted(codex.aktionen({**cli, "status": "aus"})), ["deinstallieren", "nur manuell"])
         teil = {**cli, "id": "skill:documents:documents", "name": "documents:documents", "plugin": "documents@openai-primary-runtime",
                 "pfad": "/h/.codex/plugins/cache/x/documents/1/skills/documents/SKILL.md"}
         self.assertEqual(codex.aktionen(teil), {"deaktivieren": {"skill_aus": teil["pfad"]}})

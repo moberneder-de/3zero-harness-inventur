@@ -342,6 +342,32 @@ class Server(unittest.TestCase):
         self.assertTrue((self.tmp / "bewertung-claude-code.json").is_symlink())
         self.assertEqual(json.loads(echt.read_text()), {"stand": "2026-09-20"})
 
+    def test_einschalten_nimmt_den_override_weg(self):
+        self.schreibe_inventar([], skills=[{"id": "skill:alt", "name": "alt", "aktionen": {"einschalten": {"override": None}}}])
+        antwort = self.ausfuehren("skill:alt", "einschalten")[1]
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual(json.loads(self.settings.read_text()), {"env": {"A": "1"}})  # ein leeres skillOverrides bleibt nicht stehen
+        self.assertEqual(self.sicherung(self.settings).read_text(), SETTINGS_VORHER)
+        self.assertFalse(self.ausfuehren("skill:alt", "einschalten")[1]["ok"])  # steht nicht mehr drin
+
+    def test_override_gilt_dem_namen_den_claude_code_fuehrt(self):
+        """Gibt es ein Plugin in zwei Marktplätzen, trägt der Anzeigename den Marktplatz, Claude Code führt den Skill aber
+        ohne. Unter dem Anzeigenamen wirkte der Override nicht, und das Dashboard meldete trotzdem „erledigt“."""
+        self.schreibe_inventar([], skills=[{"id": "skill:sites@a:foo", "name": "sites@a:foo", "schluessel": "sites:foo",
+                                            "aktionen": {"deaktivieren": {"override": "off"}}}])
+        self.assertTrue(self.ausfuehren("skill:sites@a:foo", "deaktivieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"], {"alt": "off", "sites:foo": "off"})
+
+    def test_entsperren_nimmt_nur_diesen_server(self):
+        fremd = {"serverUrl": "https://example.org/*"}
+        self.settings.write_text(json.dumps({"deniedMcpServers": [{"serverName": "alt"}, fremd, {"serverName": "x"}]}, indent=2) + "\n")
+        self.schreibe_inventar([], mcp=[{"id": f"mcp:{n}", "name": n, "aktionen": {"einschalten": {"entsperren": {"serverName": n}}}} for n in ("alt", "x")])
+        self.assertTrue(self.ausfuehren("mcp:x", "einschalten")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {"deniedMcpServers": [{"serverName": "alt"}, fremd]})
+        self.assertFalse(self.ausfuehren("mcp:x", "einschalten")[1]["ok"])
+        self.assertTrue(self.ausfuehren("mcp:alt", "einschalten")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {"deniedMcpServers": [fremd]})
+
     def test_mcp_sperre_landet_einmal_in_settings(self):
         self.settings.write_text('{\n  "deniedMcpServers": [\n    {\n      "serverName": "alt"\n    }\n  ]\n}\n')
         vorher = self.settings.read_text()
@@ -948,6 +974,39 @@ enabled = true
         cfg = tomllib.loads(config.read_text())
         self.assertEqual(cfg["skills"]["config"], [{"path": str(skill), "enabled": False}])
         self.assertIn("# eigene Einstellungen", config.read_text())
+
+    def test_skill_einschalten_nimmt_den_block_zurueck(self):
+        """Hin und zurück: deaktivieren hängt den Block an, einschalten stellt ihn auf true. Andere Blöcke, auch ein
+        von Hand geschriebener mit anderer Schreibweise, bleiben Zeichen für Zeichen stehen."""
+        config = self.mit_config()
+        skill, anderer = self.tmp / "skills/grilling/SKILL.md", self.tmp / "skills/pdf/SKILL.md"
+        for s in (skill, anderer):
+            s.parent.mkdir(parents=True)
+            s.write_text("---\n---\n")
+        von_hand = f"\n[[skills.config]]  # von Hand\nenabled = false\npath = '{anderer}'\n"
+        config.write_text(config.read_text() + von_hand)
+        self.schreibe_inventar([], skills=[{"id": "skill:grilling", "name": "grilling", "aktionen": {
+            "deaktivieren": {"skill_aus": str(skill)}, "einschalten": {"skill_an": str(skill)}}}])
+        self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+        antwort = self.ausfuehren("skill:grilling", "einschalten")[1]
+        self.assertTrue(antwort["ok"], antwort)
+        cfg = tomllib.loads(config.read_text())
+        self.assertEqual(cfg["skills"]["config"], [{"enabled": False, "path": str(anderer)}, {"path": str(skill), "enabled": True}])
+        self.assertIn(von_hand, config.read_text())
+        self.assertFalse(self.ausfuehren("skill:grilling", "einschalten")[1]["ok"])  # kein Block schaltet ihn mehr ab
+
+    def test_wieder_automatisch_stellt_die_policy_zurueck(self):
+        self.mit_config()
+        ordner = self.tmp / "skills/teach"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: teach\n---\n")
+        yaml = ordner / "agents/openai.yaml"
+        yaml.write_text("interface:\n  display_name: Teach\npolicy:\n    allow_implicit_invocation: false  \n")
+        self.schreibe_inventar([], skills=[{"id": "skill:teach", "name": "teach", "aktionen": {"wieder automatisch": {"automatisch": str(ordner)}}}])
+        antwort = self.ausfuehren("skill:teach", "wieder automatisch")[1]
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual(yaml.read_text(), "interface:\n  display_name: Teach\npolicy:\n    allow_implicit_invocation: true\n")
+        self.assertIn("false", self.sicherung(yaml).read_text())
 
     def test_nur_manuell_schreibt_openai_yaml(self):
         self.mit_config()

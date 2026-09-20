@@ -389,7 +389,7 @@ const tokensSparen = D.plugins.filter(gehtWeg).reduce((s, p) => s + (p.tokens ||
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
-const REIHENFOLGE = ["aktualisieren", "deinstallieren", "deaktivieren", "nur manuell"];
+const REIHENFOLGE = ["aktualisieren", "deinstallieren", "deaktivieren", "nur manuell", "einschalten", "wieder automatisch"];
 /* Der Harness gehört in den Schlüssel: Skills aus ~/.agents tragen in beiden Dashboards dieselbe ID, und
    beide liefert derselbe Server unter derselben Adresse. Sonst stünde eine Wahl aus Claude Code unter Codex
    vorbelegt da und liefe bei „alle ausführen“ mit. */
@@ -408,8 +408,12 @@ function waehle(id, a) {
 }
 function befehlText(e, a) {
   const s = e.aktionen[a];
-  if (s.override) return `~/.claude/settings.json → "skillOverrides": {"${e.name}": "${s.override}"}`;
+  /* null nimmt den Override weg; `schluessel` ist der Name, unter dem Claude Code den Skill führt */
+  if ("override" in s) return `~/.claude/settings.json → "skillOverrides": ` + (s.override ? `{"${e.schluessel || e.name}": "${s.override}"}` : `"${e.schluessel || e.name}" entfernen`);
   if (s.sperren) return `~/.claude/settings.json → "deniedMcpServers": [${JSON.stringify(s.sperren)}]`;
+  if (s.entsperren) return `~/.claude/settings.json → "deniedMcpServers": ${JSON.stringify(s.entsperren)} entfernen`;
+  if (s.skill_an) return `~/.codex/config.toml → [[skills.config]] path = ${JSON.stringify(s.skill_an)}, enabled = true`;
+  if (s.automatisch) return `${s.automatisch}/agents/openai.yaml → policy: allow_implicit_invocation: true`;
   if (s.toml) return `~/.codex/config.toml → [${s.toml.tabelle}] ${s.toml.schluessel} = ${s.toml.wert}`;
   if (s.skill_aus) return `~/.codex/config.toml → [[skills.config]] path = ${JSON.stringify(s.skill_aus)}, enabled = false`;
   if (s.nur_manuell) return `${s.nur_manuell}/agents/openai.yaml → policy: allow_implicit_invocation: false`;
@@ -985,6 +989,7 @@ function renderHilfe() {
       <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code.</li>
       <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
+      <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. <code>enabled = true</code> in ~/.codex/config.toml, bei Skills im <code>[[skills.config]]</code>-Block ihres Pfads, und <code>allow_implicit_invocation: true</code> in <code>agents/openai.yaml</code>. Schaltet config.toml einen Skill nach Namen statt nach Pfad ab, bleibt das Handarbeit.</li>
       <li>Vor der ersten Änderung legt der Server eine Sicherung <code>config.toml.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf, und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
@@ -1024,6 +1029,7 @@ function renderHilfe() {
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb. Eigene Hooks und die Statuszeile nimmt der Server aus ~/.claude/settings.json; einen einzelnen Hook nur abschalten kann Claude Code nicht. Zurück führt die Sicherung.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
+      <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. Sie erscheinen bei allem, was das Dashboard abschalten kann und was gerade aus ist: nehmen den Override weg, heben die Sperre in <code>deniedMcpServers</code> auf oder führen <code>claude plugin enable</code> aus. Das geht jederzeit, auch nach einem Neustart.</li>
       <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
