@@ -293,15 +293,31 @@ class Hooks(unittest.TestCase):
         self.assertEqual(dauern, {("SessionStart", "start"): {"median": 30, "max": 50, "messungen": 3},
                                   ("Stop", "still"): {"median": 8, "max": 8, "messungen": 1}})
 
+    def test_ereignisse_vor_der_grenze_zaehlen_nicht(self):
+        """Das Fenster galt der Datei: Wird eine alte Sitzung fortgesetzt, zählten alle ihre alten Ereignisse mit.
+        Gemessen am echten Bestand kamen so 63 von 63 MCP-Aufrufen aus Ereignissen außerhalb der 14 Tage."""
+        def hook(zeit):
+            return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": {
+                "type": "hook_success", "hookEvent": "Stop", "command": "alt", "stdout": "", "durationMs": 10}}) + "\n"
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text(hook("2026-05-28T08:00:00Z") + hook("2026-09-12T08:00:00Z"))
+        with mock.patch.object(build, "zeitgrenze", return_value="2026-09-06T00:00:00"):
+            self.assertEqual(build.hook_ausgaben([datei])[1],
+                             {("Stop", "alt"): {"median": 10, "max": 10, "messungen": 1}})
+
     def test_dauern_auch_aus_der_stop_zusammenfassung(self):
         # hook_success speichert Claude Code nur für einen Teil der Läufe; die Zusammenfassung am Turn-Ende deckt alle Stop-Hooks ab
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         datei = tmp / "sitzung.jsonl"
-        datei.write_text("".join(json.dumps({"type": "system", "subtype": "stop_hook_summary", "hookInfos": infos}) + "\n"
-                                 for infos in ([{"command": "still", "durationMs": 20}, {"command": "ohne"}],
-                                               [{"command": "still", "durationMs": 30}])))
-        self.assertEqual(build.hook_ausgaben([datei])[1], {("Stop", "still"): {"median": 25, "max": 30, "messungen": 2}})
+        datei.write_text("".join(json.dumps({"type": "system", "subtype": "stop_hook_summary",
+                                             "timestamp": zeit, "hookInfos": infos}) + "\n"
+                                 for zeit, infos in (("2026-09-12T08:00:00Z", [{"command": "still", "durationMs": 20}, {"command": "ohne"}]),
+                                                     ("2026-09-12T09:00:00Z", [{"command": "still", "durationMs": 30}]))))
+        with mock.patch.object(build, "zeitgrenze", return_value="2026-09-06T00:00:00"):
+            self.assertEqual(build.hook_ausgaben([datei])[1], {("Stop", "still"): {"median": 25, "max": 30, "messungen": 2}})
 
     def test_derselbe_lauf_zaehlt_nur_einmal(self):
         # Ein Stop-Hook mit Ausgabe steht in beiden Quellen: in seiner Ausgabe und in der Zusammenfassung am Turn-Ende
@@ -447,6 +463,19 @@ class McpMessungen(unittest.TestCase):
             "docs": {"werkzeuge": 1, "tokens": 0, "nutzung": None},
             "claude_ai_Docs": {"werkzeuge": 0, "tokens": 10, "nutzung": None},
         })
+
+    def test_aufrufe_vor_der_grenze_zaehlen_nicht(self):
+        """Werkzeuge und Anweisungsblock beschreiben den Server, nicht ein Ereignis — die bleiben."""
+        def aufruf(zeit):
+            return json.dumps({"type": "assistant", "timestamp": zeit,
+                               "message": {"content": [{"type": "tool_use", "name": "mcp__upnote__search"}]}}) + "\n"
+        dateien = self.transkript(
+            json.dumps({"type": "attachment", "timestamp": "2026-05-28T08:00:00Z", "attachment": {
+                "type": "deferred_tools_delta", "addedNames": ["mcp__upnote__search", "mcp__upnote__view"]}}) + "\n",
+            aufruf("2026-05-28T08:00:00Z"), aufruf("2026-09-12T08:00:00Z"))
+        with mock.patch.object(build, "zeitgrenze", return_value="2026-09-06T00:00:00"):
+            self.assertEqual(build.mcp_messungen(dateien), {
+                "upnote": {"werkzeuge": 2, "tokens": 0, "nutzung": {"anzahl": 1, "zuletzt": "2026-09-12"}}})
 
     def test_anzeigename_wird_zum_werkzeugpraefix(self):
         self.assertEqual(build.werkzeug_praefix("claude.ai Claude Docs"), "claude_ai_Claude_Docs")

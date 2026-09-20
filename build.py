@@ -22,7 +22,7 @@ import statistics
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import harness
@@ -276,6 +276,12 @@ def an_claude(ereignis, stdout):
     return "".join(t for t in teile if isinstance(t, str))
 
 
+def zeitgrenze():
+    """Ab wann ein Ereignis zählt, als ISO-Zeitstempel in UTC wie die Transkripte. Die Dateiauswahl in
+    `transkripte()` reicht nicht: Wird eine alte Sitzung fortgesetzt, ist ihre Datei frisch, ihre Ereignisse nicht."""
+    return (datetime.now(timezone.utc) - timedelta(days=HOOK_TAGE)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def transkripte():
     grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
     # rglob: Hooks laufen auch in Subagenten, deren Transkripte liegen eine Ebene tiefer
@@ -294,6 +300,7 @@ def hook_ausgaben(dateien):
     die auch die Stop-Hooks ohne Ausgabe erfasst. Ein Stop-Hook mit Ausgabe steht in beiden, deshalb
     zählt je Sekunde und Dauer nur ein Lauf — zwei gleich lange Läufe in derselben Sekunde gelten als einer."""
     funde, zeiten = {}, {}
+    grenze = zeitgrenze()
     for datei in dateien:
         try:
             f = open(datei, encoding="utf-8", errors="replace")
@@ -308,6 +315,8 @@ def hook_ausgaben(dateien):
                 except ValueError:
                     continue
                 sekunde = (d.get("timestamp") or "")[:19]
+                if sekunde < grenze:  # alte Sitzung, gestern fortgesetzt: die Datei ist frisch, das Ereignis nicht
+                    continue
                 if d.get("subtype") == "stop_hook_summary":
                     for info in d.get("hookInfos") or []:
                         if isinstance(info.get("durationMs"), (int, float)):
@@ -358,6 +367,7 @@ def mcp_messungen(dateien):
     """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Anweisungsblock in Tokens, Aufrufe.
     Die Schemata sofort geladener Werkzeuge stehen nicht im Transkript; `tokens` misst nur den Anweisungsblock."""
     werkzeuge, tokens, aufrufe = {}, {}, {}
+    grenze = zeitgrenze()
     for datei in dateien:
         try:
             f = open(datei, encoding="utf-8", errors="replace")
@@ -383,7 +393,8 @@ def mcp_messungen(dateien):
                 inhalt = (d.get("message") or {}).get("content")
                 for c in inhalt if isinstance(inhalt, list) else []:
                     name = c.get("name") if isinstance(c, dict) and c.get("type") == "tool_use" else None
-                    if isinstance(name, str) and name.startswith("mcp__"):
+                    # Werkzeugliste und Anweisungsblock beschreiben den Server, nicht ein Ereignis, und bleiben
+                    if isinstance(name, str) and name.startswith("mcp__") and (d.get("timestamp") or "")[:19] >= grenze:
                         aufrufe.setdefault(name.split("__")[1], []).append((d.get("timestamp") or "")[:10])
     return {s: {"werkzeuge": len(werkzeuge.get(s, ())), "tokens": tokens.get(s, 0),
                 "nutzung": {"anzahl": len(aufrufe[s]), "zuletzt": max(aufrufe[s])} if s in aufrufe else None}
