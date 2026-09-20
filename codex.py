@@ -444,22 +444,22 @@ def befehl(e, empfehlung):
     zusätzlich einen Knopf im Dashboard."""
     eid = e["id"]
     if eid.startswith("hook:"):
-        return f"codex plugin remove {e['plugin']}" if e.get("plugin") else f'{e["pfad"]} → "{e["ereignis"]}" entfernen'
+        return f"codex plugin remove {shellwort(e['plugin'])}" if e.get("plugin") else f'{e["pfad"]} → "{e["ereignis"]}" entfernen'
     if eid.startswith("plugin:"):
-        return f"codex plugin remove {e['name']}@{e['marktplatz']}"
+        return f"codex plugin remove {shellwort(e['name'] + '@' + e['marktplatz'])}"
     if eid.startswith("mcp:"):
         if e.get("projekt"):
             return f'{e["quelle"]} → [mcp_servers.{e["name"]}] entfernen'
-        return f"codex plugin remove {e['quelle']}" if e["art"] == "Plugin" else f"codex mcp remove {e['name']}"
+        return f"codex plugin remove {shellwort(e['quelle'])}" if e["art"] == "Plugin" else f"codex mcp remove {shellwort(e['name'])}"
     if empfehlung == "nur manuell":
         return f"{Path(e['pfad']).parent}/agents/openai.yaml → policy: allow_implicit_invocation: false"
     if empfehlung == "abschalten":
         return f'~/.codex/config.toml → [[skills.config]] path = "{e["pfad"]}", enabled = false'
     if e.get("plugin"):
-        return f"codex plugin remove {e['plugin']}"
+        return f"codex plugin remove {shellwort(e['plugin'])}"
     if e["quelle"]["art"] == "skills-CLI":
-        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {e['name']}"
-    return papierkorb_befehl(f'"{Path(e["pfad"]).parent}"')
+        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {shellwort(e['name'])}"
+    return papierkorb_befehl(shellwort(Path(e["pfad"]).parent))
 
 
 def toml_schluessel(name):

@@ -670,7 +670,7 @@ def befehl(e, empfehlung):
         wert = "off" if empfehlung == "abschalten" else "user-invocable-only"
         return f"~/.claude/settings.json → \"skillOverrides\": {{\"{e['name']}\": \"{wert}\"}}"
     if eid.startswith("plugin:"):
-        return f"claude plugin uninstall {e['name']}@{e['marktplatz']}"
+        return f"claude plugin uninstall {shellwort(e['name'] + '@' + e['marktplatz'])}"
     if eid.startswith("mcp:"):
         if e.get("projekt") and e["status"] == "Ordner fehlt":
             # claude mcp remove -s local braucht den Projektordner als Arbeitsverzeichnis
@@ -681,20 +681,20 @@ def befehl(e, empfehlung):
         if e["art"] == "claude.ai-Connector":
             return "claude.ai → Einstellungen → Connectors → trennen"
         if e["art"] == "Plugin":
-            return f"claude plugin uninstall {e['quelle']}"
-        return f"claude mcp remove \"{e['name']}\" -s user"
+            return f"claude plugin uninstall {shellwort(e['quelle'])}"
+        return f"claude mcp remove {shellwort(e['name'])} -s user"
     if e.get("plugin"):
-        return f"claude plugin uninstall {e['plugin']}"
+        return f"claude plugin uninstall {shellwort(e['plugin'])}"
     if e.get("projekt") and e["quelle"]["art"] == "skills-CLI":
         return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}"
     if e.get("projekt"):
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
-        return papierkorb_befehl(f'"{ziel}"')
+        return papierkorb_befehl(shellwort(ziel))
     if e["quelle"]["art"] == "skills-CLI":
-        return f"npx skills remove --global {e['name']}"
+        return f"npx skills remove --global {shellwort(e['name'])}"
     if e["typ"] == "Befehl":
-        return papierkorb_befehl(f"~/.claude/commands/{e['name']}.md")
-    return papierkorb_befehl(f"~/.claude/skills/{e['name']}")
+        return papierkorb_befehl(f"~/.claude/commands/{shellwort(e['name'] + '.md')}")
+    return papierkorb_befehl(f"~/.claude/skills/{shellwort(e['name'])}")  # ~ bleibt ungequotet, sonst löst die Shell es nicht auf
 
 
 def aktionen(e):

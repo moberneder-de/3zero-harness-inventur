@@ -9,6 +9,7 @@ from unittest import mock
 
 import build
 
+
 def plugin(status):
     return {"id": "plugin:superpowers@claude-plugins-official", "name": "superpowers", "marktplatz": "claude-plugins-official",
             "marktplatz_repo": "anthropics/claude-plugins-official", "autor": "Anthropic", "homepage": None, "version": "6.3.0",
@@ -193,6 +194,36 @@ class ShellQuoting(unittest.TestCase):
         pfad = "/tmp/$(touch /tmp/sollte-nicht-entstehen)`id`"
         r = subprocess.run(["sh", "-c", f"printf %s {build.shellwort(pfad)}"], capture_output=True, text=True)
         self.assertEqual(r.stdout, pfad)
+
+
+    def worte(self, befehl):
+        """Die Wörter, die das Programm bekäme, wenn der Benutzer den Befehl ins Terminal einfügt (mit HOME=/h)."""
+        import subprocess
+        r = subprocess.run(["sh", "-c", f"set -- {befehl}; printf '%s\\n' \"$@\""], capture_output=True, text=True, env={"HOME": "/h"})
+        return r.stdout.split("\n")[:-1]
+
+    def test_jeder_befehl_zum_kopieren_behandelt_namen_als_text(self):
+        """Namen kommen von außen: der Ordner eines geklonten Projekts, ein Plugin aus einem Marktplatz, ein Server aus
+        einer fremden .mcp.json. `cd` und die Projekt-Befehle quoteten schon, `mv "…"` und die übrigen nicht."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        boese = f"$(touch {tmp}/entstanden) `id` x"
+        projekt = {**skill("q", quelle_art="lokal", pfad=f"/x/{boese}/.claude/skills/q/SKILL.md"), "projekt": f"/x/{boese}"}
+        faelle = [
+            (projekt, ["mv", f"/x/{boese}/.claude/skills/q", "/h/.Trash/"]),
+            (skill(boese, quelle_art="lokal"), ["mv", f"/h/.claude/skills/{boese}", "/h/.Trash/"]),
+            (skill(boese, typ="Befehl", quelle_art="lokal"), ["mv", f"/h/.claude/commands/{boese}.md", "/h/.Trash/"]),
+            (skill(boese), ["npx", "skills", "remove", "--global", boese]),
+            (mcp(boese, "User", "~/.claude.json"), ["claude", "mcp", "remove", boese, "-s", "user"]),
+            ({**plugin("aktiv"), "name": boese, "marktplatz": "m"}, ["claude", "plugin", "uninstall", f"{boese}@m"]),
+            (mcp("plugin:p:s", "Plugin", f"{boese}@m"), ["claude", "plugin", "uninstall", f"{boese}@m"]),
+            (skill("p:s", quelle_art="Plugin", plugin_id=f"{boese}@m"), ["claude", "plugin", "uninstall", f"{boese}@m"]),
+        ]
+        with mock.patch.object(build.sys, "platform", "darwin"):
+            for e, erwartet in faelle:
+                with self.subTest(e["id"]):
+                    self.assertEqual(self.worte(build.befehl(e, "entfernen")), erwartet)
+        self.assertFalse((tmp / "entstanden").exists())
 
 
 class GleichnamigePlugins(unittest.TestCase):
@@ -484,9 +515,9 @@ class Hooks(unittest.TestCase):
         self.assertEqual(build.befehl(cli, "entfernen"), 'cd /x/Kit && npx skills remove seo-audit')
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
         with mock.patch.object(build.sys, "platform", "darwin"):
-            self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
+            self.assertEqual(build.befehl(lokal, None), 'mv /x/Q/.claude/skills/q-lang ~/.Trash/')
         with mock.patch.object(build.sys, "platform", "linux"):  # ~/.Trash gibt es nur auf dem Mac
-            self.assertEqual(build.befehl(lokal, None), 'gio trash "/x/Q/.claude/skills/q-lang"')
+            self.assertEqual(build.befehl(lokal, None), 'gio trash /x/Q/.claude/skills/q-lang')
             self.assertEqual(build.befehl(skill("eigen", quelle_art="lokal"), None), "gio trash ~/.claude/skills/eigen")
 
     def test_befehl_fuer_projekt_mcp(self):

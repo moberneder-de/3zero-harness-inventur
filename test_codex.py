@@ -313,15 +313,38 @@ class Mcp(CodexOrdner):
 
 
 class Befehle(unittest.TestCase):
+    def test_jeder_befehl_zum_kopieren_behandelt_namen_als_text(self):
+        """Wie in build.py: Namen kommen von außen und dürfen beim Einfügen ins Terminal nichts ausführen."""
+        import subprocess
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        boese = f"$(touch {tmp}/entstanden) `id` x"
+        faelle = [
+            ({"id": "skill:x", "name": "x", "pfad": f"/h/{boese}/x/SKILL.md", "quelle": {"art": "lokal"}}, ["mv", f"/h/{boese}/x", "/h/.Trash/"]),
+            ({"id": "skill:x", "name": boese, "pfad": "/h/x/SKILL.md", "quelle": {"art": "skills-CLI"}}, ["npx", "skills", "remove", "--global", boese]),
+            ({"id": "skill:x", "name": "x", "pfad": "/h/x/SKILL.md", "plugin": f"{boese}@m", "quelle": {"art": "Plugin"}}, ["codex", "plugin", "remove", f"{boese}@m"]),
+            ({"id": "plugin:x", "name": boese, "marktplatz": "m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
+            ({"id": "hook:x", "plugin": f"{boese}@m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
+            ({"id": "mcp:x", "name": "x", "art": "Plugin", "quelle": f"{boese}@m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
+            ({"id": "mcp:x", "name": boese, "art": "User", "quelle": "~/.codex/config.toml"}, ["codex", "mcp", "remove", boese]),
+        ]
+        with mock.patch("sys.platform", "darwin"):
+            for e, erwartet in faelle:
+                with self.subTest(e["id"], erwartet=erwartet[:3]):
+                    r = subprocess.run(["sh", "-c", f"set -- {codex.befehl(e, 'entfernen')}; printf '%s\\n' \"$@\""],
+                                       capture_output=True, text=True, env={"HOME": "/h"})
+                    self.assertEqual(r.stdout.split("\n")[:-1], erwartet)
+        self.assertFalse((tmp / "entstanden").exists())
+
     def test_texte_je_art(self):
         skill = {"id": "skill:grilling", "name": "grilling", "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
         self.assertEqual(codex.befehl(skill, "entfernen"), "npx skills remove --global grilling")
         self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
         self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
         with mock.patch("sys.platform", "darwin"):
-            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv "/h/.agents/skills/grilling" ~/.Trash/')
+            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv /h/.agents/skills/grilling ~/.Trash/')
         with mock.patch("sys.platform", "linux"):
-            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'gio trash "/h/.agents/skills/grilling"')
+            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'gio trash /h/.agents/skills/grilling')
         self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd /x/Kit && npx skills remove grilling')
         self.assertEqual(codex.befehl({**skill, "plugin": "documents@m"}, "entfernen"), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "plugin:documents@m", "name": "documents", "marktplatz": "m"}, None), "codex plugin remove documents@m")
@@ -350,7 +373,7 @@ class Inventar(CodexOrdner):
         g = daten["skills"][0]
         self.assertEqual(g["bewertung"]["was"], "Fragt nach.")
         self.assertEqual(sorted(g["aktionen"]), ["deaktivieren", "deinstallieren", "nur manuell"])
-        self.assertEqual(g["befehl"], "mv \"%s\" ~/.Trash/" % (self.home / ".agents/skills/grilling"))
+        self.assertEqual(g["befehl"], "mv %s ~/.Trash/" % (self.home / ".agents/skills/grilling"))
         self.assertEqual([b["name"] for b in daten["eingebaut"]], ["imagegen"])
 
 
