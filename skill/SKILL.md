@@ -77,8 +77,10 @@ Fertig, wenn: `python3 -m json.tool ~/.3zero-harness-inventur/<Bewertungsdatei> 
 ## 5. Neu erzeugen und öffnen
 
 ```bash
-python3 <Projektordner>/build.py --harness <harness> && if curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open http://127.0.0.1:8765/; else open ~/.3zero-harness-inventur/<Dashboard>; fi
+python3 <Projektordner>/build.py --harness <harness> && if curl -s -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open ~/.3zero-harness-inventur/start.html; else open ~/.3zero-harness-inventur/<Dashboard>; fi
 ```
+
+Läuft der Server, antwortet er auf die Adresse allein mit 403: Die Seite gibt es nur mit dem Schlüssel des laufenden Servers, und den trägt `start.html`. Deshalb prüft `curl` hier ohne `-f` nur, ob jemand antwortet.
 
 Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 <Projektordner>/server.py`.
 

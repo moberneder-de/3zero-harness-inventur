@@ -908,7 +908,7 @@ function renderSuche() {
   const inhalt = TOKEN
     ? `<form class="suchfeld" id="suchform"><textarea id="bedarf" rows="3" maxlength="300" required placeholder="z. B. Präsentationen als HTML" aria-label="Wofür suchst du ein Werkzeug?"></textarea>
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
-    : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten, dann http://127.0.0.1:8765 öffnen.</p>';
+    : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten; das Dashboard öffnet sich dann von selbst.</p>';
   return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
     `Beschreibe, wofür du ein Werkzeug suchst. ${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos. Installiert wird erst, wenn du es bestätigst.`);
 }
@@ -959,7 +959,7 @@ function renderHilfe() {
   const datenordner = `<li>Dashboard, Inventar und Bewertung liegen in <code>~/.3zero-harness-inventur</code>, nicht im Projektordner: Sie gehören zu deinem Rechner, das Projekt enthält nur das Werkzeug.</li>`;
   const teile = CODEX ? [["Aktualisieren", `<ul>
       <li><code>python3 build.py --harness codex</code> im Projektordner 3zero-Harness-Inventur: liest den Codex-Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Codex. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness claude-code</code> zeigt das Dashboard wieder Claude Code; ohne Angabe gilt der zuletzt genannte.</li>
-      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“.</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
       ${datenordner}
       <li><code>$3zero-harness-inventur</code> in Codex: macht dasselbe wie <code>build.py --harness codex</code> und lässt Codex zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-codex.json).</li>
       <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: Codex schreibt nur in eine Arbeitskopie von bewertung-codex.json in einem Temp-Ordner, ohne Netz, ohne deine eigenen Plugins, MCP-Server und Regeln; der Server prüft die Kopie und übernimmt sie. Den Bestand liest der Server davor und danach selbst ein.</li>
@@ -998,7 +998,7 @@ function renderHilfe() {
       <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
     </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness codex</code> zeigt das Dashboard stattdessen Codex; ohne Angabe gilt der zuletzt genannte.</li>
-      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar.</li>
+      <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
       ${datenordner}
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-claude-code.json).</li>
       <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt.</li>

@@ -113,12 +113,55 @@ class Server(unittest.TestCase):
         return treffer
 
     def test_seite_bekommt_token(self):
-        status, html = self.anfrage("GET", "/", token=None)
+        status, html = self.anfrage("GET", "/?k=geheim", token=None)
         self.assertEqual(status, 200)
         self.assertIn('<script id="token" type="application/json">"geheim"</script>', html)
 
+    def test_seite_nur_mit_dem_schluessel_des_laufenden_servers(self):
+        """Auf einem Rechner mit mehreren Benutzern erreicht jeder 127.0.0.1:8765. Ohne Schlüssel in der Adresse bekäme
+        ein anderer Benutzer mit der Seite das Token und könnte Aktionen auslösen oder eine Suche starten, die Dateien liest."""
+        for pfad in ("/", "/?k=falsch", "/?k="):
+            with self.subTest(pfad=pfad):
+                status, html = self.anfrage("GET", pfad, token=None)
+                self.assertEqual(status, 403)
+                self.assertNotIn("geheim", html)
+                self.assertIn("start.html", html)
+
+    def test_startdatei_nur_fuer_den_benutzer_lesbar(self):
+        """Die Adresse mit Schlüssel geht nicht als Argument an den Browser: Argumente sieht jeder Benutzer in `ps`."""
+        (self.tmp / "start.html").write_text("alt")
+        (self.tmp / "start.html").chmod(0o644)
+        datei = server.startdatei(self.tmp, "http://127.0.0.1:8765/?k=geheim")
+        self.assertEqual((datei, datei.stat().st_mode & 0o777), (self.tmp / "start.html", 0o600))
+        self.assertIn('url=http://127.0.0.1:8765/?k=geheim"', datei.read_text())
+
+    def test_startdatei_oeffnet_auf_dem_mac_ueber_open(self):
+        """Pythons webbrowser öffnet file:-Adressen unter macOS per AppleScript im Browser, holt ihn aber nicht nach vorn
+        (nachgemessen, mit http-Adressen schon): Das Dashboard ging im Hintergrund auf, und es sah aus, als geschähe nichts.
+        `open -a <Standardbrowser>` holt ihn nach vorn; der Browser statt nur der Datei, weil .html einem Editor gehören kann."""
+        datei = self.tmp / "start.html"
+
+        def run(argv, **kw):
+            return mock.Mock(returncode=0, stdout="/Applications/Brave Browser.app\n" if argv[0] == "osascript" else "")
+        with mock.patch.object(server.sys, "platform", "darwin"), mock.patch.dict(os.environ, {"BROWSER": ""}), \
+                mock.patch.object(server.subprocess, "run", side_effect=run) as lauf, mock.patch.object(server.webbrowser, "open") as python:
+            server.browser_oeffnen(datei)
+        self.assertEqual(lauf.call_args_list[-1].args[0], ["open", "-a", "/Applications/Brave Browser.app", str(datei)])
+        python.assert_not_called()
+
+    def test_startdatei_oeffnet_sonst_ueber_python(self):
+        """Unter Linux, mit eigenem BROWSER und wenn sich der Standardbrowser nicht ermitteln lässt."""
+        datei = self.tmp / "start.html"
+        kein_browser = mock.Mock(returncode=1, stdout="")
+        for plattform, browser, antwort in (("linux", "", None), ("darwin", "firefox", None), ("darwin", "", kein_browser)):
+            with self.subTest(plattform=plattform, browser=browser), mock.patch.object(server.sys, "platform", plattform), \
+                    mock.patch.dict(os.environ, {"BROWSER": browser}), mock.patch.object(server.subprocess, "run", return_value=antwort), \
+                    mock.patch.object(server.webbrowser, "open") as python:
+                server.browser_oeffnen(datei)
+                python.assert_called_once_with(datei.as_uri())
+
     def test_fremder_host_bekommt_weder_seite_noch_ausfuehrung(self):
-        status, html = self.anfrage("GET", "/", token=None, host=f"boese.example:{self.port}")
+        status, html = self.anfrage("GET", "/?k=geheim", token=None, host=f"boese.example:{self.port}")
         self.assertEqual(status, 403)
         self.assertNotIn("geheim", html)
         status, _ = self.ausfuehren("plugin:x@y", "deinstallieren", host=f"boese.example:{self.port}")
@@ -588,7 +631,7 @@ class Server(unittest.TestCase):
 
     def test_codex_bekommt_sein_dashboard_und_keine_claude_aktionen(self):
         self.auf_codex()
-        status, html = self.anfrage("GET", "/", token=None)
+        status, html = self.anfrage("GET", "/?k=geheim", token=None)
         self.assertEqual(status, 200)
         self.assertIn("Codex", html)
         self.assertIn('"geheim"', html)

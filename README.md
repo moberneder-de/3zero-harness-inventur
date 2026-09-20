@@ -30,7 +30,7 @@ python3 build.py                 # Bestand einlesen und Dashboard bauen
 python3 server.py                # Dashboard auf http://127.0.0.1:8765 öffnen
 ```
 
-Der Server lauscht nur auf `127.0.0.1`. Ohne ihn lässt sich das erzeugte HTML auch direkt öffnen — dann ist es lesbar, aber ohne Aktionsknöpfe.
+Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüssel des laufenden Servers in der Adresse: `127.0.0.1` erreicht jeder Benutzer des Rechners. Den Browser öffnet er selbst; zum erneuten Öffnen dient `~/.3zero-harness-inventur/start.html` (nur für dich lesbar) oder die Adresse aus dem Terminal. Ohne ihn lässt sich das erzeugte HTML auch direkt öffnen — dann ist es lesbar, aber ohne Aktionsknöpfe.
 
 ## Was das Dashboard zeigt
 

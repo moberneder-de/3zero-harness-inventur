@@ -5,6 +5,8 @@ Liest den Bestand neu ein (build.py), zeigt das Dashboard auf http://127.0.0.1:8
 und führt die dort gewählten Aktionen aus. Ausgeführt wird nur, was build.py in
 inventar.json als Aktion eines Eintrags hinterlegt hat; der Browser schickt nur
 Eintrags-ID und Aktionsname, zusammen mit einem Token, das bei jedem Start neu entsteht.
+Die Seite selbst gibt es nur mit diesem Token als Schlüssel in der Adresse (?k=…), weil jeder Benutzer des Rechners
+127.0.0.1 erreicht; der Browser bekommt dafür eine Startdatei, die nur der Benutzer lesen kann.
 Installieren geht nur für Kandidaten der letzten Suche: Der Browser schickt deren Nummer,
 den Befehl baut der Server aus den geprüften Feldern repo, skill, plugin und marktplatz.
 
@@ -678,6 +680,7 @@ class Handler(BaseHTTPRequestHandler):
         # ließe sich ein Klick des Benutzers auf „Bewertung neu erstellen“ oder eine Aktion umleiten.
         self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")  # die Adresse trägt den Schlüssel; Links nach draußen nehmen sie nicht mit
         try:
             self.end_headers()
             self.wfile.write(daten)
@@ -688,8 +691,16 @@ class Handler(BaseHTTPRequestHandler):
         # Host-Prüfung gegen DNS-Rebinding: sonst könnte eine fremde Seite das Token mitlesen
         if self.headers.get("Host") not in self.server.hosts:
             return self.antworte(403, "fremder Host", "text/plain")
-        if self.path != "/":
+        adresse = urllib.parse.urlsplit(self.path)
+        if adresse.path != "/":
             return self.antworte(404, "nicht gefunden", "text/plain")
+        # 127.0.0.1 erreicht jeder Benutzer des Rechners, nicht nur der, der den Server gestartet hat. Die Seite mit
+        # dem Token bekommt deshalb nur, wer den Schlüssel aus der Startdatei oder dem Terminal in der Adresse trägt.
+        schluessel = urllib.parse.parse_qs(adresse.query).get("k", [""])[0]
+        if not secrets.compare_digest(schluessel.encode(), self.server.token.encode()):
+            return self.antworte(403, "Das Dashboard öffnet sich nur mit dem Schlüssel des laufenden Servers: "
+                                      f"{self.server.daten / 'start.html'} öffnen oder die Adresse aus dem Terminal nehmen, "
+                                      "in dem server.py läuft.", "text/plain")
         html = self.server.datei("dashboard").read_text(encoding="utf-8")
         html = html.replace(TOKEN_PLATZHALTER, TOKEN_PLATZHALTER.replace("null", json.dumps(self.server.token)), 1)
         self.antworte(200, html, "text/html")
@@ -749,23 +760,58 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def startdatei(daten, url):
+    """Eine Seite, die zum Dashboard weiterleitet, lesbar nur für den Benutzer. Der Browser bekommt sie statt der
+    Adresse: Die trägt den Schlüssel, und Argumente eines Befehls sieht jeder Benutzer des Rechners in `ps`."""
+    datei = Path(daten) / "start.html"
+    fd = os.open(datei, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={url}">'
+                f'<a href="{url}">Dashboard öffnen</a>\n')
+    os.chmod(datei, 0o600)  # gab es die Datei schon, behielte sie sonst ihre alten Rechte
+    return datei
+
+
+STANDARDBROWSER = ('use framework "AppKit"',
+                   "return ((current application's NSWorkspace's sharedWorkspace)'s URLForApplicationToOpenURL:"
+                   "(current application's NSURL's URLWithString:\"https://python.org\"))'s |path|() as text")
+
+
+def browser_oeffnen(datei):
+    """Öffnet die Startdatei im Browser. Pythons webbrowser schickt file:-Adressen unter macOS per AppleScript an den
+    Browser, holt ihn aber nicht nach vorn (nachgemessen, mit http-Adressen schon): Das Dashboard ging im Hintergrund
+    auf, und es sah aus, als geschähe nichts. `open -a` holt ihn nach vorn — mit dem Standardbrowser statt nur der
+    Datei, weil .html auch einem Editor gehören kann. Wer BROWSER setzt, bekommt weiter Pythons Weg."""
+    if sys.platform == "darwin" and not os.environ.get("BROWSER"):
+        try:
+            r = subprocess.run(["osascript", *[x for zeile in STANDARDBROWSER for x in ("-e", zeile)]], capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and r.stdout.strip() and subprocess.run(["open", "-a", r.stdout.strip(), str(datei)]).returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    webbrowser.open(Path(datei).as_uri())
+
+
 def main():
     try:
         srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
     except OSError:
-        sys.exit(f"Port {PORT} ist belegt. Läuft der Server schon? Dann http://127.0.0.1:{PORT}/ öffnen.")
+        sys.exit(f"Port {PORT} ist belegt. Läuft der Server schon? Dann {harness.DATEN / 'start.html'} öffnen.")
     print("Lese den Bestand ein …")
     ergebnis = srv.neu_einlesen()
     print(ergebnis["ausgabe"])
     if not ergebnis["ok"]:
         sys.exit(1)
-    url = f"http://127.0.0.1:{PORT}/"
+    url = f"http://127.0.0.1:{PORT}/?k={srv.token}"
+    start = startdatei(harness.DATEN, url)
     print(f"Dashboard: {url}  (beenden mit Ctrl+C)")
-    webbrowser.open(url)
+    browser_oeffnen(start)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        start.unlink(missing_ok=True)  # der Schlüssel gilt nur für diesen Lauf
 
 
 if __name__ == "__main__":
