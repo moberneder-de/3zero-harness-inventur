@@ -731,8 +731,8 @@ def bewerte(eintraege, bewertung=None, befehl_fuer=None):
             for feld in ("autor", "repo", "url"):
                 if b.get(feld):
                     e["quelle"][feld] = b[feld]
-        b = b or {}
-        e["befehl"] = b.get("befehl") or befehl_fuer(e, b.get("empfehlung"))
+        # nie aus der Bewertung: Sie stammt aus einem Lauf, der fremde Skill-Texte liest, und der Befehl steht neben dem Kopierknopf
+        e["befehl"] = befehl_fuer(e, (b or {}).get("empfehlung"))
 
 
 def abgleich(alle, bewertung):
