@@ -248,6 +248,7 @@ def gueltige_bewertung(kopie):
 
 
 def zurueckschreiben(bewertung, ziel):
+    ziel = ziel.resolve()  # einem Symlink folgen: os.replace ersetzte sonst den Link selbst durch eine normale Datei
     neu = ziel.with_name(ziel.name + ".neu")
     neu.write_text(json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(neu, ziel)
@@ -342,6 +343,8 @@ class Inventarserver(ThreadingHTTPServer):
     def schreiben(self, datei, text):
         """Schreibt atomar über <datei>.neu + os.replace, ohne die Datei zwischendurch mit weiteren
         Rechten als nötig auf der Platte liegen zu haben: die echte config.toml kann Zugangsdaten enthalten."""
+        # einem Symlink folgen (Dotfiles-Repo): os.replace ersetzte sonst den Link selbst durch eine normale Datei
+        datei = datei.resolve()
         neu = datei.with_name(datei.name + ".neu")
         fd = os.open(neu, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:

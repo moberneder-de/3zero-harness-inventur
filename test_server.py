@@ -199,6 +199,29 @@ class Server(unittest.TestCase):
         self.ausfuehren("skill:grilling", "deaktivieren")
         self.assertEqual(json.loads(self.settings.read_text()), {"skillOverrides": {"grilling": "off"}})
 
+    def test_verlinkte_settings_bleiben_ein_link(self):
+        """Wer settings.json aus einem Dotfiles-Repo verlinkt: os.replace ersetzte sonst den Link selbst durch eine
+        normale Datei, und das Repo bekäme keine Änderung mehr zu sehen."""
+        echt = self.tmp / "dotfiles" / "settings.json"
+        echt.parent.mkdir()
+        self.settings.rename(echt)
+        self.settings.symlink_to(echt)
+        self.schreibe_inventar([], skills=[
+            {"id": "skill:grilling", "name": "grilling", "aktionen": {"deaktivieren": {"override": "off"}}}])
+        self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+        self.assertTrue(self.settings.is_symlink())
+        self.assertEqual(json.loads(echt.read_text())["skillOverrides"]["grilling"], "off")
+
+    def test_verlinkte_bewertung_bleibt_ein_link(self):
+        echt = self.tmp / "sync" / "bewertung-claude-code.json"
+        echt.parent.mkdir()
+        echt.write_text('{"stand": "2026-09-01"}')
+        (self.tmp / "bewertung-claude-code.json").symlink_to(echt)
+        self.claude_ersatz('{"result":"fertig"}', bewertung='{"stand": "2026-09-20"}')
+        self.assertTrue(self.bewerten()[1]["ok"])
+        self.assertTrue((self.tmp / "bewertung-claude-code.json").is_symlink())
+        self.assertEqual(json.loads(echt.read_text()), {"stand": "2026-09-20"})
+
     def test_mcp_sperre_landet_einmal_in_settings(self):
         self.settings.write_text('{\n  "deniedMcpServers": [\n    {\n      "serverName": "alt"\n    }\n  ]\n}\n')
         vorher = self.settings.read_text()
