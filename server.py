@@ -240,6 +240,24 @@ def zurueckschreiben(bewertung, ziel):
     os.replace(neu, ziel)
 
 
+# MCP-Server installiert der Server nicht selbst; sein Befehl kommt aus einem Lauf, der fremde Webseiten liest,
+# und wird dem Benutzer zum Einfügen ins Terminal angeboten. Angezeigt wird er nur, wenn er mit einem bekannten
+# Installationsbefehl beginnt und keine Shell-Metazeichen enthält — sonst könnte eine präparierte Seite dem
+# Benutzer etwas diktieren, das wie eine Anbieter-Doku aussieht. Sonst bleibt das Feld leer.
+BEFEHL_ANFANG = ("claude mcp add ", "codex mcp add ", "npx skills add ", "npx -y skills add ",
+                 "claude plugin install ", "codex plugin add ")
+BEFEHL_ZEICHEN = re.compile(r"[A-Za-z0-9 @%+=:,./_-]+")
+
+
+def sicherer_befehl(befehl):
+    return isinstance(befehl, str) and befehl.startswith(BEFEHL_ANFANG) and BEFEHL_ZEICHEN.fullmatch(befehl) is not None
+
+
+def geprueft(k):
+    """Ein Kandidat mit dem, was der Server verantworten kann: geprüfter Befehl, geprüfte Installierbarkeit."""
+    return {**k, "befehl": k.get("befehl") if sicherer_befehl(k.get("befehl")) else "", "installierbar": installierbar(k)}
+
+
 def installierbar(k):
     """Nur Kandidaten, deren Angaben der Server selbst in einen Befehl einsetzen kann, ohne Shell und ohne Optionen."""
     passt = lambda muster, wert: isinstance(wert, str) and muster.fullmatch(wert) is not None
@@ -517,7 +535,7 @@ class Inventarserver(ThreadingHTTPServer):
         ergebnis = (claude_json(r["ausgabe"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
-        self.kandidaten = [{**k, "installierbar": installierbar(k)} for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
+        self.kandidaten = [geprueft(k) for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
         return {"ok": True, "ausgabe": str(ergebnis.get("bericht", "")), "kandidaten": self.kandidaten}
 
     def suchen_codex(self, bedarf):
@@ -533,7 +551,7 @@ class Inventarserver(ThreadingHTTPServer):
         if not r["ok"] or not isinstance(daten, dict):
             return {"ok": False, "ausgabe": r["ausgabe"]}
         kandidaten = [{f: w for f, w in k.items() if w is not None} for k in daten.get("kandidaten", []) if isinstance(k, dict)][:3]
-        self.kandidaten = [{**k, "installierbar": installierbar(k)} for k in kandidaten]
+        self.kandidaten = [geprueft(k) for k in kandidaten]
         return {"ok": True, "ausgabe": str(daten.get("bericht", "")), "kandidaten": self.kandidaten}
 
     def im_hintergrund(self, art, arbeit, **angaben):

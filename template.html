@@ -366,7 +366,8 @@ const autor = s => s.plugin ? INDEX.get("plugin:" + s.plugin)?.autor : s.quelle.
 function typText(e) {
   if (e.id.startsWith("plugin:")) return "Plugin";
   const typ = e.id.startsWith("mcp:") ? "MCP-Server" : e.typ;
-  return e.projekt ? `${typ} in ${e.projekt.split("/").pop()}` : typ;
+  // Der Ordnername kommt aus ~/.claude.json und darf auf macOS < und > enthalten; `typ` ist fest vergeben
+  return e.projekt ? `${typ} in ${esc(e.projekt.split("/").pop())}` : typ;
 }
 
 /* Kontextlast je Sitzung: automatisch geladene Beschreibungen und was SessionStart-Hooks einspielen.
@@ -856,11 +857,15 @@ function kandidatenBlock() {
       : r.ok ? '<span class="status st-an"><span aria-hidden="true">●</span> installiert</span><span class="klein">erscheint als „neu · unbewertet“, „neu bewerten“ zieht die Bewertung nach</span>'
       : `<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span><details open><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>`;
     const aus = beschaeftigt || r?.ok ? " disabled" : "";
-    const knoepfe = !k.installierbar ? '<span class="klein">Installation nur von Hand mit dem Befehl oben.</span>'
+    const knoepfe = !k.installierbar ? `<span class="klein">Installation nur von Hand${k.befehl ? " mit dem Befehl oben" : ""}.</span>`
       : `<button type="button" class="zeilenknopf" data-installieren="${nr}"${aus}>installieren</button>` +
         (k.art === "skill" ? `<button type="button" class="zeilenknopf" data-installieren="${nr}" data-manuell="1"${aus}>installieren, nur manuell</button>` : "");
+    /* Ohne geprüften Befehl steht hier keiner: Der Suchlauf liest fremde Webseiten, und ein Befehl von dort
+       landete sonst per Kopierknopf in deinem Terminal. Der Server verwirft, was nicht wie eine Installation aussieht. */
+    const befehl = k.befehl ? befehlZeile(k.befehl)
+      : '<p class="klein">Kein prüfbarer Installationsbefehl. Hol ihn aus der Doku des Anbieters, nicht aus dieser Seite.</p>';
     return `<div class="kandidat"><strong>${esc(k.name)}</strong> <span class="tag">${ART[k.art] || esc(k.art)}</span>
-      <p>${txt(k.was)}</p>${befehlZeile(k.befehl)}<div class="knoepfe">${knoepfe}${status}</div></div>`;
+      <p>${txt(k.was)}</p>${befehl}<div class="knoepfe">${knoepfe}${status}</div></div>`;
   }).join("");
 }
 function zeichne() {
