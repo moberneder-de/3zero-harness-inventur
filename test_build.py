@@ -161,6 +161,18 @@ class PluginBestand(unittest.TestCase):
                          ["docx", "fremd", "xlsx"])
         self.assertEqual([d.parent.name for d in build.plugin_skill_dateien(tmp, {"skills": ["skills/xlsx"]}, {})], ["xlsx"])
 
+    def test_plugin_ohne_installation_bricht_nichts_ab(self):
+        """installed_plugins.json halb geschrieben oder von Hand bearbeitet: Ein Eintrag ohne Installation oder ohne Pfad
+        ist nicht installiert. Ein Absturz hier bräche build.py ab, und ohne build.py startet der Server nicht."""
+        tmp = self.ordner()
+        (tmp / "gut").mkdir()
+        (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {
+            "leer@m": [], "ohnepfad@m": [{"scope": "user"}], "gut@m": [{"scope": "user", "installPath": str(tmp / "gut")}]}}))
+        with mock.patch.object(build, "PLUGINS", tmp), mock.patch.object(build, "SETTINGS", {}), \
+                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
+            liste, _, _ = build.plugins()
+        self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
+
     def test_marktplatz_ohne_ort_liest_nichts_aus_dem_arbeitsordner(self):
         self.assertEqual(build.marktplatz_datei({}), {})
         self.assertEqual(build.marktplatz_datei({"installLocation": ""}), {})
@@ -518,6 +530,19 @@ class Updates(unittest.TestCase):
             self.assertIsNone(build.github_baum("x/y"))
         with mock.patch.object(build.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
             self.assertIsNone(build.github_baum("x/y"))
+
+    def test_github_baum_mit_unerwarteter_antwort(self):
+        """Ein Absturz hier bräche build.py ab, und ohne build.py startet der Server nicht. Fehlt die Antwort, fehlt nur die Angabe."""
+        for stdout in ("kein json", "[]", '{"message": "Not Found"}', '{"sha": "s", "tree": [{"type": "tree"}]}'):
+            with self.subTest(stdout=stdout), mock.patch.object(build.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=stdout)):
+                self.assertIsNone(build.github_baum("x/y"))
+
+    def test_lock_eintrag_ohne_stand_bricht_nichts_ab(self):
+        lock = {"ohne-hash": {"source": "x/y", "skillPath": "a/SKILL.md"}, "leer": {}}
+        skills = [skill("ohne-hash"), skill("leer")]
+        with mock.patch.object(build, "github_baum", return_value={"": "r", "a": "a1"}):
+            build.updates_markieren(skills, lock)
+        self.assertEqual([e.get("update") for e in skills], [None, None])
 
     def test_update_je_skill_aus_dem_ordnerstand(self):
         skills = [skill(n) for n in self.LOCK] + [skill("3zero-style", quelle_art="lokal"), skill("superpowers:brainstorming", plugin_id="superpowers@x")]

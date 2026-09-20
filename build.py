@@ -170,14 +170,19 @@ def github_baum(repo):
         return None
     if r.returncode != 0:
         return None
-    daten = json.loads(r.stdout)
-    return {"": daten["sha"], **{t["path"]: t["sha"] for t in daten["tree"] if t["type"] == "tree"}}
+    try:
+        daten = json.loads(r.stdout)
+        return {"": daten["sha"], **{t["path"]: t["sha"] for t in daten["tree"] if t["type"] == "tree"}}
+    except (ValueError, KeyError, TypeError):  # eine unerwartete Antwort kostet nur die Update-Angabe, nicht den ganzen Lauf
+        return None
 
 
 def updates_markieren(skills, lock):
     """Setzt `update` bei per npx skills installierten Skills: True, wenn ihr Ordner auf GitHub einen anderen Stand hat
     als bei der Installation (skillFolderHash ist die Git-SHA des Ordners). Ohne Antwort von GitHub bleibt das Feld weg."""
     cli = [(e, lock[e["name"]]) for e in skills if not e.get("plugin") and e["quelle"]["art"] == "skills-CLI" and e["name"] in lock]
+    # ohne Repo, Pfad oder Stand der Installation gibt es nichts zu vergleichen
+    cli = [(e, l) for e, l in cli if all(isinstance(l.get(f), str) for f in ("source", "skillPath", "skillFolderHash"))]
     repos = sorted({l["source"] for _, l in cli})
     with ThreadPoolExecutor() as pool:
         baeume = dict(zip(repos, pool.map(github_baum, repos)))
@@ -454,7 +459,9 @@ def mehrfache_namen(pids):
 
 
 def plugins():
-    installiert = lies_json(PLUGINS / "installed_plugins.json").get("plugins", {})
+    roh = lies_json(PLUGINS / "installed_plugins.json").get("plugins", {})
+    # nur Installationen mit Pfad: Ein Eintrag ohne sie ist nicht installiert
+    installiert = {pid: mit_pfad for pid, inst in roh.items() if (mit_pfad := [i for i in inst if i.get("installPath")])}
     aktiviert = SETTINGS.get("enabledPlugins", {})
     marktplaetze = lies_json(PLUGINS / "known_marketplaces.json")
     liste, bestandteile, hooks = [], [], []
