@@ -800,7 +800,7 @@ function renderHinweise() {
 /* Gewählte Aktionen über server.py starten, einzeln oder alle nacheinander */
 const ERGEBNIS = new Map();
 /* offenerLauf: zu welchem Claude-Lauf auf dem Server die Karte gehört („bewertung“); Schließen verwirft ihn dort */
-let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "";
+let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false;
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
@@ -855,7 +855,8 @@ function renderMeldung() {
   const lang = inhalt.length > 2000; /* längere Berichte erst gekürzt zeigen */
   document.getElementById("meldung-bereich").innerHTML = meldung
     ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
-       <button type="button" class="kopieren" id="meldung-zu">schließen</button></div>
+       ${bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="bewertung"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
+         : '<button type="button" class="kopieren" id="meldung-zu">schließen</button>'}</div>
        <div class="inhalt${lang ? " gekuerzt" : ""}">${inhalt}</div>
        ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}</div>`
     : "";
@@ -918,12 +919,13 @@ function renderSuchInhalt() {
   document.getElementById("suchen").disabled = !!s.laeuft;
   document.getElementById("such-stand").textContent = s.laeuft ? " (läuft)" : "";
   let html = "";
-  if (s.laeuft) html = `<p class="status">${je("Claude", esc(D.harness_name))} gleicht „${esc(s.bedarf)}“ mit dem Bestand ab und sucht … (${s.sekunden} s)</p>`;
+  if (s.laeuft) html = `<p class="status">${je("Claude", esc(D.harness_name))} gleicht „${esc(s.bedarf)}“ mit dem Bestand ab und sucht … (${s.sekunden} s)
+    <button type="button" class="kopieren" data-abbrechen="suche"${s.abgebrochen ? " disabled" : ""}>abbrechen</button></p>`;
   /* ohne Bedarf: keine Antwort vom Server, oder er steht inzwischen auf dem anderen Harness */
   else if (!s.bedarf && s.ausgabe) html = `<div class="meldung">${markdown(s.ausgabe)}</div>`;
   else if (s.bedarf) html = `<div class="meldung"><div class="zeile"><p class="label">Ergebnis: ${esc(s.bedarf)}</p>
       <button type="button" class="kopieren" id="suche-verwerfen">verwerfen</button></div>
-      ${markdown(s.ok ? s.ausgabe + (kandidaten.length ? "" : "\n\nKeine Kandidaten.") : "Suche fehlgeschlagen:\n\n" + s.ausgabe)}${kandidatenBlock()}</div>`;
+      ${markdown(s.ok ? s.ausgabe + (kandidaten.length ? "" : "\n\nKeine Kandidaten.") : s.abgebrochen ? "Suche abgebrochen." : "Suche fehlgeschlagen:\n\n" + s.ausgabe)}${kandidatenBlock()}</div>`;
   document.getElementById("such-inhalt").innerHTML = html;
 }
 function ausfuehrZelle(e) {
@@ -1001,7 +1003,7 @@ function renderHilfe() {
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
       ${datenordner}
       <li><code>/3zero-harness-inventur</code> in Claude Code: macht dasselbe wie <code>build.py</code> und lässt Claude zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-claude-code.json).</li>
-      <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt.</li>
+      <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt. Bewertung und Suche lassen sich mit „abbrechen“ beenden; die bisherige Bewertung gilt dann weiter.</li>
       <li>Claude-Läufe aus dem Dashboard nutzen die Anmeldung von Claude Code. Solange die über dein claude.ai-Konto läuft (<code>claude auth status</code>), verbrauchen sie Kontingent deines Abos und kosten keine API-Gebühren.</li>
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
@@ -1159,8 +1161,14 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", async ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #suche-verwerfen, [data-ausfuehren], [data-installieren]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen]");
     if (!knopf) return;
+    if (knopf.dataset.abbrechen) {
+      /* Nur anstoßen: Das Ende meldet die laufende Abfrage des Standes, auch wenn der Lauf gerade von selbst fertig wurde */
+      knopf.disabled = true;
+      api("/api/abbrechen", { art: knopf.dataset.abbrechen });
+      return;
+    }
     if (knopf.id === "meldung-zu") {
       if (offenerLauf) api(`/api/${offenerLauf}`, { verwerfen: true });
       offenerLauf = ""; return setMeldung("");
@@ -1230,12 +1238,14 @@ async function bewertungVerfolgen() {
     const b = await api("/api/bewertung");
     if (b.verbindung === false) return setMeldung(b.ausgabe, "Fehler");
     if (!b.laeuft) return location.reload(); /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
+    bewertungLaeuft = b.abgebrochen ? "abbruch" : "ja"; /* der Knopf entsteht alle zwei Sekunden neu und bliebe sonst klickbar */
     setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
     await warte(2000);
   }
 }
 function bewertungZeigen(b) {
   offenerLauf = "bewertung";
+  if (b.abgebrochen) return setMeldung("Die Bewertung wurde abgebrochen. Die bisherige Bewertung gilt weiter.", "Bewertung abgebrochen");
   setMeldung(b.ok ? b.ausgabe : "Bewertung fehlgeschlagen:\n\n" + b.ausgabe, b.ok ? "Ergebnis der Bewertung" : "Fehler bei der Bewertung");
 }
 async function sucheVerfolgen() {

@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -323,14 +324,32 @@ def claude_text(ausgabe):
     return ausgabe
 
 
-def lauf(argv, cwd, timeout):
+def beenden(prozess):
+    """Beendet den Prozess samt Kindern: claude und codex starten ihre Werkzeuge als eigene Prozesse."""
     try:
-        r = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired) as fehler:
+        os.killpg(prozess.pid, signal.SIGKILL)  # eigene Prozessgruppe, siehe start_new_session in lauf()
+    except ProcessLookupError:
+        pass
+
+
+def lauf(argv, cwd, timeout, gestartet=None):
+    """`gestartet` bekommt den laufenden Prozess, damit ihn jemand abbrechen kann."""
+    try:
+        p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, start_new_session=True)
+    except OSError as fehler:
+        return {"ok": False, "ausgabe": str(fehler), "stdout": ""}
+    if gestartet:
+        gestartet(p)
+    try:
+        stdout, stderr = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as fehler:
+        beenden(p)
+        p.communicate()
         return {"ok": False, "ausgabe": str(fehler), "stdout": ""}
     # `ausgabe` ist für den Benutzer und enthält beides; `stdout` bleibt getrennt, weil eine geschweifte Klammer
     # in einer Warnung auf stderr sonst den JSON-Ausschnitt zerreißt und ein gelungener Lauf als Fehler gälte.
-    return {"ok": r.returncode == 0, "ausgabe": (r.stdout + r.stderr).strip(), "stdout": r.stdout}
+    return {"ok": p.returncode == 0, "ausgabe": (stdout + stderr).strip(), "stdout": stdout}
 
 
 class Inventarserver(ThreadingHTTPServer):
@@ -346,6 +365,7 @@ class Inventarserver(ThreadingHTTPServer):
         # Stand der Claude-Läufe „suche“ und „bewertung“: Sie laufen im Hintergrund, der Browser fragt ihn ab.
         # Eigene Sperre, weil self.sperre während einer Bewertung minutenlang belegt ist.
         self.laeufe, self.laeufe_sperre = {}, threading.Lock()
+        self.prozesse = {}  # der laufende claude- oder codex-Prozess je Art, damit abbrechen() ihn beenden kann
         self.codex_config = Path.home() / ".codex" / "config.toml"
         self.codex_skills = Path.home() / ".agents" / "skills"  # dorthin legt npx skills die Skills
 
@@ -532,7 +552,7 @@ class Inventarserver(ThreadingHTTPServer):
                 kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
                 einstellungen = arbeitsordner / "settings.json"
                 einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
-                c = lauf(bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"]), arbeitsordner, 1200)
+                c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"]), arbeitsordner)
                 text = claude_text(c["ausgabe"])
                 if not c["ok"]:
                     return {"ok": False, "ausgabe": text}
@@ -557,8 +577,8 @@ class Inventarserver(ThreadingHTTPServer):
                 (arbeitsordner / "bewertung-codex.json").write_text(
                     bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
                 ergebnis = arbeitsordner / "ergebnis.md"
-                c = lauf(codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"], codex_modell(self.codex_config)),
-                         arbeitsordner, 1200)
+                c = self.langer_lauf("bewertung", codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"],
+                                                                 codex_modell(self.codex_config)), arbeitsordner)
                 text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
                 if not c["ok"]:
                     return {"ok": False, "ausgabe": text}
@@ -590,7 +610,7 @@ class Inventarserver(ThreadingHTTPServer):
         with tempfile.TemporaryDirectory() as tmp:
             einstellungen = Path(tmp) / "settings.json"
             einstellungen.write_text(json.dumps(SUCHEN_SPERREN), encoding="utf-8")
-            r = lauf([*argv, "--settings", str(einstellungen)], tmp, 1200)
+            r = self.langer_lauf("suche", [*argv, "--settings", str(einstellungen)], tmp)
         ergebnis = (claude_json(r["stdout"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
@@ -602,7 +622,7 @@ class Inventarserver(ThreadingHTTPServer):
             schema, ergebnis = Path(tmp) / "schema.json", Path(tmp) / "ergebnis.json"
             schema.write_text(json.dumps(SUCHEN_SCHEMA_CODEX), encoding="utf-8")
             (Path(tmp) / "npm-cache").mkdir()
-            r = lauf(codex_suchen(bedarf, tmp, schema, ergebnis, codex_modell(self.codex_config)), tmp, 1200)
+            r = self.langer_lauf("suche", codex_suchen(bedarf, tmp, schema, ergebnis, codex_modell(self.codex_config)), tmp)
             try:
                 daten = json.loads(ergebnis.read_text(encoding="utf-8"))
             except (OSError, ValueError):
@@ -620,15 +640,43 @@ class Inventarserver(ThreadingHTTPServer):
             if (self.laeufe.get(art) or {}).get("laeuft"):
                 return {"ok": False, "ausgabe": "Das läuft schon."}
             self.laeufe[art] = {"laeuft": True, "beginn": time.time(), **angaben}
+            self.prozesse.pop(art, None)
 
         def los():
             try:
                 ergebnis = arbeit()
             except Exception as fehler:  # sonst bliebe der Lauf für immer „läuft“ und sperrte jeden weiteren
                 ergebnis = {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"}
-            self.laeufe[art] = {"laeuft": False, **angaben, **ergebnis}
+            with self.laeufe_sperre:
+                if self.laeufe[art].get("abgebrochen"):
+                    ergebnis = {"ok": False, "abgebrochen": True, "ausgabe": "Abgebrochen."}
+                self.laeufe[art] = {"laeuft": False, **angaben, **ergebnis}
         threading.Thread(target=los, daemon=True).start()
         return {"ok": True, "laeuft": True}
+
+    def langer_lauf(self, art, argv, cwd):
+        """Ein claude- oder codex-Lauf, den abbrechen() beenden kann."""
+        def gestartet(prozess):
+            with self.laeufe_sperre:
+                self.prozesse[art] = prozess
+                if (self.laeufe.get(art) or {}).get("abgebrochen"):  # der Abbruch kam, während build.py davor noch lief
+                    beenden(prozess)
+        return lauf(argv, cwd, 1200, gestartet)
+
+    def abbrechen(self, art):
+        """Ein Lauf hält die Sperre bis zu 20 Minuten; ohne Abbruch half nur, den Server zu beenden."""
+        with self.laeufe_sperre:
+            lauf_ = self.laeufe.get(art)
+            if not lauf_ or not lauf_["laeuft"]:
+                return {"ok": False, "ausgabe": "Da läuft nichts."}
+            prozess = self.prozesse.get(art)
+            if prozess and prozess.poll() is not None:
+                # claude ist schon durch und die Bewertung zurückgeschrieben; „abgebrochen“ wäre jetzt falsch
+                return {"ok": False, "ausgabe": "Der Lauf ist schon durch, das Ergebnis kommt gleich."}
+            lauf_["abgebrochen"] = True
+            if prozess:
+                beenden(prozess)
+        return {"ok": True}
 
     def stand(self, art, verwerfen=False):
         with self.laeufe_sperre:
@@ -717,7 +765,7 @@ class Handler(BaseHTTPRequestHandler):
                                                                "diese Seite zeigt einen anderen Harness. Lade die Seite neu."})
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
-        if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren"):
+        if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren", "/api/abbrechen"):
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:
             anfrage = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -731,6 +779,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.antworte(400, {"ok": False, "ausgabe": "Bedarf fehlt oder ist länger als 300 Zeichen."})
             bedarf = bedarf.strip()
             return self.antworte(200, self.server.im_hintergrund("suche", lambda: self.server.suchen(bedarf), bedarf=bedarf))
+        if self.path == "/api/abbrechen":
+            art = anfrage.get("art") if isinstance(anfrage, dict) else None
+            if art not in ("bewertung", "suche"):
+                return self.antworte(400, {"ok": False, "ausgabe": "Abbrechen lassen sich nur Bewertung und Suche."})
+            return self.antworte(200, self.server.abbrechen(art))
         if self.path in ("/api/suche", "/api/bewertung"):
             art = self.path.removeprefix("/api/")
             return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
@@ -812,6 +865,8 @@ def main():
         pass
     finally:
         start.unlink(missing_ok=True)  # der Schlüssel gilt nur für diesen Lauf
+        for prozess in srv.prozesse.values():  # eigene Prozessgruppe: Ctrl+C im Terminal erreicht sie nicht mehr
+            beenden(prozess)
 
 
 if __name__ == "__main__":

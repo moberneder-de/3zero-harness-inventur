@@ -423,6 +423,67 @@ class Server(unittest.TestCase):
         self.assertEqual(self.suchen("Folien", warten=False)[1], {"ok": True, "laeuft": True})
         self.assertLess(time.time() - beginn, 0.5)
 
+    def langsamer_claude(self):
+        """Ein claude, der 30 Sekunden hängt und einen Kindprozess hat, wie der echte mit seinen Werkzeugen."""
+        self.claude_ersatz('{"result":"fertig"}', bewertung='{"stand": "halb fertig"}')
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace(
+            "cat <<", f'echo $$ > "{self.tmp}/pid"\nsleep 30 &\necho $! > "{self.tmp}/kind"\nwait\ncat <<', 1))
+
+    def warte_auf(self, datei):
+        for _ in range(50):
+            if datei.exists() and datei.read_text().strip():
+                return int(datei.read_text())
+            time.sleep(0.1)
+        self.fail(f"{datei.name} entstand nicht")
+
+    def lebt(self, pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    def test_abbrechen_beendet_die_bewertung_samt_kindprozessen(self):
+        """Ein Lauf hält die Sperre bis zu 20 Minuten; ohne Abbruch half nur, den Server zu beenden."""
+        bewertung = self.tmp / "bewertung-claude-code.json"
+        bewertung.write_text('{"stand": "2026-09-01"}')
+        self.langsamer_claude()
+        self.assertEqual(self.anfrage("POST", "/api/bewerten")[0], 200)
+        pid, kind = self.warte_auf(self.tmp / "pid"), self.warte_auf(self.tmp / "kind")
+        self.assertEqual(json.loads(self.anfrage("POST", "/api/abbrechen", {"art": "bewertung"})[1]), {"ok": True})
+        for _ in range(30):
+            stand = json.loads(self.anfrage("POST", "/api/bewertung")[1])
+            if not stand["laeuft"]:
+                break
+            time.sleep(0.1)
+        self.assertEqual((stand["laeuft"], stand["ok"], stand["abgebrochen"]), (False, False, True))
+        self.assertEqual(json.loads(bewertung.read_text()), {"stand": "2026-09-01"})
+        time.sleep(0.2)
+        self.assertFalse(self.lebt(pid) or self.lebt(kind))
+
+    def test_abbrechen_beendet_die_suche(self):
+        self.langsamer_claude()
+        self.assertEqual(self.suchen("Folien", warten=False)[1], {"ok": True, "laeuft": True})
+        self.warte_auf(self.tmp / "pid")
+        self.assertEqual(json.loads(self.anfrage("POST", "/api/abbrechen", {"art": "suche"})[1]), {"ok": True})
+        for _ in range(30):
+            stand = self.stand()
+            if not stand["laeuft"]:
+                break
+            time.sleep(0.1)
+        self.assertEqual((stand["laeuft"], stand["ok"], stand["abgebrochen"], stand["bedarf"]), (False, False, True, "Folien"))
+
+    def test_abbrechen_ohne_lauf_und_ohne_token(self):
+        for art in ("bewertung", "suche"):
+            with self.subTest(art=art):
+                status, inhalt = self.anfrage("POST", "/api/abbrechen", {"art": art})
+                self.assertEqual((status, json.loads(inhalt)), (200, {"ok": False, "ausgabe": "Da läuft nichts."}))
+        for daten in ({"art": "anderes"}, {}, "kein json"):
+            with self.subTest(daten=daten):
+                self.assertEqual(self.anfrage("POST", "/api/abbrechen", daten)[0], 400)
+        self.assertEqual(self.anfrage("POST", "/api/abbrechen", {"art": "suche"}, token=None)[0], 403)
+
     KANDIDATEN = [
         {"art": "skill", "name": "frontend-slides", "was": "HTML-Folien", "repo": "zarazhangrui/frontend-slides", "skill": "frontend-slides", "befehl": "npx skills add …"},
         {"art": "plugin", "name": "slides", "was": "Plugin", "plugin": "slides", "marktplatz": "claude-plugins-official", "befehl": "claude plugin install …"},
