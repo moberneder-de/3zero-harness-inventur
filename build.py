@@ -705,7 +705,10 @@ def aktionen(e):
         return {}
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
-        a = {"deinstallieren": {"argv": ["claude", "plugin", "uninstall", pid]}}
+        # aktualisieren immer: Ob ein Update bereitsteht, zeigt `claude plugin list` nicht, der Befehl sagt es selbst.
+        # Ohne -y: Damit nähme der Server einen geänderten Installationsbefehl aus dem Marktplatz ungefragt an.
+        a = {"aktualisieren": {"argv": ["claude", "plugin", "update", pid]},
+             "deinstallieren": {"argv": ["claude", "plugin", "uninstall", pid]}}
         if e["status"] == "aktiv":
             a["deaktivieren"] = {"argv": ["claude", "plugin", "disable", pid]}
         return a

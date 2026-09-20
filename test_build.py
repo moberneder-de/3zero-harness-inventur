@@ -34,7 +34,10 @@ def mcp(name, art, quelle):
 
 class Aktionen(unittest.TestCase):
     def test_aktives_plugin(self):
+        """aktualisieren immer: Ob ein Update bereitsteht, sagt `claude plugin list` nicht, der Befehl selbst schon.
+        Ohne -y: Damit nähme der Server einen geänderten Installationsbefehl aus dem Marktplatz ungefragt an."""
         self.assertEqual(build.aktionen(plugin("aktiv")), {
+            "aktualisieren": {"argv": ["claude", "plugin", "update", "superpowers@claude-plugins-official"]},
             "deinstallieren": {"argv": ["claude", "plugin", "uninstall", "superpowers@claude-plugins-official"]},
             "deaktivieren": {"argv": ["claude", "plugin", "disable", "superpowers@claude-plugins-official"]},
         })
@@ -42,7 +45,7 @@ class Aktionen(unittest.TestCase):
     def test_nicht_aktives_plugin_bietet_kein_deaktivieren(self):
         for status in ("deaktiviert", "nicht aktiviert"):
             with self.subTest(status):
-                self.assertEqual(list(build.aktionen(plugin(status))), ["deinstallieren"])
+                self.assertEqual(list(build.aktionen(plugin(status))), ["aktualisieren", "deinstallieren"])
 
     def test_skill_aus_skills_cli(self):
         self.assertEqual(build.aktionen(skill("grilling")), {

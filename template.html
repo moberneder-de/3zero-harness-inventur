@@ -1019,7 +1019,7 @@ function renderHilfe() {
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab „Empfehlungen“ oder alles über „alle … ausführen“ im Kopf, nach einer Bestätigung.</li>
-      <li><b>aktualisieren</b>: nur bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Plugins sind nicht dabei.</li>
+      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Bei Plugins immer, per <code>claude plugin update</code>: Ob ein Update bereitsteht, sagt erst der Befehl. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
