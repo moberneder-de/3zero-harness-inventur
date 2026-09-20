@@ -103,6 +103,28 @@ class Nutzung(CodexOrdner):
         self.assertEqual(codex.nutzung(server.get("node_repl")), {"anzahl": 2, "zuletzt": "2026-09-03"})
         self.assertIsNone(codex.nutzung(None))
 
+    def test_nutzung_ueberlebt_ein_plugin_update(self):
+        """Plugin-Skills liegen unter einem Versionsordner. Nach einem Update zeigte der Eintrag auf die neue
+        Version, die gezählten Sitzungen auf die alte — jedes Plugin stand danach auf „nie genutzt“."""
+        cache = self.home / ".codex/plugins/cache"
+        alt = self.skill(cache / "openai-bundled/sites/0.1.43/skills", "sites-building")
+        neu = self.skill(cache / "openai-curated-remote/sites/0.1.65/skills", "sites-building")
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": f"['/bin/zsh', '-lc', \"cat {alt}\"]"}}
+        self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl", self.zeile("2026-09-01", lesen))
+        skills, _ = codex.nutzung_zaehlen(codex.sitzungen())
+        self.assertEqual(codex.nutzung(skills.get(codex.nutzungsschluessel(neu))), {"anzahl": 1, "zuletzt": "2026-09-01"})
+
+    def test_nutzungsschluessel_laesst_marktplatz_und_version_weg(self):
+        cache = self.home / ".codex/plugins/cache"
+        self.assertEqual(codex.nutzungsschluessel(cache / "openai-bundled/sites/0.1.43/skills/x/SKILL.md"),
+                         codex.nutzungsschluessel(cache / "openai-curated-remote/sites/0.1.65/skills/x/SKILL.md"))
+        self.assertNotEqual(codex.nutzungsschluessel(cache / "m/sites/1/skills/x/SKILL.md"),
+                            codex.nutzungsschluessel(cache / "m/anderes/1/skills/x/SKILL.md"))
+        eigen = self.schreibe(self.home / ".agents/skills/archify/SKILL.md", "---\n---\n")
+        self.assertEqual(codex.nutzungsschluessel(eigen), str(eigen.resolve()))
+        self.assertNotEqual(codex.nutzungsschluessel(cache / "m/p/1/skills/x/SKILL.md"),
+                            codex.nutzungsschluessel(cache / "m/p/1/skills/y/SKILL.md"))
+
     def test_sitzung_die_den_inventur_skill_waehlt_zaehlt_nicht(self):
         """Interaktive Läufe von $3zero-harness-inventur lesen selbst viele SKILL.md; das darf nicht als Nutzung zählen."""
         skill = self.skill(self.home / ".agents/skills", "archify")

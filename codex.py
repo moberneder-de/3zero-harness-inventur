@@ -127,6 +127,21 @@ def sitzungen():
     return sorted(CODEX.glob("sessions/**/*.jsonl")) + sorted(CODEX.glob("archived_sessions/**/*.jsonl"))
 
 
+def nutzungsschluessel(pfad):
+    """Ein Skill-Pfad, bei Plugins ohne Marktplatz und Version (.../cache/<Marktplatz>/<Plugin>/<Version>/…).
+    Beide ändern sich, ohne dass der Skill ein anderer wird: `sites` wanderte von openai-bundled nach
+    openai-curated-remote und von 0.1.43 auf 0.1.65. Sonst zeigte der Eintrag auf den neuen Ort, die
+    gezählten Sitzungen auf den alten, und jedes Plugin stand auf „nie genutzt“. Zwei gleichnamige Plugins
+    aus verschiedenen Marktplätzen teilen sich dadurch ihre Nutzung — seltener und kleiner als der Fehler."""
+    p = Path(pfad).resolve()
+    cache = (CODEX / "plugins" / "cache").resolve()
+    try:
+        teile = p.relative_to(cache).parts
+    except ValueError:
+        return str(p)
+    return str(cache.joinpath(teile[1], *teile[3:])) if len(teile) > 3 else str(p)
+
+
 def nutzung_zaehlen(dateien):
     """Skills zählen je Sitzung einmal: per $name gewählt oder ihre SKILL.md gelesen. MCP-Server zählen je Aufruf.
     Eine Sitzung zählt ganz nicht mit, wenn sie selbst diesen Skill wählt oder im Projektordner lief: sonst zählte
@@ -174,7 +189,7 @@ def nutzung_zaehlen(dateien):
         if ueberspringen:
             continue
         for pfad, tag in gelesen.items():
-            skills.setdefault(str(Path(pfad).resolve()), []).append(tag)
+            skills.setdefault(nutzungsschluessel(pfad), []).append(tag)
         for server, tage in mcp_gelesen.items():
             mcp.setdefault(server, []).extend(tage)
     return skills, mcp
@@ -472,7 +487,7 @@ def inventar():
     eingebaut = eingebaute(aus, bewertung)
     skill_tage, mcp_tage = nutzung_zaehlen(sitzungen())
     for e in skills + projekt_skills + eingebaut:
-        e["nutzung"] = nutzung(skill_tage.get(str(Path(e["pfad"]).resolve())))
+        e["nutzung"] = nutzung(skill_tage.get(nutzungsschluessel(e["pfad"])))
     for p in plugin_liste:
         genutzt = [t["nutzung"] for t in plugin_teile if t["plugin"] == f"{p['name']}@{p['marktplatz']}" and t["nutzung"]]
         if genutzt:
