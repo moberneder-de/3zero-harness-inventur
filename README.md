@@ -54,7 +54,7 @@ Keine Empfehlung ohne Beleg aus dem Bestand. „Nie benutzt" trägt nicht, wenn 
 
 ## Aktionen ausführen
 
-Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell**. Vorbelegt ist, was die Empfehlung nahelegt.
+Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell** und, für alles, was aus ist, die Gegen-Aktionen **einschalten** und **wieder automatisch**. Vorbelegt ist, was die Empfehlung nahelegt. Bewertung und Suche laufen im Hintergrund und lassen sich abbrechen.
 
 Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext.
 

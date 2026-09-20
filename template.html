@@ -969,7 +969,7 @@ function renderHilfe() {
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
       ${datenordner}
       <li><code>$3zero-harness-inventur</code> in Codex: macht dasselbe wie <code>build.py --harness codex</code> und lässt Codex zusätzlich neue Einträge beschreiben, entfernte austragen, Überschneidungen, Hinweise und Empfehlungen nachziehen (bewertung-codex.json).</li>
-      <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: Codex schreibt nur in eine Arbeitskopie von bewertung-codex.json in einem Temp-Ordner, ohne Netz, ohne deine eigenen Plugins, MCP-Server und Regeln; der Server prüft die Kopie und übernimmt sie. Den Bestand liest der Server davor und danach selbst ein.</li>
+      <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: Codex schreibt nur in eine Arbeitskopie von bewertung-codex.json in einem Temp-Ordner, ohne Netz, ohne deine eigenen Plugins, MCP-Server und Regeln; der Server prüft die Kopie und übernimmt sie. Den Bestand liest der Server davor und danach selbst ein. Bewertung und Suche lassen sich mit „abbrechen“ beenden; die bisherige Bewertung gilt dann weiter.</li>
       <li>Codex-Läufe aus dem Dashboard nutzen die Anmeldung von Codex (<code>codex login status</code>). Solange die über dein ChatGPT-Konto läuft, verbrauchen sie Kontingent deines Abos.</li>
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
@@ -985,12 +985,13 @@ function renderHilfe() {
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
-      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“.</li>
-      <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code.</li>
+      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“. Für Plugins hat Codex keinen Update-Befehl.</li>
+      <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code. Hooks haben unter Codex keine Aktion; der Befehl in den Details nennt die Stelle in der Datei.</li>
       <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
       <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. <code>enabled = true</code> in ~/.codex/config.toml, bei Skills im <code>[[skills.config]]</code>-Block ihres Pfads, und <code>allow_implicit_invocation: true</code> in <code>agents/openai.yaml</code>. Schaltet config.toml einen Skill nach Namen statt nach Pfad ab, bleibt das Handarbeit.</li>
       <li>Vor der ersten Änderung legt der Server eine Sicherung <code>config.toml.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf, und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
+      <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
@@ -1004,6 +1005,7 @@ function renderHilfe() {
       <li>MCP-Status: aus <code>enabled</code> in ~/.codex/config.toml und den Plugin-Schaltern, ohne Verbindungstest. Umgebungswerte und Tokens der Server übernimmt das Inventar nicht.</li>
       <li>Herkunft: plugin.json im Plugin-Ordner, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills. Klarnamen und belegte Quellen stehen in bewertung-codex.json.</li>
       <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
+      <li>Nicht gemessen: Werkzeuge und Kontext der MCP-Server, Ausgabe und Laufzeit der Hooks. Codex protokolliert sie nicht.</li>
     </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness codex</code> zeigt das Dashboard stattdessen Codex; ohne Angabe gilt der zuletzt genannte.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
@@ -1031,6 +1033,7 @@ function renderHilfe() {
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
       <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. Sie erscheinen bei allem, was das Dashboard abschalten kann und was gerade aus ist: nehmen den Override weg, heben die Sperre in <code>deniedMcpServers</code> auf oder führen <code>claude plugin enable</code> aus. Das geht jederzeit, auch nach einem Neustart.</li>
       <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
+      <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
@@ -1039,9 +1042,10 @@ function renderHilfe() {
       <li>Neu Installiertes erscheint danach als „neu · unbewertet“; „neu bewerten“ trägt die Bewertung nach.</li>
       <li>Dasselbe mit Rückfragen im Gespräch: <code>/3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Claude Code.</li>
     </ul>`], ["Woher die Zahlen kommen", `<ul>
-      <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Für Agenten, Hooks und MCP-Server gibt es keine Zähler.</li>
+      <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Die Aufrufe der MCP-Server zählt <code>build.py</code> selbst in den Transkripten. Für Agenten und Hooks gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
-      <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4.</li>
+      <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4. Aus denselben Transkripten kommt ihre Laufzeit: Hooks laufen, während du wartest.</li>
+      <li>MCP-Server: Zahl der Werkzeuge, Anweisungsblock in Tokens und Aufrufe, ebenfalls aus den Transkripten. Die Schemata sofort geladener Werkzeuge stehen dort nicht, der echte Kontextwert liegt also höher. Kam ein Server in dieser Zeit nicht vor, steht „nicht gemessen“.</li>
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
       <li>Updates: <code>build.py</code> fragt per <code>gh api</code> den aktuellen Stand des Skill-Ordners auf GitHub ab und vergleicht ihn mit dem Stand bei der Installation (<code>skillFolderHash</code>). Ohne <code>gh</code> oder Netz fehlt nur diese Angabe; fehlt der Ordner upstream, ebenfalls.</li>
