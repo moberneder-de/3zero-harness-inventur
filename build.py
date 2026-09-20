@@ -348,9 +348,10 @@ def messen(hooks, ausgaben, dauern):
     """Trägt die gemessenen Ausgaben und Laufzeiten ein. Kontext in jeder Sitzung kosten nur aktive SessionStart-Hooks."""
     for h in hooks:
         schluessel = {(h["ereignis"], b["befehl"]) for b in h["befehle"]}
-        # ein Eintrag steht für ein Ereignis mit allen seinen Befehlen: sie laufen zusammen, der Median zählt zusammen
+        # Ein Eintrag steht für ein Ereignis mit allen seinen Befehlen. Claude Code führt sie laut Doku parallel
+        # aus ("All matching hooks run in parallel"), also wartet der Benutzer auf den langsamsten, nicht auf alle.
         gemessen = [dauern[k] for k in schluessel if k in dauern]
-        h["dauer"] = {"median": sum(g["median"] for g in gemessen), "max": max(g["max"] for g in gemessen),
+        h["dauer"] = {"median": max(g["median"] for g in gemessen), "max": max(g["max"] for g in gemessen),
                       "messungen": sum(g["messungen"] for g in gemessen)} if gemessen else None
         funde = [ausgaben[k] for k in schluessel if k in ausgaben]
         if not funde:
@@ -618,6 +619,16 @@ def projekt_mcp(projekte):
     return ergebnis
 
 
+SICHER = re.compile(r"[\w@%+=:,./-]+")
+
+
+def shellwort(wert):
+    """Ein Wort für einen Befehl, den der Benutzer ins Terminal einfügt. Einfache Anführungszeichen, weil in
+    doppelten `, $ und \\ wirksam blieben: Ein Projektpfad mit $(…) führte sonst etwas anderes aus, als dasteht."""
+    wert = str(wert)
+    return wert if SICHER.fullmatch(wert) else "'" + wert.replace("'", "'\\''") + "'"
+
+
 def befehl(e, empfehlung):
     """Der Befehl, mit dem sich die Empfehlung umsetzen ließe."""
     eid = e["id"]
@@ -636,7 +647,7 @@ def befehl(e, empfehlung):
             return f'~/.claude.json → "projects" → "{e["projekt"]}" → "mcpServers" → "{e["name"]}" von Hand löschen, während keine Claude-Sitzung läuft'
         if e.get("projekt"):
             scope = "project" if e["art"] == ".mcp.json" else "local"
-            return f"cd \"{e['projekt']}\" && claude mcp remove \"{e['name']}\" -s {scope}"
+            return f"cd {shellwort(e['projekt'])} && claude mcp remove {shellwort(e['name'])} -s {scope}"
         if e["art"] == "claude.ai-Connector":
             return "claude.ai → Einstellungen → Connectors → trennen"
         if e["art"] == "Plugin":
@@ -645,7 +656,7 @@ def befehl(e, empfehlung):
     if e.get("plugin"):
         return f"claude plugin uninstall {e['plugin']}"
     if e.get("projekt") and e["quelle"]["art"] == "skills-CLI":
-        return f"cd \"{e['projekt']}\" && npx skills remove {e['name']}"
+        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}"
     if e.get("projekt"):
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
         return f"mv \"{ziel}\" ~/.Trash/"

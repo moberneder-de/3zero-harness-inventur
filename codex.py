@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import harness
-from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, updates_markieren, ziel_text
+from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, shellwort, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -452,7 +452,7 @@ def befehl(e, empfehlung):
     if e.get("plugin"):
         return f"codex plugin remove {e['plugin']}"
     if e["quelle"]["art"] == "skills-CLI":
-        return f"cd \"{e['projekt']}\" && npx skills remove {e['name']}" if e.get("projekt") else f"npx skills remove --global {e['name']}"
+        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {e['name']}"
     return f"mv \"{Path(e['pfad']).parent}\" ~/.Trash/"
 
 

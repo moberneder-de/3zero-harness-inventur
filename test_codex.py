@@ -319,7 +319,7 @@ class Befehle(unittest.TestCase):
         self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
         self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
         self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv "/h/.agents/skills/grilling" ~/.Trash/')
-        self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd "/x/Kit" && npx skills remove grilling')
+        self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd /x/Kit && npx skills remove grilling')
         self.assertEqual(codex.befehl({**skill, "plugin": "documents@m"}, "entfernen"), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "plugin:documents@m", "name": "documents", "marktplatz": "m"}, None), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "mcp:node_repl", "name": "node_repl", "art": "User"}, None), "codex mcp remove node_repl")

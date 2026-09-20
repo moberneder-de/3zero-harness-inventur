@@ -166,6 +166,26 @@ class PluginBestand(unittest.TestCase):
         self.assertEqual(build.marktplatz_datei({"installLocation": ""}), {})
 
 
+class ShellQuoting(unittest.TestCase):
+    """Die angezeigten Befehle sind zum Einfügen ins Terminal gedacht. In doppelten Anführungszeichen bleiben
+    `, $ und \\ wirksam: Ein Projektpfad mit $(…) führte beim Einfügen etwas anderes aus, als dastand."""
+
+    def test_einfache_anfuehrungszeichen_statt_doppelter(self):
+        self.assertEqual(build.shellwort("/Users/x/Projekt"), "/Users/x/Projekt")
+        self.assertEqual(build.shellwort("/Users/x/mit raum"), "'/Users/x/mit raum'")
+        self.assertEqual(build.shellwort("/Users/x/$(rm -rf ~)"), "'/Users/x/$(rm -rf ~)'")
+        self.assertEqual(build.shellwort("/Users/x/`id`"), "'/Users/x/`id`'")
+
+    def test_einfaches_anfuehrungszeichen_im_pfad(self):
+        self.assertEqual(build.shellwort("/Users/x/Martin's"), "'/Users/x/Martin'\\''s'")
+
+    def test_so_gequotet_fuehrt_die_shell_nichts_aus(self):
+        import subprocess
+        pfad = "/tmp/$(touch /tmp/sollte-nicht-entstehen)`id`"
+        r = subprocess.run(["sh", "-c", f"printf %s {build.shellwort(pfad)}"], capture_output=True, text=True)
+        self.assertEqual(r.stdout, pfad)
+
+
 class GleichnamigePlugins(unittest.TestCase):
     """Gibt es ein Plugin in zwei Marktplätzen, tragen seine Skills den Marktplatz in der ID, damit eine Aktion
     nicht das falsche trifft. Claude Code selbst führt sie aber ohne: `sites:foo`, nicht `sites@markt:foo`.
@@ -408,6 +428,16 @@ class Hooks(unittest.TestCase):
         self.assertEqual(h["Stop"]["dauer"], {"median": 8, "max": 12, "messungen": 4})
         self.assertIsNone(h["PostToolUse"]["dauer"])
 
+    def test_mehrere_befehle_eines_ereignisses_laufen_parallel(self):
+        """Claude Code führt die Hooks eines Ereignisses laut Doku parallel aus: Der Benutzer wartet auf den
+        langsamsten, nicht auf alle zusammen. Vorher stand hier die Summe (150 ms statt 100)."""
+        hooks = build.hook_eintraege({"Stop": [{"hooks": [{"type": "command", "command": "schnell"},
+                                                          {"type": "command", "command": "langsam"}]}]},
+                                     "p@m", {"art": "Plugin"}, "/p/hooks.json")
+        build.messen(hooks, {}, {("Stop", "schnell"): {"median": 50, "max": 60, "messungen": 4},
+                                 ("Stop", "langsam"): {"median": 100, "max": 140, "messungen": 4}})
+        self.assertEqual(hooks[0]["dauer"], {"median": 100, "max": 140, "messungen": 8})
+
     def test_messen_zaehlt_nur_sessionstart_je_sitzung(self):
         hooks = build.hook_eintraege({
             "SessionStart": [{"hooks": [{"type": "command", "command": "start"}]}],
@@ -422,14 +452,14 @@ class Hooks(unittest.TestCase):
 
     def test_befehl_fuer_projekt_skills(self):
         cli = {**skill("seo-audit"), "projekt": "/x/Kit"}
-        self.assertEqual(build.befehl(cli, "entfernen"), 'cd "/x/Kit" && npx skills remove seo-audit')
+        self.assertEqual(build.befehl(cli, "entfernen"), 'cd /x/Kit && npx skills remove seo-audit')
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
         self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
 
     def test_befehl_fuer_projekt_mcp(self):
         e = {"id": "mcp:Q/q", "name": "q", "projekt": "/x/Q", "art": ".mcp.json", "status": "freigegeben"}
-        self.assertEqual(build.befehl(e, "entfernen"), 'cd "/x/Q" && claude mcp remove "q" -s project')
-        self.assertEqual(build.befehl({**e, "art": "lokal"}, None), 'cd "/x/Q" && claude mcp remove "q" -s local')
+        self.assertEqual(build.befehl(e, "entfernen"), 'cd /x/Q && claude mcp remove q -s project')
+        self.assertEqual(build.befehl({**e, "art": "lokal"}, None), 'cd /x/Q && claude mcp remove q -s local')
         self.assertEqual(build.befehl({**e, "art": "lokal", "status": "Ordner fehlt"}, None),
                          '~/.claude.json → "projects" → "/x/Q" → "mcpServers" → "q" von Hand löschen, während keine Claude-Sitzung läuft')
 
