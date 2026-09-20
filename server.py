@@ -616,6 +616,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", typ + "; charset=utf-8")
         self.send_header("Content-Length", str(len(daten)))
+        # Die Host-Prüfung hält fremde Seiten vom Lesen ab, nicht vom Einbetten: In einem unsichtbaren Rahmen
+        # ließe sich ein Klick des Benutzers auf „Bewertung neu erstellen“ oder eine Aktion umleiten.
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("X-Frame-Options", "DENY")
         try:
             self.end_headers()
             self.wfile.write(daten)

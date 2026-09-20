@@ -185,6 +185,8 @@ def updates_markieren(skills, lock):
 
 def persoenliche_skills():
     ergebnis = []
+    if not (CLAUDE / "skills").is_dir():  # auf einem frischen Rechner gibt es den Ordner noch nicht
+        return ergebnis
     for ordner in sorted((CLAUDE / "skills").iterdir()):
         datei = ordner / "SKILL.md"
         if not datei.is_file():
@@ -277,7 +279,12 @@ def an_claude(ereignis, stdout):
 def transkripte():
     grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
     # rglob: Hooks laufen auch in Subagenten, deren Transkripte liegen eine Ebene tiefer
-    return [d for d in (CLAUDE / "projects").rglob("*.jsonl") if d.stat().st_mtime >= grenze]
+    def frisch(d):
+        try:
+            return d.stat().st_mtime >= grenze
+        except OSError:  # toter Symlink, etwa nach einem verschobenen Projektordner
+            return False
+    return [d for d in (CLAUDE / "projects").rglob("*.jsonl") if frisch(d)]
 
 
 def hook_ausgaben(dateien):

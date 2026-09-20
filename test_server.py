@@ -34,7 +34,8 @@ class Server(unittest.TestCase):
         self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim", self.tmp)
         self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
         self.srv.codex_skills = self.tmp / "agents-skills"  # nie das echte ~/.agents/skills treffen
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        # ohne poll_interval wartet shutdown() im tearDown je Test eine halbe Sekunde auf den nächsten Durchlauf
+        threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         self.port = self.srv.server_address[1]
 
     def tearDown(self):

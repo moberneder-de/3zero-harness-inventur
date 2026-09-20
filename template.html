@@ -377,12 +377,21 @@ const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 const umgesetzt = e => ({ "abschalten": e.override === "off" || (CODEX && e.status === "aus"), "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
 const JE_SITZUNG = [...D.skills, ...D.hooks, ...EINGEBAUT, ...D.mcp];
 const tokensGesamt = D.kontextlast;
-const tokensSparen = ALLE.reduce((s, e) => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt ? s + (e.tokens || 0) : s, 0);
+/* Jede Tokenzahl genau einmal: Die eines Plugins ist schon die Summe seiner Skills und Hooks. Geht das Plugin
+   ganz, zählt seine Summe und seine Teile zählen nicht mehr; bleibt es, zählen nur die einzeln empfohlenen Teile.
+   Was schon umgesetzt ist, kostet heute keinen Kontext und spart deshalb nichts mehr. */
+const gehtWeg = e => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt && !umgesetzt(e);
+const PLUGINS_WEG = new Set(D.plugins.filter(gehtWeg).map(p => `${p.name}@${p.marktplatz}`));
+const tokensSparen = D.plugins.filter(gehtWeg).reduce((s, p) => s + (p.tokens || 0), 0)
+  + JE_SITZUNG.filter(e => gehtWeg(e) && !PLUGINS_WEG.has(e.plugin)).reduce((s, e) => s + (e.tokens || 0), 0);
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
 const REIHENFOLGE = ["aktualisieren", "deinstallieren", "deaktivieren", "nur manuell"];
-const SPEICHER = "3zero-harness-inventur:auswahl";
+/* Der Harness gehört in den Schlüssel: Skills aus ~/.agents tragen in beiden Dashboards dieselbe ID, und
+   beide liefert derselbe Server unter derselben Adresse. Sonst stünde eine Wahl aus Claude Code unter Codex
+   vorbelegt da und liefe bei „alle ausführen“ mit. */
+const SPEICHER = `3zero-harness-inventur:auswahl:${D.harness}`;
 let abweichung = {};
 try { abweichung = JSON.parse(localStorage.getItem(SPEICHER)) || {}; } catch (_) { /* ohne Speicher gilt die Vorbelegung */ }
 function gewaehlt(e) {

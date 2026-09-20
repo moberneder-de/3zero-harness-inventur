@@ -166,6 +166,22 @@ class ProjektSkills(unittest.TestCase):
         self.assertEqual(eintraege["skill:Kit/q-lang"]["quelle"]["art"], "lokal")
         self.assertEqual(eintraege["skill:Kit/bauen"]["typ"], "Befehl")
 
+    def test_ohne_skills_ordner_bricht_nichts_ab(self):
+        """Auf einem frischen Rechner gibt es ~/.claude/skills noch nicht; codex.py prüft das an derselben Stelle."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        with mock.patch.object(build, "CLAUDE", tmp / "fehlt"):
+            self.assertEqual(build.persoenliche_skills(), [])
+
+    def test_totes_transkript_bricht_nichts_ab(self):
+        """Ein Symlink ins Leere unter ~/.claude/projects, etwa nach einem verschobenen Projektordner."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "projects").mkdir()
+        (tmp / "projects" / "tot.jsonl").symlink_to(tmp / "gibt-es-nicht.jsonl")
+        with mock.patch.object(build, "CLAUDE", tmp):
+            self.assertEqual(build.transkripte(), [])
+
     def test_persoenliche_skills_unterscheiden_symlink_und_kopie(self):
         repo, claude = self.tmp / "Repo", self.tmp / ".claude"
         self.schreibe(repo / "skill/SKILL.md", "---\nname: eigen\ndescription: aus dem Repo\n---\n")
