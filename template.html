@@ -59,6 +59,7 @@ h1, h2, h3 { color: var(--text-dark); line-height: 1.3; margin: 0; }
 /* Knopf und seine Zeitangabe sind eine Einheit und brechen zusammen um */
 .knopfstapel { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .knopfstapel .zeit { color: #b4b4b4; font-size: 11.5px; white-space: nowrap; }
+.knopfstapel.nur-zeit { align-items: flex-end; } /* ohne Knöpfe darüber: rechtsbündig neben dem Darstellungsknopf */
 .wrap { margin: 0; } /* linksbündig über die volle Fensterbreite */
 
 nav { background: var(--bg); border-bottom: 1px solid var(--border-light); box-shadow: var(--shadow-nav); padding-inline: 30px; }
@@ -1101,9 +1102,11 @@ themaZeigen();
 const marke = HARNESS_MARKE[D.harness];
 document.getElementById("stand").innerHTML =
   (marke ? `<svg class="harness-marke" viewBox="0 0 ${marke.viewBox} ${marke.viewBox}" aria-hidden="true"><path d="${marke.pfad}" fill="${marke.farbe}"></path></svg>` : "") +
-  esc(D.harness_name) + (version ? ` · ${esc(version)}` : "")
-  /* als Datei geöffnet gibt es keine Knopfleiste, die die Zeitangaben tragen könnte */
-  + (AKTIONEN ? "" : ` · Bestand vom ${zeitpunkt(D.erstellt)} · Bewertung vom ${BEWERTET}`);
+  esc(D.harness_name) + (version ? ` · ${esc(version)}` : "");
+/* Als Datei geöffnet gibt es keine Knöpfe. Die Zeitangaben stehen trotzdem rechts, wo sie sonst unter ihnen hängen:
+   In der Zeile neben dem Titel machten sie den Kopf so breit, dass er in schmaleren Fenstern auseinanderbrach. */
+if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
+  `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();
 skillsFiltern();
