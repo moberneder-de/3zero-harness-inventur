@@ -346,6 +346,35 @@ class Server(unittest.TestCase):
         self.assertFalse(server.nur_manuell_gesetzt(
             "policy:\n  allow_implicit_invocation: true\ndefaults:\n  allow_implicit_invocation: false\n"))
 
+    def test_warnung_mit_klammer_auf_stderr_verwirft_das_ergebnis_nicht(self):
+        """`claude_json` schnitt von der ersten { bis zur letzten } über stdout UND stderr. Eine Warnung wie
+        `MCP server "x" failed: {"code":-32000}` machte aus einem gelungenen Lauf einen Fehlschlag."""
+        antwort = {"type": "result", "result": "…", "structured_output": {"bericht": "fertig", "kandidaten": []}}
+        self.claude_ersatz(json.dumps(antwort))
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace(
+            "cat <<", 'echo \'MCP server "x" failed: {"code":-32000}\' >&2\ncat <<', 1))
+        _, antwort = self.suchen()
+        self.assertEqual((antwort["ok"], antwort["ausgabe"]), (True, "fertig"))
+
+    def test_suche_waehrend_der_bewertung_sagt_es_statt_zu_haengen(self):
+        """Beide brauchen dieselbe Sperre für build.py. Die Bewertung hält sie bis zu 20 Minuten: Die Suche
+        stand so lange auf „läuft“, ohne dass ein Suchlauf existierte."""
+        self.claude_ersatz('{"structured_output": {"bericht": "x", "kandidaten": []}}')
+        self.srv.laeufe["bewertung"] = {"laeuft": True, "beginn": time.time()}
+        _, antwort = self.suchen()
+        self.assertFalse(antwort["ok"])
+        self.assertIn("Bewertung läuft", antwort["ausgabe"])
+        self.assertFalse((self.tmp / "argv").exists())  # gar kein Lauf gestartet
+
+    def test_installieren_ohne_kandidaten_antwortet_statt_zu_sterben(self):
+        """Zwischen Prüfung und Zugriff lag nichts: Startete ein zweiter Tab eine neue Suche, gab es einen
+        IndexError und gar keine Antwort — im Dashboard stand dann „Server weg“."""
+        self.claude_ersatz("egal")
+        status, inhalt = self.anfrage("POST", "/api/installieren", {"nr": 0})
+        self.assertEqual(status, 400)
+        self.assertFalse(json.loads(inhalt)["ok"])
+
     def test_sicherer_befehl(self):
         self.assertTrue(server.sicherer_befehl("npx skills add owner/repo --skill x -g -y --agent claude-code"))
         self.assertTrue(server.sicherer_befehl("codex mcp add q -- bun run q.ts"))

@@ -291,8 +291,10 @@ def lauf(argv, cwd, timeout):
     try:
         r = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as fehler:
-        return {"ok": False, "ausgabe": str(fehler)}
-    return {"ok": r.returncode == 0, "ausgabe": (r.stdout + r.stderr).strip()}
+        return {"ok": False, "ausgabe": str(fehler), "stdout": ""}
+    # `ausgabe` ist für den Benutzer und enthält beides; `stdout` bleibt getrennt, weil eine geschweifte Klammer
+    # in einer Warnung auf stderr sonst den JSON-Ausschnitt zerreißt und ein gelungener Lauf als Fehler gälte.
+    return {"ok": r.returncode == 0, "ausgabe": (r.stdout + r.stderr).strip(), "stdout": r.stdout}
 
 
 class Inventarserver(ThreadingHTTPServer):
@@ -527,6 +529,11 @@ class Inventarserver(ThreadingHTTPServer):
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def suchen(self, bedarf):
+        # Beide brauchen die Sperre für build.py, und die Bewertung hält sie bis zu 20 Minuten. Ohne diese
+        # Auskunft stünde die Suche so lange auf „läuft“, ohne dass ein Suchlauf existierte.
+        if (self.laeufe.get("bewertung") or {}).get("laeuft"):
+            return {"ok": False, "ausgabe": "Die Bewertung läuft gerade und liest den Bestand neu ein. "
+                                            "Warte, bis sie fertig ist, dann noch einmal suchen."}
         self.kandidaten = []
         argv = ["claude", "-p", f"/3zero-harness-inventur suche {bedarf}", "--model", "opus", "--output-format", "json",
                 "--json-schema", json.dumps(SUCHEN_SCHEMA), "--allowedTools", *SUCHEN_WERKZEUGE, "--append-system-prompt", SUCHEN_HINWEIS]
@@ -541,7 +548,7 @@ class Inventarserver(ThreadingHTTPServer):
         # Lauf könnte dort also etwas ablegen, das dieser ungesicherte Claude-Lauf sonst mit ausführen würde.
         with tempfile.TemporaryDirectory() as tmp:
             r = lauf(argv, tmp, 1200)
-        ergebnis = (claude_json(r["ausgabe"]) or {}).get("structured_output")
+        ergebnis = (claude_json(r["stdout"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
             return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
         self.kandidaten = [geprueft(k) for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
@@ -593,8 +600,9 @@ class Inventarserver(ThreadingHTTPServer):
             return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
         return lauf_
 
-    def installieren(self, nr, nur_manuell):
-        k = self.kandidaten[nr]
+    def installieren(self, k, nur_manuell):
+        """`k` ist der Kandidat selbst, nicht seine Nummer: Zwischen Prüfung und Zugriff konnte eine neue Suche
+        die Liste austauschen, und der Zugriff lief ins Leere."""
         codex = self.harness() == "codex"
         if k["art"] == "skill":
             argv = ["npx", "-y", "skills", "add", k["repo"], "--skill", k["skill"], "-g", "-y",
@@ -670,9 +678,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
         if self.path == "/api/installieren":
             nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
-            if type(nr) is not int or not 0 <= nr < len(self.server.kandidaten) or not self.server.kandidaten[nr]["installierbar"]:
+            kandidaten = self.server.kandidaten  # einmal festhalten: eine neue Suche tauscht die Liste aus
+            if type(nr) is not int or not 0 <= nr < len(kandidaten) or not kandidaten[nr]["installierbar"]:
                 return self.antworte(400, {"ok": False, "ausgabe": "Diesen Kandidaten kann das Dashboard nicht installieren."})
-            return self.antworte(200, self.server.installieren(nr, anfrage.get("nur_manuell") is True))
+            try:
+                ergebnis = self.server.installieren(kandidaten[nr], anfrage.get("nur_manuell") is True)
+            except (OSError, ValueError, AttributeError, TypeError) as fehler:
+                ergebnis = {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"}
+            return self.antworte(200, ergebnis)
         try:
             treffer = self.server.schritt(anfrage["id"], anfrage["aktion"])
         except (ValueError, KeyError, TypeError):
