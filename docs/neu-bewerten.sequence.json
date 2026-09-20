@@ -2,41 +2,198 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Neu bewerten unter Codex",
+    "title": "Neu bewerten: abgeschirmter Lauf auf einer Arbeitskopie",
     "output": "neu-bewerten.html",
     "quality_profile": "showcase",
     "column_fit": "spread",
-    "viewBox": [1085, 480],
+    "viewBox": [
+      1085,
+      480
+    ],
     "views": [
-      { "id": "sofort", "label": "Sofort zurück", "focus": ["browser", "server"], "note": "Der Knopf antwortet gleich; der Lauf läuft im Hintergrund weiter." },
-      { "id": "abgeschirmt", "label": "Abgeschirmter Lauf", "focus": ["server", "arbeit", "codex"], "note": "Codex sieht nur eine Kopie und darf nichts anderes beschreiben." },
-      { "id": "rueckweg", "label": "Rückweg", "focus": ["server", "arbeit", "daten"], "note": "Erst geprüft, dann atomar an seinen Platz." }
+      {
+        "id": "sofort",
+        "label": "Sofort zurück",
+        "focus": [
+          "browser",
+          "server"
+        ],
+        "note": "Der Knopf antwortet gleich; der Lauf läuft im Hintergrund weiter und lässt sich abbrechen."
+      },
+      {
+        "id": "abgeschirmt",
+        "label": "Abgeschirmter Lauf",
+        "focus": [
+          "server",
+          "arbeit",
+          "lauf"
+        ],
+        "note": "Der Lauf sieht nur eine Kopie und darf nichts anderes beschreiben, in beiden Harnesses."
+      },
+      {
+        "id": "rueckweg",
+        "label": "Rückweg",
+        "focus": [
+          "server",
+          "arbeit",
+          "daten"
+        ],
+        "note": "Erst geprüft, dann atomar an seinen Platz."
+      }
     ]
   },
   "participants": [
-    { "id": "browser", "type": "frontend", "label": "Dashboard", "sublabel": "im Browser" },
-    { "id": "server", "type": "backend", "label": "server.py", "sublabel": "auf 8765" },
-    { "id": "arbeit", "type": "database", "label": "Arbeitskopie", "sublabel": "Temp-Ordner" },
-    { "id": "codex", "type": "security", "label": "codex exec", "sublabel": "Sandbox" },
-    { "id": "daten", "type": "database", "label": "Datenordner", "sublabel": "~/.3zero-harness-inventur" }
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Dashboard",
+      "sublabel": "im Browser"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "server.py",
+      "sublabel": "auf 8765"
+    },
+    {
+      "id": "arbeit",
+      "type": "database",
+      "label": "Arbeitskopie",
+      "sublabel": "Temp-Ordner"
+    },
+    {
+      "id": "lauf",
+      "type": "security",
+      "label": "Bewertungslauf",
+      "sublabel": "claude -p bzw. codex exec"
+    },
+    {
+      "id": "daten",
+      "type": "database",
+      "label": "Datenordner",
+      "sublabel": "~/.3zero-harness-inventur"
+    }
   ],
   "messages": [
-    { "id": "knopf", "from": "browser", "to": "server", "y": 180, "label": "POST /api/bewerten", "variant": "emphasis" },
-    { "id": "sofort", "from": "server", "to": "browser", "y": 208, "label": "läuft", "variant": "return", "note": "Sofort zurück, denn eine minutenlang offene Anfrage riss beim Neuladen ab. Den Stand fragt der Browser danach wiederholt über /api/bewertung ab." },
-    { "id": "kopieren", "from": "server", "to": "arbeit", "y": 236, "label": "Bewertung kopieren", "note": "Davor hat der Server build.py ausgeführt: Das braucht Netz, der Codex-Lauf läuft ohne." },
-    { "id": "starten", "from": "server", "to": "codex", "y": 264, "label": "starten, ohne Netz", "variant": "security" },
-    { "id": "aendern", "from": "codex", "to": "arbeit", "y": 292, "label": "nur die Kopie ändern", "variant": "security" },
-    { "id": "bericht", "from": "codex", "to": "server", "y": 320, "label": "Bericht", "variant": "return" },
-    { "id": "pruefen", "from": "server", "to": "arbeit", "y": 348, "label": "als JSON prüfen", "note": "Kein Symlink, ein echtes Objekt. Sonst bleibt die alte Bewertung stehen." },
-    { "id": "zurueck", "from": "server", "to": "daten", "y": 376, "label": "atomar ersetzen", "variant": "emphasis", "note": "Danach baut der Server erneut und legt den Bericht als Karte in den Seitenkopf." }
+    {
+      "id": "knopf",
+      "from": "browser",
+      "to": "server",
+      "y": 172,
+      "label": "POST /api/bewerten",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sofort",
+      "from": "server",
+      "to": "browser",
+      "y": 200,
+      "label": "läuft",
+      "variant": "return",
+      "note": "Sofort zurück, denn eine minutenlang offene Anfrage riss beim Neuladen ab. Den Stand fragt der Browser danach wiederholt über /api/bewertung ab."
+    },
+    {
+      "id": "kopieren",
+      "from": "server",
+      "to": "arbeit",
+      "y": 228,
+      "label": "Bewertung kopieren",
+      "note": "Davor hat der Server build.py ausgeführt: Das braucht Netz, der Lauf hat keins."
+    },
+    {
+      "id": "starten",
+      "from": "server",
+      "to": "lauf",
+      "y": 256,
+      "label": "starten, ohne Netz",
+      "variant": "security",
+      "note": "Claude Code: nur Lesen, Suchen und Edit, das ganze Home per deny gesperrt. Codex: Sandbox workspace-write, $TMPDIR und /tmp gesperrt."
+    },
+    {
+      "id": "aendern",
+      "from": "lauf",
+      "to": "arbeit",
+      "y": 284,
+      "label": "nur die Kopie ändern",
+      "variant": "security"
+    },
+    {
+      "id": "abbrechen",
+      "from": "browser",
+      "to": "server",
+      "y": 312,
+      "label": "POST /api/abbrechen",
+      "variant": "dashed",
+      "note": "Jederzeit möglich, solange der Lauf läuft: Der Server beendet seine ganze Prozessgruppe, die Arbeitskopie verfällt, die bisherige Bewertung gilt weiter."
+    },
+    {
+      "id": "bericht",
+      "from": "lauf",
+      "to": "server",
+      "y": 340,
+      "label": "Bericht",
+      "variant": "return"
+    },
+    {
+      "id": "pruefen",
+      "from": "server",
+      "to": "arbeit",
+      "y": 368,
+      "label": "als JSON prüfen",
+      "note": "Kein Symlink, ein echtes Objekt. Sonst bleibt die alte Bewertung stehen."
+    },
+    {
+      "id": "zurueck",
+      "from": "server",
+      "to": "daten",
+      "y": 396,
+      "label": "atomar ersetzen",
+      "variant": "emphasis",
+      "note": "Danach baut der Server erneut und legt den Bericht als Karte in den Seitenkopf."
+    }
   ],
   "activations": [
-    { "participant": "server", "from": 180, "to": 376 },
-    { "participant": "codex", "from": 264, "to": 320, "type": "security" },
-    { "participant": "arbeit", "from": 236, "to": 376 }
+    {
+      "participant": "server",
+      "from": 172,
+      "to": 396
+    },
+    {
+      "participant": "lauf",
+      "from": 256,
+      "to": 340,
+      "type": "security"
+    },
+    {
+      "participant": "arbeit",
+      "from": 228,
+      "to": 396
+    }
   ],
   "cards": [
-    { "dot": "rose", "title": "Warum abgeschirmt", "items": ["Die Bewertung liest fremde Skill-Texte, die Anweisungen enthalten könnten", "Codex darf nur den Temp-Ordner beschreiben; $TMPDIR und /tmp bleiben gesperrt"] },
-    { "dot": "emerald", "title": "Unter Claude Code kürzer", "items": ["Der Server ruft nur claude -p mit dem Skill auf", "Einlesen und Neubau macht der Skill selbst in Schritt 1 und 5"] }
+    {
+      "dot": "rose",
+      "title": "Warum abgeschirmt",
+      "items": [
+        "Die Bewertung liest fremde Skill-Texte und Hook-Skripte, die Anweisungen enthalten könnten",
+        "Zurück kommt nur ein geprüftes JSON-Objekt, nie eine Datei, die der Lauf irgendwo abgelegt hat"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Gleicher Ablauf, andere Grenze",
+      "items": [
+        "Claude Code: kein Bash, kein Write; eine eigene Einstellungsdatei sperrt das ganze Home",
+        "Codex: Sandbox, beschreibbar ist nur der Temp-Ordner; $TMPDIR und /tmp bleiben gesperrt"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Abbrechen",
+      "items": [
+        "Beendet den Lauf samt seinen Kindprozessen",
+        "Ist der Lauf schon durch, lehnt der Server ab: Die Bewertung ist dann schon zurückgeschrieben"
+      ]
+    }
   ]
 }

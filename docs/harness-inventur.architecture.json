@@ -38,7 +38,7 @@
           "lauf",
           "daten"
         ],
-        "note": "Der Lauf arbeitet abgeschirmt; erst der geprüfte Stand geht in den Datenordner."
+        "note": "Der Lauf arbeitet abgeschirmt und lässt sich abbrechen; erst der geprüfte Stand geht in den Datenordner."
       }
     ],
     "viewBox": [
@@ -122,7 +122,7 @@
       "id": "daten",
       "type": "database",
       "label": "~/.3zero-harness-inventur",
-      "sublabel": "Bewertung, Inventar, Dashboard",
+      "sublabel": "Bewertung, Inventar, Verlauf",
       "pos": [
         800,
         216
@@ -137,7 +137,7 @@
       "id": "browser",
       "type": "frontend",
       "label": "Dashboard",
-      "sublabel": "127.0.0.1:8765",
+      "sublabel": "127.0.0.1:8765, mit Schlüssel",
       "pos": [
         1150,
         50
@@ -253,7 +253,7 @@
       "title": "Werkzeug im Repo",
       "items": [
         "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex",
-        "server.py liefert aus und führt die gewählten Aktionen aus",
+        "server.py liefert aus und führt die gewählten Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
         "template.html ist die Oberfläche, Farben nur aus dem 3zero-Brand-Kit"
       ]
     },
@@ -262,8 +262,9 @@
       "title": "Datenordner",
       "items": [
         "Bewertung: Handarbeit, teuer neu zu erzeugen",
-        "Inventar und Dashboard: erzeugt, jederzeit neu baubar",
-        "harness.json merkt den zuletzt gestarteten Harness"
+        "Inventar, Dashboard und Verlauf: erzeugt, jederzeit neu baubar",
+        "harness.json merkt den zuletzt gestarteten Harness",
+        "start.html gibt es nur, solange der Server läuft: Sie trägt den Schlüssel und ist nur für dich lesbar"
       ]
     },
     {
