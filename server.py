@@ -173,8 +173,9 @@ def toml_text_setzen(text, tabelle, schluessel, wert):
     sonst die Tabelle anhängen. Alles andere bleibt Zeichen für Zeichen stehen."""
     zeilen = text.splitlines()
     kopf = f"[{tabelle}]"
+    ist_kopf = re.compile(rf"\s*{re.escape(kopf)}\s*(#.*)?")  # ein Kommentar hinter dem Kopf ist gültiges TOML
     try:
-        start = next(i for i, z in enumerate(zeilen) if z.strip() == kopf)
+        start = next(i for i, z in enumerate(zeilen) if ist_kopf.fullmatch(z))
     except StopIteration:
         rumpf = text if text.endswith("\n") or not text else text + "\n"
         return f"{rumpf}\n{kopf}\n{schluessel} = {wert}\n"

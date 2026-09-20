@@ -739,6 +739,11 @@ enabled = true
         text = server.toml_text_setzen(self.CONFIG, 'mcp_servers."neu"', "enabled", "false")
         self.assertTrue(text.rstrip().endswith('[mcp_servers."neu"]\nenabled = false'))
 
+    def test_toml_text_setzen_findet_den_kopf_trotz_kommentar(self):
+        """Sonst hängte es die Tabelle ein zweites Mal an; die Datei parste nicht mehr und die Aktion schlug fehl."""
+        text = server.toml_text_setzen('[mcp_servers.a]  # mein Server\nenabled = true\n', "mcp_servers.a", "enabled", "false")
+        self.assertEqual(text, '[mcp_servers.a]  # mein Server\nenabled = false\n')
+
     def test_toml_pfad(self):
         self.assertEqual(server.toml_pfad('plugins."a@b".mcp_servers.c'), ["plugins", "a@b", "mcp_servers", "c"])
         self.assertEqual(server.toml_pfad("mcp_servers.node_repl"), ["mcp_servers", "node_repl"])
