@@ -9,6 +9,7 @@ frei von persönlichen Daten und lässt sich veröffentlichen.
 """
 
 import json
+import os
 from pathlib import Path
 
 DATEN = Path.home() / ".3zero-harness-inventur"
@@ -22,6 +23,15 @@ HARNESSE = {
 STANDARD = "claude-code"
 
 
+def schreiben(pfad, text):
+    """Schreibt über <pfad>.neu und tauscht in einem Schritt: Der Server liest Inventar, Dashboard und harness.json
+    bei jedem Klick, auch während build.py läuft, und sähe sonst eine halbe Datei. Einem Symlink folgt es."""
+    pfad = Path(pfad).resolve()
+    neu = pfad.with_name(pfad.name + ".neu")
+    neu.write_text(text, encoding="utf-8")
+    os.replace(neu, pfad)
+
+
 def aktuell(ordner):
     try:
         wert = json.loads((Path(ordner) / "harness.json").read_text(encoding="utf-8")).get("harness")
@@ -33,4 +43,4 @@ def aktuell(ordner):
 def merken(ordner, harness_id):
     if harness_id not in HARNESSE:
         raise ValueError(f"unbekannter Harness: {harness_id}")
-    (Path(ordner) / "harness.json").write_text(json.dumps({"harness": harness_id}) + "\n", encoding="utf-8")
+    schreiben(Path(ordner) / "harness.json", json.dumps({"harness": harness_id}) + "\n")

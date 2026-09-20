@@ -793,7 +793,7 @@ def verlauf_fortschreiben(pfad, eintrag):
         reihe = []
     reihe = [e for e in reihe if isinstance(e, dict) and e.get("datum") != eintrag["datum"]] + [eintrag]
     reihe.sort(key=lambda e: e["datum"])
-    Path(pfad).write_text(json.dumps(reihe, ensure_ascii=False, indent=1), encoding="utf-8")
+    harness.schreiben(pfad, json.dumps(reihe, ensure_ascii=False, indent=1))
     return reihe
 
 
@@ -867,14 +867,14 @@ def main(argv=None):
     daten = {"erstellt": jetzt.strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
              "version": version(angaben["cli"]), "kontextlast": last, "verlauf": verlauf,
              "bewertung_erstellt": datei_stand(DATEN / angaben["bewertung"]), **inhalt}
-    (DATEN / angaben["inventar"]).write_text(json.dumps(daten, ensure_ascii=False, indent=1), encoding="utf-8")
+    harness.schreiben(DATEN / angaben["inventar"], json.dumps(daten, ensure_ascii=False, indent=1))
 
     einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
     vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
                .replace("__LOGO__", data_uri(LOGO.read_bytes(), "image/svg+xml"))
                .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
                .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png")))
-    (DATEN / angaben["dashboard"]).write_text(vorlage.replace("__DATEN__", einbettung), encoding="utf-8")
+    harness.schreiben(DATEN / angaben["dashboard"], vorlage.replace("__DATEN__", einbettung))
 
     print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "
           f"{len(daten['skills'])} Skills/Befehle/Agenten, {len(daten['projekt_skills'])} Projekt-Skills, "

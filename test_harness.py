@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import harness
 
@@ -33,6 +34,22 @@ class Harness(unittest.TestCase):
         with self.assertRaises(ValueError):
             harness.merken(self.tmp, "gemini")
         self.assertFalse((self.tmp / "harness.json").exists())
+
+    def test_schreiben_ersetzt_die_datei_in_einem_schritt(self):
+        """Der Server liest Inventar und Dashboard, während build.py sie schreibt. Bis zum Tausch muss die alte Datei
+        ganz dastehen und die neue schon fertig sein, sonst sieht ein Klick ein halbes Inventar."""
+        ziel = self.tmp / "inventar.json"
+        ziel.write_text("alt")
+        gesehen, echt = [], harness.os.replace
+
+        def tausch(quelle, datei):
+            gesehen.append((Path(quelle).read_text(), Path(datei).read_text()))
+            echt(quelle, datei)
+        with mock.patch.object(harness.os, "replace", side_effect=tausch):
+            harness.schreiben(ziel, "neu")
+        self.assertEqual(gesehen, [("neu", "alt")])
+        self.assertEqual([d.name for d in self.tmp.iterdir()], ["inventar.json"])
+        self.assertEqual(ziel.read_text(), "neu")
 
     def test_dateien_je_harness(self):
         self.assertEqual({h: (d["inventar"], d["dashboard"], d["bewertung"]) for h, d in harness.HARNESSE.items()}, {

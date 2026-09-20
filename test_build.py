@@ -695,6 +695,19 @@ class HarnessWahl(unittest.TestCase):
         self.assertFalse((self.daten / "inventar.json").exists())
         self.assertEqual(json.loads((self.daten / "harness.json").read_text()), {"harness": "codex"})
 
+    def test_alles_geschriebene_wird_in_einem_schritt_getauscht(self):
+        """Der Server liest diese Dateien bei jedem Klick und jedem Seitenaufruf, auch während build.py läuft."""
+        getauscht, echt = [], build.harness.os.replace
+
+        def tausch(quelle, datei):
+            getauscht.append(Path(datei).name)
+            echt(quelle, datei)
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), \
+                mock.patch.object(build, "version", return_value=None), mock.patch.object(build.harness.os, "replace", side_effect=tausch):
+            build.main(["--harness", "claude-code"])
+        self.assertEqual(sorted(getauscht), ["dashboard.html", "harness.json", "inventar.json", "verlauf-claude-code.json"])
+        self.assertEqual(sorted(d.name for d in self.daten.iterdir()), sorted(getauscht))
+
     def test_ohne_angabe_gilt_der_gemerkte_harness(self):
         import codex
         (self.daten / "harness.json").write_text('{"harness": "codex"}')
