@@ -135,6 +135,45 @@ class Server(unittest.TestCase):
         self.assertEqual((datei, datei.stat().st_mode & 0o777), (self.tmp / "start.html", 0o600))
         self.assertIn('url=http://127.0.0.1:8765/?k=geheim"', datei.read_text())
 
+    def test_startdatei_prueft_selbst_ob_der_server_noch_laeuft(self):
+        """Der Skill erkennt den laufenden Server an dieser Datei, nicht mehr per curl: Die Codex-Sandbox sperrt das Netz
+        auch zum eigenen Rechner (nachgemessen, 000 exit=7), der Skill öffnete dort deshalb immer die Datei. Bleibt
+        start.html nach einem harten Ende liegen, darf sie nicht ins Leere führen."""
+        text = server.startdatei(self.tmp, "http://127.0.0.1:8765/?k=geheim").read_text()
+        self.assertIn('fetch("http://127.0.0.1:8765/"', text)  # Lebenszeichen ohne Schlüssel: 403 ist auch eine Antwort
+        self.assertIn('location.replace("http://127.0.0.1:8765/?k=geheim")', text)
+        for erwartet in ("Der Server läuft nicht mehr", "python3 server.py", 'href="dashboard.html"', 'href="dashboard-codex.html"'):
+            self.assertIn(erwartet, text)
+
+    def test_startdatei_verschwindet_auch_bei_kill_und_geschlossenem_terminal(self):
+        """Bisher räumte nur Ctrl+C auf. SIGTERM (kill) und SIGHUP (Terminal geschlossen) beendeten den Server sofort,
+        und start.html blieb liegen, obwohl niemand mehr antwortete."""
+        import signal
+        import subprocess
+        import sys
+        kind = ("import sys, server; from pathlib import Path; tmp = Path(sys.argv[1]);"
+                "srv = server.Inventarserver(0, tmp, tmp / 'settings.json', 'geheim', tmp);"
+                "start = server.startdatei(tmp, 'http://127.0.0.1:1/?k=geheim');"
+                "print(srv.server_address[1], flush=True); server.bedienen(srv, start)")
+        for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+            with self.subTest(signal=sig.name):
+                p = subprocess.Popen([sys.executable, "-c", kind, str(self.tmp)], cwd=server.HIER, stdout=subprocess.PIPE, text=True)
+                self.addCleanup(p.kill)
+                port = int(p.stdout.readline())
+                for _ in range(50):  # erst wenn er antwortet, stehen auch die Signal-Behandlungen
+                    try:
+                        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+                        conn.request("GET", "/")
+                        conn.getresponse().read()
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+                self.assertTrue((self.tmp / "start.html").exists())
+                p.send_signal(sig)
+                p.wait(timeout=10)
+                p.stdout.close()
+                self.assertFalse((self.tmp / "start.html").exists())
+
     def test_startdatei_oeffnet_auf_dem_mac_ueber_open(self):
         """Pythons webbrowser öffnet file:-Adressen unter macOS per AppleScript im Browser, holt ihn aber nicht nach vorn
         (nachgemessen, mit http-Adressen schon): Das Dashboard ging im Hintergrund auf, und es sah aus, als geschähe nichts.

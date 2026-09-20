@@ -77,10 +77,10 @@ Fertig, wenn: `python3 -m json.tool ~/.3zero-harness-inventur/<Bewertungsdatei> 
 ## 5. Neu erzeugen und öffnen
 
 ```bash
-python3 <Projektordner>/build.py --harness <harness> && if curl -s -o /dev/null --max-time 3 http://127.0.0.1:8765/; then open ~/.3zero-harness-inventur/start.html; else open ~/.3zero-harness-inventur/<Dashboard>; fi
+python3 <Projektordner>/build.py --harness <harness> && if [ -f ~/.3zero-harness-inventur/start.html ]; then open ~/.3zero-harness-inventur/start.html; else open ~/.3zero-harness-inventur/<Dashboard>; fi
 ```
 
-Läuft der Server, antwortet er auf die Adresse allein mit 403: Die Seite gibt es nur mit dem Schlüssel des laufenden Servers, und den trägt `start.html`. Deshalb prüft `curl` hier ohne `-f` nur, ob jemand antwortet.
+`start.html` gibt es nur, solange der Server läuft: Er legt sie beim Start an und räumt sie beim Beenden weg. Sie trägt den Schlüssel, ohne den der Server die Seite nicht herausgibt. Frag den Server nicht mit `curl`: Die Codex-Sandbox sperrt das Netz auch zum eigenen Rechner, die Anfrage scheitert dort immer, und es sähe aus, als liefe kein Server. Ist die Datei nach einem harten Ende liegen geblieben, sagt sie das selbst und führt zum Dashboard als Datei.
 
 Nur über `server.py` zeigt das Dashboard die Knöpfe zum Ausführen; als Datei geöffnet bleibt es lesbar ohne Aktionen. Lief der Server nicht, nenne dem Benutzer in Schritt 6 den Start: `! python3 <Projektordner>/server.py`.
 

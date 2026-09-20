@@ -890,12 +890,28 @@ class Handler(BaseHTTPRequestHandler):
 
 def startdatei(daten, url):
     """Eine Seite, die zum Dashboard weiterleitet, lesbar nur für den Benutzer. Der Browser bekommt sie statt der
-    Adresse: Die trägt den Schlüssel, und Argumente eines Befehls sieht jeder Benutzer des Rechners in `ps`."""
+    Adresse: Die trägt den Schlüssel, und Argumente eines Befehls sieht jeder Benutzer des Rechners in `ps`.
+    An ihr erkennt auch der Skill den laufenden Server — per curl ginge das unter Codex nicht, dessen Sandbox sperrt
+    das Netz auch zum eigenen Rechner. Bleibt sie nach einem harten Ende liegen, fragt sie selbst nach einem
+    Lebenszeichen (ohne Schlüssel: 403 ist auch eine Antwort) und sagt sonst, wie es weitergeht."""
     datei = Path(daten) / "start.html"
+    teile = urllib.parse.urlsplit(url)
+    lebenszeichen = f"{teile.scheme}://{teile.netloc}/"
+    dateien = " oder ".join(f'<a href="{h["dashboard"]}">{h["name"]}</a>' for h in harness.HARNESSE.values())
     fd = os.open(datei, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={url}">'
-                f'<a href="{url}">Dashboard öffnen</a>\n')
+        f.write(f"""<!doctype html><meta charset="utf-8"><title>3zero Harness-Inventur</title>
+<noscript><meta http-equiv="refresh" content="0; url={url}"></noscript>
+<p id="lage">Öffne das Dashboard …</p>
+<p id="tot" hidden>Der Server läuft nicht mehr, diese Startdatei ist liegen geblieben. Starte ihn mit <code>python3 server.py</code>
+im Projektordner, oder öffne das Dashboard nur zum Lesen: {dateien}.</p>
+<script>
+fetch({json.dumps(lebenszeichen)}, {{ mode: "no-cors" }}).then(() => location.replace({json.dumps(url)}), () => {{
+  document.getElementById("lage").hidden = true;
+  document.getElementById("tot").hidden = false;
+}});
+</script>
+""")
     os.chmod(datei, 0o600)  # gab es die Datei schon, behielte sie sonst ihre alten Rechte
     return datei
 
@@ -920,6 +936,24 @@ def browser_oeffnen(datei):
     webbrowser.open(Path(datei).as_uri())
 
 
+def bedienen(srv, start):
+    """Läuft, bis jemand den Server beendet, und räumt dann auf. Nicht nur bei Ctrl+C: kill (SIGTERM) und ein
+    geschlossenes Terminal (SIGHUP) beendeten ihn sonst sofort, und start.html blieb liegen — an ihr erkennt der
+    Skill aber, dass der Server läuft."""
+    def aufhoeren(*_):
+        raise KeyboardInterrupt
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, aufhoeren)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        start.unlink(missing_ok=True)  # der Schlüssel gilt nur für diesen Lauf
+        for prozess in srv.prozesse.values():  # eigene Prozessgruppe: Ctrl+C im Terminal erreicht sie nicht mehr
+            beenden(prozess)
+
+
 def main():
     try:
         srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
@@ -934,14 +968,7 @@ def main():
     start = startdatei(harness.DATEN, url)
     print(f"Dashboard: {url}  (beenden mit Ctrl+C)")
     browser_oeffnen(start)
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        start.unlink(missing_ok=True)  # der Schlüssel gilt nur für diesen Lauf
-        for prozess in srv.prozesse.values():  # eigene Prozessgruppe: Ctrl+C im Terminal erreicht sie nicht mehr
-            beenden(prozess)
+    bedienen(srv, start)
 
 
 if __name__ == "__main__":
