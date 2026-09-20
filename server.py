@@ -663,6 +663,12 @@ class Handler(BaseHTTPRequestHandler):
         token = self.headers.get("X-Token", "").encode()
         if self.headers.get("Host") not in self.server.hosts or not secrets.compare_digest(token, self.server.token.encode()):
             return self.antworte(403, {"ok": False, "ausgabe": "nicht erlaubt"})
+        # Beide Inventare führen dieselben IDs mit denselben Aktionsnamen. Startet der Skill im anderen Harness,
+        # während die Seite offen ist, träfe ein Klick sonst dessen Konfiguration und meldete „erledigt“.
+        aktuell = self.server.harness()
+        if self.headers.get("X-Harness") != aktuell:
+            return self.antworte(409, {"ok": False, "ausgabe": f"Der Server steht inzwischen auf {harness.HARNESSE[aktuell]['name']}, "
+                                                               "diese Seite zeigt einen anderen Harness. Lade die Seite neu."})
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
         if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren"):

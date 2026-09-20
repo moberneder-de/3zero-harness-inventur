@@ -918,7 +918,8 @@ function renderSuchInhalt() {
   document.getElementById("such-stand").textContent = s.laeuft ? " (läuft)" : "";
   let html = "";
   if (s.laeuft) html = `<p class="status">${je("Claude", esc(D.harness_name))} gleicht „${esc(s.bedarf)}“ mit dem Bestand ab und sucht … (${s.sekunden} s)</p>`;
-  else if (s.verbindung === false) html = `<div class="meldung">${markdown(s.ausgabe)}</div>`;
+  /* ohne Bedarf: keine Antwort vom Server, oder er steht inzwischen auf dem anderen Harness */
+  else if (!s.bedarf && s.ausgabe) html = `<div class="meldung">${markdown(s.ausgabe)}</div>`;
   else if (s.bedarf) html = `<div class="meldung"><div class="zeile"><p class="label">Ergebnis: ${esc(s.bedarf)}</p>
       <button type="button" class="kopieren" id="suche-verwerfen">verwerfen</button></div>
       ${markdown(s.ok ? s.ausgabe + (kandidaten.length ? "" : "\n\nKeine Kandidaten.") : "Suche fehlgeschlagen:\n\n" + s.ausgabe)}${kandidatenBlock()}</div>`;
@@ -936,7 +937,8 @@ function ausfuehrZelle(e) {
 }
 async function api(pfad, daten) {
   try {
-    const r = await fetch(pfad, { method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" }, body: daten && JSON.stringify(daten) });
+    /* X-Harness: Startet der Skill im anderen Harness, während die Seite offen ist, lehnt der Server ab, statt dessen Konfiguration zu ändern */
+    const r = await fetch(pfad, { method: "POST", headers: { "X-Token": TOKEN, "X-Harness": D.harness, "Content-Type": "application/json" }, body: daten && JSON.stringify(daten) });
     return await r.json();
   } catch (_) {
     return { ok: false, verbindung: false, ausgabe: "Keine Antwort vom Server. Läuft python3 server.py noch?" };

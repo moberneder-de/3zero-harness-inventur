@@ -88,11 +88,14 @@ class Server(unittest.TestCase):
         datei = self.tmp / harness.HARNESSE[harness.aktuell(self.tmp)]["inventar"]
         datei.write_text(json.dumps(inventar))
 
-    def anfrage(self, methode, pfad, daten=None, token="geheim", host=None):
+    def anfrage(self, methode, pfad, daten=None, token="geheim", host=None, seite=None):
+        """`seite` ist der Harness, den die Seite zeigt: ohne Angabe der aktuelle, "" lässt den Kopf weg."""
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         kopf = {"Host": host or f"127.0.0.1:{self.port}"}
         if token:
             kopf["X-Token"] = token
+        if seite != "":
+            kopf["X-Harness"] = seite or harness.aktuell(self.tmp)
         body = json.dumps(daten) if isinstance(daten, dict) else daten
         conn.request(methode, pfad, body, kopf)
         antwort = conn.getresponse()
@@ -116,6 +119,24 @@ class Server(unittest.TestCase):
         status, _ = self.ausfuehren("plugin:x@y", "deinstallieren", host=f"boese.example:{self.port}")
         self.assertEqual(status, 403)
         self.assertFalse(self.marker.exists())
+
+    def test_seite_eines_anderen_harness_loest_nichts_aus(self):
+        """Beide Inventare führen dieselben IDs mit denselben Aktionsnamen (skill:x, „deaktivieren“). Startet der Skill
+        im anderen Harness, während die Seite offen ist, träfe ein Klick sonst dessen Konfiguration und meldete „erledigt“."""
+        self.auf_codex()
+        self.schreibe_inventar([{"id": "plugin:x@y", "name": "x", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}])
+        for seite in ("claude-code", ""):
+            with self.subTest(seite=seite):
+                status, antwort = self.ausfuehren("plugin:x@y", "deinstallieren", seite=seite)
+                self.assertEqual(status, 409)
+                self.assertIn("Codex", json.loads(antwort)["ausgabe"])
+                self.assertFalse(self.marker.exists())
+        self.assertEqual(self.ausfuehren("plugin:x@y", "deinstallieren")[0], 200)
+        self.assertTrue(self.marker.exists())
+
+    def test_seite_nennt_bei_jeder_anfrage_ihren_harness(self):
+        """Das Gegenstück im Browser: Ohne diesen Kopf lehnt der Server jede Anfrage der Seite ab."""
+        self.assertIn('"X-Harness": D.harness', (server.HIER / "template.html").read_text(encoding="utf-8"))
 
     def test_ohne_gueltiges_token_laeuft_nichts(self):
         for token in (None, "falsch"):
