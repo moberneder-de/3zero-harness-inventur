@@ -392,6 +392,15 @@ class HooksUndProjekte(CodexOrdner):
         self.assertEqual(sorted(s["id"] for s in skills), sorted([f"skill:{a}/x", f"skill:{b}/x"]))
         self.assertEqual(sorted(m["id"] for m in mcp), sorted([f"mcp:{a}/q", f"mcp:{b}/q"]))
 
+    def test_gleicher_skill_in_beiden_projektordnern_zaehlt_einmal(self):
+        """Wie bei den eigenen Skills zählt der erste: Zwei Einträge trügen sonst dieselbe ID."""
+        kit = self.tmp / "Kit"
+        self.skill(kit / ".agents/skills", "x")
+        self.skill(kit / ".codex/skills", "x")
+        with mock.patch.object(codex, "HOME", self.home):
+            skills, _ = codex.projekte({"projects": {str(kit): {}}}, (set(), set()), {})
+        self.assertEqual([(s["id"], s["pfad"]) for s in skills], [("skill:Kit/x", str(kit / ".agents/skills/x/SKILL.md"))])
+
     def test_kaputte_projects_bricht_nicht_ab(self):
         self.assertEqual(codex.projekte({"mcp_servers": ["x"], "projects": ["y"]}, (set(), set()), {}), ([], []))
 

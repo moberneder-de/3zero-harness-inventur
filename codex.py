@@ -410,9 +410,13 @@ def projekte(cfg, aus, autoren):
             continue
         vertraut = isinstance(p, dict) and p.get("trust_level") == "trusted"
         lock = lies_json(ordner / "skills-lock.json").get("skills", {})
+        namen = set()  # bei gleichem Namen zählt der erste, wie in eigene_skills(): zwei Einträge trügen dieselbe ID
         for wurzel in (ordner / ".agents" / "skills", ordner / ".codex" / "skills"):
             for datei in sorted(wurzel.glob("*/SKILL.md")):
                 name = datei.parent.name
+                if name in namen:
+                    continue
+                namen.add(name)
                 e = skill_eintrag(name, datei, aus)
                 repo = (lock.get(name) or {}).get("source")
                 e.update(projekt=pfad,
