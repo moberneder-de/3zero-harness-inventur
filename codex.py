@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import harness
-from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, projekt_ids, shellwort, updates_markieren, ziel_text
+from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -459,7 +459,7 @@ def befehl(e, empfehlung):
         return f"codex plugin remove {e['plugin']}"
     if e["quelle"]["art"] == "skills-CLI":
         return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {e['name']}"
-    return f"mv \"{Path(e['pfad']).parent}\" ~/.Trash/"
+    return papierkorb_befehl(f'"{Path(e["pfad"]).parent}"')
 
 
 def toml_schluessel(name):
@@ -469,7 +469,8 @@ def toml_schluessel(name):
 
 def aktionen(e):
     """Was sich über das Dashboard umsetzen lässt: Befehl (`argv`), ein Wert in config.toml (`toml`),
-    ein [[skills.config]]-Block (`skill_aus`) oder agents/openai.yaml (`nur_manuell`). Was schon gilt, fehlt."""
+    ein [[skills.config]]-Block (`skill_aus`), agents/openai.yaml (`nur_manuell`) oder der Papierkorb (`papierkorb`).
+    Was schon gilt, fehlt."""
     eid = e["id"]
     if eid.startswith("hook:"):
         return {}
@@ -496,7 +497,7 @@ def aktionen(e):
         # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":
             return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
-        return {"deinstallieren": {"argv": ["mv", str(Path(e["pfad"]).parent), str(HOME / ".Trash") + "/"]}}
+        return {"deinstallieren": {"papierkorb": str(Path(e["pfad"]).parent)}}
     a = {}
     if not e.get("plugin"):
         if e.get("update"):
@@ -506,7 +507,7 @@ def aktionen(e):
             a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
             ziel = str(Path(e["pfad"]).parent)
-            schritt = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+            schritt = {"papierkorb": ziel}
             if Path(ziel).resolve().is_relative_to((AGENTS / "skills").resolve()):
                 schritt["gemeinsam"] = True
             a["deinstallieren"] = schritt

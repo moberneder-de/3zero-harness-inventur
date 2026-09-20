@@ -9,9 +9,6 @@ from unittest import mock
 
 import build
 
-PAPIERKORB = str(Path.home() / ".Trash")
-
-
 def plugin(status):
     return {"id": "plugin:superpowers@claude-plugins-official", "name": "superpowers", "marktplatz": "claude-plugins-official",
             "marktplatz_repo": "anthropics/claude-plugins-official", "autor": "Anthropic", "homepage": None, "version": "6.3.0",
@@ -69,12 +66,12 @@ class Aktionen(unittest.TestCase):
     def test_lokaler_skill_wandert_als_ordner_in_den_papierkorb(self):
         e = skill("3zero-style", quelle_art="lokal", pfad="/Users/x/.claude/skills/3zero-style/SKILL.md")
         self.assertEqual(build.aktionen(e)["deinstallieren"],
-                         {"argv": ["mv", "/Users/x/.claude/skills/3zero-style", PAPIERKORB + "/"]})
+                         {"papierkorb": "/Users/x/.claude/skills/3zero-style"})
 
     def test_lokaler_befehl_wandert_als_datei_in_den_papierkorb(self):
         e = skill("prime", typ="Befehl", quelle_art="lokal", pfad="/Users/x/.claude/commands/prime.md")
         self.assertEqual(build.aktionen(e)["deinstallieren"],
-                         {"argv": ["mv", "/Users/x/.claude/commands/prime.md", PAPIERKORB + "/"]})
+                         {"papierkorb": "/Users/x/.claude/commands/prime.md"})
 
     def test_plugin_bestandteil_nur_abschaltbar(self):
         e = skill("codex:rescue", typ="Befehl", quelle_art="Plugin", plugin_id="codex@openai-codex")
@@ -110,7 +107,7 @@ class Aktionen(unittest.TestCase):
         cli = {**skill("seo-audit", pfad="/x/Kit/.claude/skills/seo-audit/SKILL.md"), "id": "skill:Kit/seo-audit", "projekt": "/x/Kit"}
         self.assertEqual(build.aktionen(cli), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo-audit"], "cwd": "/x/Kit"}})
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "id": "skill:Q/q-lang", "projekt": "/x/Q"}
-        self.assertEqual(build.aktionen(lokal), {"deinstallieren": {"argv": ["mv", "/x/Q/.claude/skills/q-lang", PAPIERKORB + "/"]}})
+        self.assertEqual(build.aktionen(lokal), {"deinstallieren": {"papierkorb": "/x/Q/.claude/skills/q-lang"}})
 
     def test_projekt_mcp_nur_deinstallierbar_im_projekt(self):
         def e(art, status):
@@ -486,7 +483,11 @@ class Hooks(unittest.TestCase):
         cli = {**skill("seo-audit"), "projekt": "/x/Kit"}
         self.assertEqual(build.befehl(cli, "entfernen"), 'cd /x/Kit && npx skills remove seo-audit')
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
-        self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
+        with mock.patch.object(build.sys, "platform", "darwin"):
+            self.assertEqual(build.befehl(lokal, None), 'mv "/x/Q/.claude/skills/q-lang" ~/.Trash/')
+        with mock.patch.object(build.sys, "platform", "linux"):  # ~/.Trash gibt es nur auf dem Mac
+            self.assertEqual(build.befehl(lokal, None), 'gio trash "/x/Q/.claude/skills/q-lang"')
+            self.assertEqual(build.befehl(skill("eigen", quelle_art="lokal"), None), "gio trash ~/.claude/skills/eigen")
 
     def test_befehl_fuer_projekt_mcp(self):
         e = {"id": "mcp:Q/q", "name": "q", "projekt": "/x/Q", "art": ".mcp.json", "status": "freigegeben"}

@@ -186,6 +186,48 @@ class Server(unittest.TestCase):
         status, _ = self.anfrage("POST", "/api/ausfuehren", "kein json")
         self.assertEqual(status, 400)
 
+    def in_den_papierkorb(self, ziel, plattform):
+        """Führt „deinstallieren“ mit dem Schritt papierkorb aus; das Home ist der Temp-Ordner, nie der echte Papierkorb."""
+        self.schreibe_inventar([], skills=[{"id": "skill:x", "name": "x", "aktionen": {"deinstallieren": {"papierkorb": str(ziel)}}}])
+        with mock.patch.object(server.Path, "home", return_value=self.tmp), mock.patch.object(server.sys, "platform", plattform), \
+                mock.patch.dict(os.environ, {"XDG_DATA_HOME": ""}):
+            return self.ausfuehren("skill:x", "deinstallieren")[1]
+
+    def test_papierkorb_nimmt_einen_freien_namen(self):
+        """`mv` scheiterte an einem gleichnamigen Ordner im Papierkorb und überschrieb eine gleichnamige Datei still."""
+        korb = self.tmp / ".Trash"
+        for name, inhalt in (("skill/SKILL.md", "früher gelöscht"), ("prime.md", "früher gelöscht")):
+            (korb / name).parent.mkdir(parents=True, exist_ok=True)
+            (korb / name).write_text(inhalt)
+        ordner, datei = self.tmp / "skills" / "skill", self.tmp / "commands" / "prime.md"
+        for pfad in (ordner / "SKILL.md", datei):
+            pfad.parent.mkdir(parents=True)
+            pfad.write_text("jetzt gelöscht")
+        self.assertTrue(self.in_den_papierkorb(ordner, "darwin")["ok"])
+        self.assertTrue(self.in_den_papierkorb(datei, "darwin")["ok"])
+        self.assertFalse(ordner.exists() or datei.exists())
+        self.assertEqual({str(d.relative_to(korb)): d.read_text() for d in korb.rglob("*.md")}, {
+            "skill/SKILL.md": "früher gelöscht", "skill 2/SKILL.md": "jetzt gelöscht",
+            "prime.md": "früher gelöscht", "prime 2.md": "jetzt gelöscht"})
+
+    def test_papierkorb_unter_linux_mit_trashinfo(self):
+        """Ohne .trashinfo zeigt der Dateimanager den Eintrag nicht an, und „Wiederherstellen“ kennt den alten Ort nicht."""
+        ordner = self.tmp / "skills" / "mein skill"
+        (ordner / "SKILL.md").parent.mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("x")
+        self.assertTrue(self.in_den_papierkorb(ordner, "linux")["ok"])
+        korb = self.tmp / ".local/share/Trash"
+        self.assertEqual((korb / "files/mein skill/SKILL.md").read_text(), "x")
+        info = (korb / "info/mein skill.trashinfo").read_text()
+        self.assertTrue(info.startswith("[Trash Info]\nPath=" + str(ordner).replace(" ", "%20") + "\nDeletionDate=2"), info)
+
+    def test_papierkorb_auf_unbekanntem_system_loescht_nichts(self):
+        datei = self.tmp / "prime.md"
+        datei.write_text("x")
+        antwort = self.in_den_papierkorb(datei, "win32")
+        self.assertFalse(antwort["ok"])
+        self.assertTrue(datei.exists())
+
     def test_override_landet_in_settings_und_original_in_sicherung(self):
         self.schreibe_inventar([], skills=[
             {"id": "skill:grilling", "name": "grilling", "aktionen": {"deaktivieren": {"override": "off"}}},

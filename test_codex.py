@@ -318,7 +318,10 @@ class Befehle(unittest.TestCase):
         self.assertEqual(codex.befehl(skill, "entfernen"), "npx skills remove --global grilling")
         self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
         self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
-        self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv "/h/.agents/skills/grilling" ~/.Trash/')
+        with mock.patch("sys.platform", "darwin"):
+            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv "/h/.agents/skills/grilling" ~/.Trash/')
+        with mock.patch("sys.platform", "linux"):
+            self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'gio trash "/h/.agents/skills/grilling"')
         self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd /x/Kit && npx skills remove grilling')
         self.assertEqual(codex.befehl({**skill, "plugin": "documents@m"}, "entfernen"), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "plugin:documents@m", "name": "documents", "marktplatz": "m"}, None), "codex plugin remove documents@m")
@@ -444,7 +447,7 @@ class Aktionen(unittest.TestCase):
             "nur manuell": {"nur_manuell": "/h/.agents/skills/grilling"}})
         eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "name": "pdf", "quelle": {"art": "lokal"}}
         self.assertEqual(codex.aktionen(eigen)["deinstallieren"],
-                         {"argv": ["mv", "/h/.codex/skills/pdf", str(codex.HOME / ".Trash") + "/"]})
+                         {"papierkorb": "/h/.codex/skills/pdf"})
         aus = {**cli, "status": "aus", "aufruf": "nur $"}
         self.assertEqual(sorted(codex.aktionen(aus)), ["deinstallieren"])
         teil = {**cli, "id": "skill:documents:documents", "name": "documents:documents", "plugin": "documents@openai-primary-runtime",

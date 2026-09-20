@@ -413,6 +413,7 @@ function befehlText(e, a) {
   if (s.toml) return `~/.codex/config.toml → [${s.toml.tabelle}] ${s.toml.schluessel} = ${s.toml.wert}`;
   if (s.skill_aus) return `~/.codex/config.toml → [[skills.config]] path = ${JSON.stringify(s.skill_aus)}, enabled = false`;
   if (s.nur_manuell) return `${s.nur_manuell}/agents/openai.yaml → policy: allow_implicit_invocation: false`;
+  if (s.papierkorb) return `${s.papierkorb} → Papierkorb`;
   /* Einfache Anführungszeichen wie shellwort() in build.py: in doppelten blieben `, $ und \ wirksam,
      ein Projektpfad mit $(…) führte beim Einfügen ins Terminal etwas anderes aus, als dasteht. */
   const wort = x => /^[\w@%+=:,./-]+$/.test(x) ? x : "'" + String(x).replaceAll("'", "'\\''") + "'";

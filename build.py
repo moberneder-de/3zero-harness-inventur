@@ -654,6 +654,11 @@ def shellwort(wert):
     return wert if SICHER.fullmatch(wert) else "'" + wert.replace("'", "'\\''") + "'"
 
 
+def papierkorb_befehl(ziel):
+    """Der Befehl zum Kopieren; ~/.Trash gibt es nur auf dem Mac. Im Dashboard verschiebt der Server selbst (Schritt `papierkorb`)."""
+    return f"mv {ziel} ~/.Trash/" if sys.platform == "darwin" else f"gio trash {ziel}"
+
+
 def befehl(e, empfehlung):
     """Der Befehl, mit dem sich die Empfehlung umsetzen ließe."""
     eid = e["id"]
@@ -684,17 +689,17 @@ def befehl(e, empfehlung):
         return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}"
     if e.get("projekt"):
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
-        return f"mv \"{ziel}\" ~/.Trash/"
+        return papierkorb_befehl(f'"{ziel}"')
     if e["quelle"]["art"] == "skills-CLI":
         return f"npx skills remove --global {e['name']}"
     if e["typ"] == "Befehl":
-        return f"mv ~/.claude/commands/{e['name']}.md ~/.Trash/"
-    return f"mv ~/.claude/skills/{e['name']} ~/.Trash/"
+        return papierkorb_befehl(f"~/.claude/commands/{e['name']}.md")
+    return papierkorb_befehl(f"~/.claude/skills/{e['name']}")
 
 
 def aktionen(e):
-    """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert
-    oder deniedMcpServers-Eintrag (`sperren`). Aktionen, die schon gelten, fehlen."""
+    """Was sich über das Dashboard umsetzen lässt: Aktion → Befehl (`argv`, ggf. `cwd`), skillOverrides-Wert,
+    deniedMcpServers-Eintrag (`sperren`) oder Papierkorb (`papierkorb`). Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
     if eid.startswith("hook:"):
         return {}
@@ -724,7 +729,7 @@ def aktionen(e):
         if e["quelle"]["art"] == "skills-CLI":
             return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
-        return {"deinstallieren": {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}}
+        return {"deinstallieren": {"papierkorb": ziel}}
     a = {}
     if not e.get("plugin"):
         if e.get("update"):
@@ -734,7 +739,7 @@ def aktionen(e):
             a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
             ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
-            schritt = {"argv": ["mv", ziel, str(HOME / ".Trash") + "/"]}
+            schritt = {"papierkorb": ziel}
             if Path(ziel).resolve().is_relative_to((AGENTS / "skills").resolve()):
                 schritt["gemeinsam"] = True
             a["deinstallieren"] = schritt

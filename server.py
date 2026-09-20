@@ -25,6 +25,7 @@ import tempfile
 import threading
 import time
 import tomllib
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -255,6 +256,33 @@ def zurueckschreiben(bewertung, ziel):
     os.replace(neu, ziel)
 
 
+def in_den_papierkorb(ziel):
+    """Verschiebt in den Papierkorb des Systems, unter einem freien Namen: `mv` scheiterte an einem gleichnamigen
+    Ordner dort und überschrieb eine gleichnamige Datei still. Mac: ~/.Trash. Linux: der XDG-Papierkorb samt
+    .trashinfo, ohne die der Dateimanager den Eintrag nicht zeigt und den alten Ort nicht kennt."""
+    ziel = Path(ziel)
+    if not (ziel.exists() or ziel.is_symlink()):
+        return {"ok": False, "ausgabe": f"{ziel} gibt es nicht"}
+    if sys.platform == "darwin":
+        ablage, info = Path.home() / ".Trash", None
+    elif sys.platform.startswith("linux"):
+        korb = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "Trash"
+        ablage, info = korb / "files", korb / "info"
+    else:
+        return {"ok": False, "ausgabe": f"Den Papierkorb dieses Systems kennt der Server nicht. Bitte von Hand löschen: {ziel}"}
+    for ordner in filter(None, (ablage, info)):
+        ordner.mkdir(parents=True, exist_ok=True)
+    name, nr = ziel.name, 1
+    while (ablage / name).exists() or (ablage / name).is_symlink():
+        nr += 1
+        name = f"{ziel.stem} {nr}{ziel.suffix}"
+    if info:
+        (info / f"{name}.trashinfo").write_text(f"[Trash Info]\nPath={urllib.parse.quote(str(ziel.absolute()))}\n"
+                                                f"DeletionDate={time.strftime('%Y-%m-%dT%H:%M:%S')}\n", encoding="utf-8")
+    shutil.move(ziel, ablage / name)
+    return {"ok": True, "ausgabe": f"{ziel} → {ablage / name}"}
+
+
 # MCP-Server installiert der Server nicht selbst; sein Befehl kommt aus einem Lauf, der fremde Webseiten liest,
 # und wird dem Benutzer zum Einfügen ins Terminal angeboten. Angezeigt wird er nur, wenn er mit einem bekannten
 # Installationsbefehl beginnt und keine Shell-Metazeichen enthält — sonst könnte eine präparierte Seite dem
@@ -478,6 +506,8 @@ class Inventarserver(ThreadingHTTPServer):
                 return self.skill_abschalten(schritt["skill_aus"])
             if "nur_manuell" in schritt:
                 return self.nur_manuell_datei(schritt["nur_manuell"])
+            if "papierkorb" in schritt:
+                return in_den_papierkorb(schritt["papierkorb"])
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):
