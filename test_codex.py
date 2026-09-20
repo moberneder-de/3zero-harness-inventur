@@ -381,6 +381,17 @@ class HooksUndProjekte(CodexOrdner):
         self.assertEqual(sorted((m["id"], m["status"]) for m in mcp), [("mcp:Fremd/f", "nicht vertraut"), ("mcp:Kit/q", "eingetragen")])
         self.assertNotIn(GEHEIM, json.dumps(mcp))
 
+    def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
+        """Wie in build.py: Zwei Projekte namens „app“ teilten sich sonst eine ID, und eine Aktion träfe das erste."""
+        a, b = self.tmp / "a/app", self.tmp / "b/app"
+        for projekt in (a, b):
+            self.skill(projekt / ".agents/skills", "x")
+            self.schreibe(projekt / ".codex/config.toml", '[mcp_servers.q]\ncommand = "bun"\n')
+        with mock.patch.object(codex, "HOME", self.home):
+            skills, mcp = codex.projekte({"projects": {str(a): {}, str(b): {}}}, (set(), set()), {})
+        self.assertEqual(sorted(s["id"] for s in skills), sorted([f"skill:{a}/x", f"skill:{b}/x"]))
+        self.assertEqual(sorted(m["id"] for m in mcp), sorted([f"mcp:{a}/q", f"mcp:{b}/q"]))
+
     def test_kaputte_projects_bricht_nicht_ab(self):
         self.assertEqual(codex.projekte({"mcp_servers": ["x"], "projects": ["y"]}, (set(), set()), {}), ([], []))
 

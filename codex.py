@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import harness
-from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, shellwort, updates_markieren, ziel_text
+from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, projekt_ids, shellwort, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -415,7 +415,7 @@ def projekte(cfg, aus, autoren):
                 name = datei.parent.name
                 e = skill_eintrag(name, datei, aus)
                 repo = (lock.get(name) or {}).get("source")
-                e.update(id=f"skill:{ordner.name}/{name}", projekt=pfad,
+                e.update(projekt=pfad,
                          quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
                 skills.append(e)
         datei = ordner / ".codex" / "config.toml"
@@ -428,8 +428,10 @@ def projekte(cfg, aus, autoren):
                 status = "nicht vertraut"
             else:
                 status = "eingetragen" if c.get("enabled", True) is not False else "deaktiviert"
-            mcp.append({"id": f"mcp:{ordner.name}/{name}", "name": name, "projekt": pfad, "art": ".codex/config.toml",
+            mcp.append({"name": name, "projekt": pfad, "art": ".codex/config.toml",
                         "quelle": str(datei), "ziel": ziel_text(c), "status": status, "gesperrt": False, "aus_in_projekten": []})
+    projekt_ids(skills, "skill")
+    projekt_ids(mcp, "mcp")
     return skills, mcp
 
 

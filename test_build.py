@@ -291,6 +291,26 @@ class ProjektSkills(unittest.TestCase):
             geteilt = {e["name"]: e.get("geteilt", False) for e in build.persoenliche_skills()}
         self.assertEqual(geteilt, {"grilling": True, "inventur": True, "kopie": False})
 
+    def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
+        """Zwei Projekte namens „app“ teilten sich sonst skill:app/x, und eine Aktion träfe das erste. Den ganzen Pfad
+        trägt die ID nur dann, wenn beide Einträge haben: Ein gleichnamiger Ordner ohne Skills ändert nichts."""
+        a, b, kit = self.tmp / "a/app", self.tmp / "b/app", self.tmp / "Kit"
+        for projekt in (a, b, kit):
+            self.schreibe(projekt / ".claude/skills/x/SKILL.md", "---\nname: x\ndescription: X\n---\n")
+        (self.tmp / "leer/Kit/.claude").mkdir(parents=True)
+        ids = [e["id"] for e in build.projekt_skills([str(a), str(b), str(kit), str(self.tmp / "leer/Kit")])]
+        self.assertEqual(sorted(ids), sorted([f"skill:{a}/x", f"skill:{b}/x", "skill:Kit/x"]))
+
+    def test_gleichnamige_projektordner_bei_mcp_servern(self):
+        a, b = self.tmp / "a/app", self.tmp / "b/app"
+        for projekt in (a, b):
+            projekt.mkdir(parents=True)
+        projekte = {str(a): {"mcpServers": {"q": {"command": "x"}}}, str(b): {"mcpServers": {"q": {"command": "y"}}},
+                    str(self.tmp / "Q"): {"mcpServers": {"q": {"command": "z"}}}}
+        with mock.patch.object(build, "GESPERRT", set()):
+            ids = [e["id"] for e in build.projekt_mcp(projekte)]
+        self.assertEqual(sorted(ids), sorted([f"mcp:{a}/q", f"mcp:{b}/q", "mcp:Q/q"]))
+
     def test_home_ist_kein_projekt(self):
         self.assertEqual(build.projekt_skills([str(Path.home())]), [])
 

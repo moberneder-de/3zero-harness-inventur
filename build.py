@@ -220,6 +220,17 @@ def persoenliche_skills():
     return ergebnis
 
 
+def projekt_ids(eintraege, praefix):
+    """Setzt die IDs von Projekt-Einträgen: <praefix>:<Ordnername>/<Name>. Haben zwei Projekte mit demselben Ordnernamen
+    Einträge, trägt die ID stattdessen den ganzen Pfad — sonst teilten sie sich eine und eine Aktion träfe das erste."""
+    pfade = {}
+    for e in eintraege:
+        pfade.setdefault(Path(e["projekt"]).name, set()).add(e["projekt"])
+    for e in eintraege:
+        ordner = Path(e["projekt"]).name
+        e["id"] = f"{praefix}:{e['projekt'] if len(pfade[ordner]) > 1 else ordner}/{e['name']}"
+
+
 def projekt_skills(projekte):
     """Skills und Befehle unter <Projekt>/.claude aller Projekte, die Claude Code kennt. Sie laden nur in ihrem Projekt."""
     ergebnis, gesehen = [], {CLAUDE.resolve()}
@@ -235,11 +246,11 @@ def projekt_skills(projekte):
             if not datei.is_file():
                 continue
             e = skill_eintrag(name, typ, datei)
-            e["id"] = f"skill:{Path(pfad).name}/{name}"
             e["projekt"] = str(pfad)
             repo = (lock.get(name) or {}).get("source") if typ == "Skill" else None
             e["quelle"] = cli_quelle(repo) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"}
             ergebnis.append(e)
+    projekt_ids(ergebnis, "skill")
     return ergebnis
 
 
@@ -614,8 +625,9 @@ def projekt_mcp(projekte):
                 status = "freigegeben"
             else:
                 status = "wartet auf Freigabe"
-            ergebnis.append({"id": f"mcp:{ordner.name}/{name}", "name": name, "projekt": pfad, "art": art, "quelle": quelle,
+            ergebnis.append({"name": name, "projekt": pfad, "art": art, "quelle": quelle,
                              "ziel": ziel_text(c), "status": status, "gesperrt": name in GESPERRT, "aus_in_projekten": []})
+    projekt_ids(ergebnis, "mcp")
     return ergebnis
 
 
