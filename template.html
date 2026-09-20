@@ -474,7 +474,7 @@ function renderUeberblick() {
   const max = reihen.length ? reihen[0][1].tokens : 1;
   /* Die Zeitreihe braucht zwei Tage; solange es die nicht gibt, steht der Balken allein und behält seine Überschrift */
   const zeit = verlauf();
-  const balken = `<div class="balken${zeit ? " im-reiter" : ""}" id="kontext-herkunft"><h3>Kontextlast nach Herkunft</h3>
+  const balken = `<div class="balken${zeit ? " im-reiter" : ""}" id="kontext-herkunft"${zeit ? ' role="tabpanel" aria-labelledby="kontext-reiter-herkunft"' : ""}><h3>Kontextlast nach Herkunft</h3>
     <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
@@ -484,8 +484,8 @@ function renderUeberblick() {
   const kontext = zeit
     ? `<h2 class="kontext-titel">Kontextlast</h2>
        <div class="unterreiter schmal" role="tablist">
-         <button type="button" role="tab" aria-controls="kontext-herkunft" aria-selected="true">nach Herkunft</button>
-         <button type="button" role="tab" aria-controls="kontext-zeit" aria-selected="false">über die Zeit</button>
+         <button type="button" role="tab" id="kontext-reiter-herkunft" aria-controls="kontext-herkunft" aria-selected="true">nach Herkunft</button>
+         <button type="button" role="tab" id="kontext-reiter-zeit" aria-controls="kontext-zeit" aria-selected="false">über die Zeit</button>
        </div>${balken}${zeit}`
     : balken;
   return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + kontext);
@@ -573,7 +573,7 @@ function verlauf() {
   const erste = reihe[0], letzte = reihe[reihe.length - 1];
   const diff = letzte.kontextlast - erste.kontextlast;
   const trend = diff === 0 ? "gleich geblieben" : diff < 0 ? `${zahl(-diff)} Tokens weniger` : `${zahl(diff)} Tokens mehr`;
-  return `<div class="balken verlauf im-reiter" id="kontext-zeit" hidden><h3>Kontextlast über die Zeit</h3>
+  return `<div class="balken verlauf im-reiter" id="kontext-zeit" role="tabpanel" aria-labelledby="kontext-reiter-zeit" hidden><h3>Kontextlast über die Zeit</h3>
     <p class="klein" style="margin:0 0 10px">Ein Punkt je Tag, an dem die Inventur lief. Seit ${datum(erste.datum)} ${trend}.</p>
     <svg viewBox="0 0 760 128" role="img" aria-label="Kontextlast je Inventurlauf, ${zahl(erste.kontextlast)} bis ${zahl(letzte.kontextlast)} Tokens">
       <polyline points="${punkte.map(p => p.join(",")).join(" ")}" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
@@ -676,15 +676,18 @@ function skillsFiltern() {
   const liste = SKILLS.filter(s => {
     const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
     return (F.teile || !s.plugin)
-      && (!q || `${s.name} ${s.beschreibung} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
+      && (!q || `${s.name} ${s.beschreibung || ""} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
       && (!F.quelle || lieferweg(s) === F.quelle)
       && (!F.status || (F.status === "Update verfügbar" ? s.update : s.status === F.status))
       && (!F.aufruf || s.aufruf === F.aufruf)
       && (!F.empf || empf === F.empf)
       && (!F.geteilt || (F.geteilt === GETEILT ? !!s.geteilt : !s.geteilt));
   });
-  const wert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : s.name.toLowerCase();
-  liste.sort((a, b) => (wert(a) > wert(b) ? 1 : wert(a) < wert(b) ? -1 : 0) * F.richtung);
+  const zahlwert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : null;
+  /* Namen über localeCompare wie in den übrigen Tabellen: mit > und < landen Umlaute hinter „z“ */
+  liste.sort((a, b) => (zahlwert(a) === null
+    ? a.name.localeCompare(b.name)
+    : (zahlwert(a) > zahlwert(b) ? 1 : zahlwert(a) < zahlwert(b) ? -1 : 0)) * F.richtung);
   document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
