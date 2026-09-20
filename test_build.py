@@ -585,10 +585,13 @@ class McpMessungen(unittest.TestCase):
 
 class Verlauf(unittest.TestCase):
     def test_kontextlast_zaehlt_nur_was_in_jeder_sitzung_laedt(self):
+        """Ohne die eingebauten Skills des Harness: Codex legt sie als Dateien ab und könnte sie messen,
+        Claude Code spielt sie zur Laufzeit ein. Gezählt wird nur, was beide sehen — sonst hieße dieselbe
+        Kachel in beiden Dashboards gleich und meinte Verschiedenes, und der Verlauf wäre unvergleichbar."""
         inhalt = {"skills": [{"tokens": 10}, {"tokens": 0}], "hooks": [{"tokens": 5}],
                   "mcp": [{"tokens": 100}, {"tokens": None}], "eingebaut": [{"tokens": 2}, {}],
                   "projekt_skills": [{"tokens": 999}], "projekt_mcp": [{"tokens": 999}]}
-        self.assertEqual(build.kontextlast(inhalt), 117)
+        self.assertEqual(build.kontextlast(inhalt), 115)
 
     def test_je_tag_eine_zeile_der_letzte_lauf_gilt(self):
         tmp = Path(tempfile.mkdtemp())

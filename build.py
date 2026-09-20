@@ -757,8 +757,11 @@ def datei_stand(pfad):
 
 
 def kontextlast(inhalt):
-    """Tokens, die in jeder Sitzung laden. Projekt-Skills und Projekt-Server gelten nur in ihrem Projekt."""
-    return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp", "eingebaut") for e in inhalt.get(art, []))
+    """Tokens, die in jeder Sitzung laden. Projekt-Skills und Projekt-Server gelten nur in ihrem Projekt.
+    Ohne die eingebauten Skills des Harness: Codex legt sie als Dateien ab und könnte sie messen, Claude Code
+    spielt sie zur Laufzeit ein. Gezählt wird nur, was beide sehen — sonst hieße die Kachel in beiden
+    Dashboards gleich und meinte Verschiedenes, und die beiden Verläufe wären nicht vergleichbar."""
+    return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, []))
 
 
 def verlauf_fortschreiben(pfad, eintrag):

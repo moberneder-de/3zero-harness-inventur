@@ -375,7 +375,9 @@ function typText(e) {
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 /* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand */
 const umgesetzt = e => ({ "abschalten": e.override === "off" || (CODEX && e.status === "aus"), "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
-const JE_SITZUNG = [...D.skills, ...D.hooks, ...EINGEBAUT, ...D.mcp];
+/* Wie kontextlast() in build.py: ohne die eingebauten Skills des Harness, damit die Zahl in beiden
+   Dashboards dasselbe bedeutet. Was sie unter Codex kosten, steht in ihrer Zeile im Tab „Skills“. */
+const JE_SITZUNG = [...D.skills, ...D.hooks, ...D.mcp];
 const tokensGesamt = D.kontextlast;
 /* Jede Tokenzahl genau einmal: Die eines Plugins ist schon die Summe seiner Skills und Hooks. Geht das Plugin
    ganz, zählt seine Summe und seine Teile zählen nicht mehr; bleibt es, zählen nur die einzeln empfohlenen Teile.
@@ -459,7 +461,7 @@ function renderUeberblick() {
     <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server ${je("verbunden", "aktiv")} / eingetragen</div></div>
     <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
     <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
-    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks und MCP-Anweisungen</div></div>
+    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks und MCP-Anweisungen, ohne die eingebauten Skills</div></div>
     <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
     <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
   </div>`;
@@ -475,7 +477,7 @@ function renderUeberblick() {
   /* Die Zeitreihe braucht zwei Tage; solange es die nicht gibt, steht der Balken allein und behält seine Überschrift */
   const zeit = verlauf();
   const balken = `<div class="balken${zeit ? " im-reiter" : ""}" id="kontext-herkunft"${zeit ? ' role="tabpanel" aria-labelledby="kontext-reiter-herkunft"' : ""}><h3>Kontextlast nach Herkunft</h3>
-    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts.</p>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts. Die eingebauten Skills des Harness fehlen hier: ${je("Claude Code legt sie nicht auf der Platte ab", "Codex zeigt sie im Tab „Skills“, gezählt werden sie nicht")}.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
