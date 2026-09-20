@@ -881,7 +881,7 @@ function kandidatenBlock() {
         (k.art === "skill" ? `<button type="button" class="zeilenknopf" data-installieren="${nr}" data-manuell="1"${aus}>installieren, nur manuell</button>` : "");
     /* Ohne geprüften Befehl steht hier keiner: Der Suchlauf liest fremde Webseiten, und ein Befehl von dort
        landete sonst per Kopierknopf in deinem Terminal. Der Server verwirft, was nicht wie eine Installation aussieht. */
-    const befehl = k.befehl ? befehlZeile(k.befehl)
+    const befehl = k.befehl ? befehlZeile(k.befehl) + '<p class="klein">Geprüft ist nur die Form: bekannter Anfang, keine Shell-Zeichen. Was der Befehl installiert, prüft niemand. Vergleiche ihn vor dem Einfügen mit der Doku des Anbieters.</p>'
       : '<p class="klein">Kein prüfbarer Installationsbefehl. Hol ihn aus der Doku des Anbieters, nicht aus dieser Seite.</p>';
     return `<div class="kandidat"><strong>${esc(k.name)}</strong> <span class="tag">${ART[k.art] || esc(k.art)}</span>
       <p>${txt(k.was)}</p>${befehl}<div class="knoepfe">${knoepfe}${status}</div></div>`;
