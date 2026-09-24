@@ -98,7 +98,7 @@
       "to": "arbeit",
       "y": 228,
       "label": "Bewertung kopieren",
-      "note": "Davor hat der Server build.py ausgeführt: Das braucht Netz, der Lauf hat keins."
+      "note": "Davor hat der Server build.py ausgeführt: Das braucht Netz, der Lauf hat keins. Unter Claude Code liegt dort auch eine Kopie des Skills für --plugin-dir, weil --restricted ~/.claude/skills nicht lädt."
     },
     {
       "id": "starten",
@@ -107,7 +107,7 @@
       "y": 256,
       "label": "starten, ohne Netz",
       "variant": "security",
-      "note": "Claude Code: nur Lesen, Suchen und Edit, das ganze Home per deny gesperrt. Codex: Sandbox workspace-write, $TMPDIR und /tmp gesperrt."
+      "note": "Claude Code: --restricted ohne Einstellungen und MCP-Server des Benutzers, --tools nur Lesen, Suchen und Edit, deny sperrt das Home; beschreibbar bleibt nur der Arbeitsordner. Codex: Sandbox workspace-write, $TMPDIR und /tmp gesperrt."
     },
     {
       "id": "aendern",
@@ -183,7 +183,7 @@
       "dot": "emerald",
       "title": "Gleicher Ablauf, andere Grenze",
       "items": [
-        "Claude Code: kein Bash, kein Write; eine eigene Einstellungsdatei sperrt das ganze Home",
+        "Claude Code: --restricted und --tools, kein Bash, kein Write; deny sperrt das Home, beschreibbar bleibt nur die Arbeitskopie",
         "Codex: Sandbox, beschreibbar ist nur der Temp-Ordner; $TMPDIR und /tmp bleiben gesperrt"
       ]
     },

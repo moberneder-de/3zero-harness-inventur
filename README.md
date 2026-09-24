@@ -86,6 +86,9 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
   dashboard.html                 Oberfläche, erzeugt
   dashboard-codex.html           Oberfläche, erzeugt
   harness.json                   welcher Harness zuletzt lief
+  verlauf-claude-code.json       Kontextlast je Tag, erzeugt
+  verlauf-codex.json             Kontextlast je Tag, erzeugt
+  start.html                     Einstieg mit Schlüssel, nur solange server.py läuft
 ```
 
 Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". Das Werkzeug läuft also auch frisch geklont.
@@ -94,7 +97,7 @@ Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". 
 
 Zwei Knöpfe starten einen Agenten im Hintergrund. Beide sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
 
-**Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Unter Claude Code läuft das als `claude -p` mit fester Werkzeugliste. Unter Codex als `codex exec` ohne Netz, auf einer Arbeitskopie in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
+**Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (Einstellungen und MCP-Server des Benutzers bleiben draußen), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
 
 **Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
 
@@ -107,10 +110,14 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | Nutzung | `skillUsage` in `~/.claude.json`, bzw. `~/.codex/sessions` | gezählt |
 | Kontextkosten | Länge von Name und Beschreibung ÷ 4 | Schätzung |
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
+| Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
+| MCP-Server | Werkzeuge, Aufrufe und Anweisungsblock (÷ 4) aus denselben Transkripten; Schemata sofort geladener Werkzeuge fehlen dort | gezählt, Kontext zu niedrig |
 | Update verfügbar | `gh api` gegen den Stand bei der Installation (`skillFolderHash`) | genau |
 | Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
 
-Umgebungswerte und Tokens von MCP-Servern übernimmt das Inventar nie.
+Umgebungswerte von MCP-Servern übernimmt das Inventar nie. Was in URL oder Argumenten eines Servers nach Zugangsdaten aussieht (Passwort in der URL, Werte in der Query, `--token …`, `…_KEY=…`, `Bearer …`), ersetzt es durch „…“, bevor das Ziel im Inventar und im Dashboard steht. Das erkennt Muster, keine Bedeutung.
+
+Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nicht gemessen“.
 
 ## Voraussetzungen
 
@@ -130,7 +137,7 @@ Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die 
 
 ## Diagramme
 
-In `docs/` liegen vier eigenständige HTML-Diagramme mit ihren Quellen: der **Aufbau**, der **Codex-Bewertungslauf**, die **Herkunft der Kennzahlen** und die **sechs Schritte des Skills**. Einfach im Browser öffnen.
+In `docs/` liegen vier eigenständige HTML-Diagramme mit ihren Quellen: der **Aufbau**, der **Bewertungslauf** (für beide Harnesses, mit dem Abbrechen), die **Herkunft der Kennzahlen** und die **sechs Schritte des Skills**. Einfach im Browser öffnen.
 
 ## Hinweis
 

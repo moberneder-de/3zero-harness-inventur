@@ -2,6 +2,8 @@ import http.client
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -31,6 +33,8 @@ class Server(unittest.TestCase):
         }}])
         # Werkzeug und Daten im selben Ordner: die Tests legen build.py und die Dateien zusammen ab
         (self.tmp / "build.py").write_text("")  # beide Bewertungsläufe rufen es davor und danach auf
+        (self.tmp / "skill").mkdir()  # die Claude-Läufe laden ihn als Plugin aus einer Kopie
+        (self.tmp / "skill" / "SKILL.md").write_text("---\nname: 3zero-harness-inventur\n---\n")
         self.srv = server.Inventarserver(0, self.tmp, self.settings, "geheim", self.tmp)
         self.srv.codex_config = self.tmp / "codex-config.toml"  # nie die echte ~/.codex/config.toml treffen
         self.srv.codex_skills = self.tmp / "agents-skills"  # nie das echte ~/.agents/skills treffen
@@ -452,10 +456,91 @@ class Server(unittest.TestCase):
             self.assertIn(erwartet, argv)
         for verboten in ("Write", "Bash(python3 *)", "--dangerously-skip-permissions"):
             self.assertNotIn(verboten, argv)
+        # --allowedTools genehmigt nur vorab; welche Werkzeuge es gibt und wohin Edit darf, legen erst diese fest
+        self.assertEqual(argv[argv.index("--tools") + 1], "Read,Edit,Glob,Grep")
+        for erwartet in ("--restricted", "--strict-mcp-config", "--no-session-persistence"):
+            self.assertIn(erwartet, argv)
+        self.assertEqual(argv[argv.index("--permission-prompts") + 1], "none")
+        self.assertEqual(argv[argv.index("--add-dir") + 1], str(Path.home()))
+        self.assertEqual(argv[1], "/inventur:3zero-harness-inventur")  # das Protokoll bricht Argumente an \n um
         # der Lauf arbeitet auf einer Kopie außerhalb des Datenordners, und nur gültiges JSON kommt zurück
         arbeitsordner = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertTrue(Path(argv[argv.index("--plugin-dir") + 1]).resolve().is_relative_to(arbeitsordner))
         self.assertNotEqual(arbeitsordner, self.tmp.resolve())
         self.assertEqual(json.loads(bewertung.read_text()), {"stand": "2026-09-20"})
+
+    def test_skill_kommt_als_kopie_in_den_arbeitsordner(self):
+        """--restricted lädt ~/.claude/skills nicht, ein Plugin per --plugin-dir schon (nachgemessen). Es liegt im
+        Arbeitsordner, weil --restricted die Datei-Werkzeuge dorthin begrenzt, und ist eine Kopie: Über einen
+        Symlink könnte Edit den Skill im Projekt ändern."""
+        arbeitsordner = self.tmp / "arbeit"
+        arbeitsordner.mkdir()
+        plugin = server.skill_plugin(self.tmp / "skill", arbeitsordner)
+        skill = plugin / "skills" / "3zero-harness-inventur"
+        self.assertTrue(plugin.resolve().is_relative_to(arbeitsordner.resolve()))
+        self.assertFalse(skill.is_symlink())
+        self.assertEqual((skill / "SKILL.md").read_text(), (self.tmp / "skill" / "SKILL.md").read_text())
+        self.assertEqual(json.loads((plugin / ".claude-plugin" / "plugin.json").read_text()), {"name": "inventur"})
+
+    def test_npx_laeuft_mit_leerem_prefix(self):
+        """Im Projektordner nähme npx sonst ein node_modules/.bin/skills des Projekts und dessen .npmrc (nachgemessen):
+        Ein geklontes Repo führte beim Deinstallieren eigenen Code aus. Der Befehl selbst läuft weiter im Projekt."""
+        self.claude_ersatz("entfernt", name="npx")
+        projekt = self.tmp / "projekt"
+        projekt.mkdir()
+        self.schreibe_inventar([], mcp=[{"id": "skill:Kit/x", "name": "x", "aktionen": {
+            "deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "x"], "cwd": str(projekt)}}}])
+        self.assertTrue(self.ausfuehren("skill:Kit/x", "deinstallieren")[1]["ok"])
+        argv = (self.tmp / "argv").read_text().split("\n")
+        self.assertEqual((argv[0], argv[2:6]), ("--prefix", ["skills", "remove", "-y", "x"]))
+        self.assertFalse(Path(argv[1]).resolve().is_relative_to(projekt.resolve()))
+        self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), projekt.resolve())
+
+    def test_bewerten_mit_klammer_auf_stderr_meldet_den_bericht(self):
+        """Wie bei der Suche: claude_text() bekam stdout und stderr zusammen. Eine Warnung mit geschweifter Klammer
+        zerriss den JSON-Ausschnitt, und statt des Berichts stand die rohe JSON-Antwort im Dashboard."""
+        self.claude_ersatz('{"type":"result","is_error":false,"result":"2 neu, 1 weg."}', bewertung='{"stand": "2026-09-20"}')
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace("cat <<", 'echo \'MCP server "x" failed: {"code":-32000}\' >&2\ncat <<', 1))
+        _, stand = self.bewerten()
+        self.assertEqual((stand["ok"], stand["ausgabe"]), (True, "2 neu, 1 weg."))
+
+    def test_zurueckschreiben_nimmt_eine_eigene_zwischendatei(self):
+        """Mit festem Zwischennamen <datei>.neu nahmen sich zwei Schreiber die Datei weg, und ein Rest unter diesem
+        Namen wurde still ersetzt. Wie harness.schreiben: eigener Name je Aufruf, einem Symlink folgen."""
+        echt = self.tmp / "sync" / "bewertung-claude-code.json"
+        echt.parent.mkdir()
+        echt.write_text("{}")
+        ziel = self.tmp / "bewertung-claude-code.json"
+        ziel.symlink_to(echt)
+        fremd = echt.with_name(echt.name + ".neu")
+        fremd.write_text("fremd")
+        server.zurueckschreiben({"stand": "neu"}, ziel)
+        self.assertTrue(ziel.is_symlink())
+        self.assertEqual(json.loads(echt.read_text()), {"stand": "neu"})
+        self.assertEqual(fremd.read_text(), "fremd")
+
+    def test_fehlendes_inventar_oder_dashboard_bekommt_eine_antwort(self):
+        """Beim ersten Codex-Lauf oder nach einem abgestürzten build.py fehlen inventar-codex.json und dashboard-codex.html.
+        Der FileNotFoundError brach die Verbindung ohne Antwort ab; im Dashboard stand dann „Server weg“."""
+        self.auf_codex()
+        (self.tmp / "inventar-codex.json").unlink()
+        (self.tmp / "dashboard-codex.html").unlink()
+        status, antwort = self.ausfuehren("plugin:x@y", "deinstallieren")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("inventar-codex.json", antwort["ausgabe"])
+        status, html = self.anfrage("GET", "/?k=geheim", token=None)
+        self.assertEqual(status, 500)
+        self.assertIn("dashboard-codex.html", html)
+        self.assertIn("build.py", html)
+
+    def test_zu_altes_python_meldet_sich_verstaendlich(self):
+        """/usr/bin/python3 ist auf dem Mac 3.9; dort scheiterte `import tomllib` mit einem rohen Traceback."""
+        r = subprocess.run([sys.executable, "-c", "import runpy, sys; sys.version_info = (3, 9, 6); runpy.run_path(sys.argv[1])",
+                            str(server.HIER / "server.py")], capture_output=True, text=True, cwd=self.tmp, timeout=30)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Python 3.11", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
 
     def test_bewerten_sperrt_das_ganze_home(self):
         """Pfadregeln in --allowedTools begrenzen Edit nicht (nachgemessen); wirksam ist nur deny in einer eigenen
@@ -555,6 +640,72 @@ class Server(unittest.TestCase):
             time.sleep(0.1)
         self.assertEqual((stand["laeuft"], stand["ok"], stand["abgebrochen"], stand["bedarf"]), (False, False, True, "Folien"))
 
+    def test_lauf_kehrt_zurueck_auch_wenn_ein_enkel_die_ausgabe_offen_haelt(self):
+        """Ein Enkel in eigener Session entkommt dem Beenden der Prozessgruppe und hält stdout offen. lauf() wartete
+        danach ohne Frist auf das Ende der Pipe, also bis der Enkel endete; die Bewertung hielt so lange die Sperre,
+        und keine Aktion im Dashboard ging mehr. Dasselbe nach einem Abbruch und wenn der Lauf selbst normal endet."""
+        pids = self.tmp / "enkel-pids"
+        enkel = self.tmp / "enkel.py"
+        enkel.write_text("import os, sys, time\nos.setsid()\nwith open(sys.argv[1], 'a') as f:\n    f.write(f'{os.getpid()}\\n')\n"
+                         "time.sleep(15)\n")
+        kind = (f"import subprocess, sys, time; subprocess.Popen([sys.executable, {str(enkel)!r}, {str(pids)!r}]);"
+                "print('angefangen', flush=True); time.sleep(float(sys.argv[1]))")
+        abbrechen = lambda p: threading.Timer(1, server.beenden, [p]).start()
+        try:
+            for fall, schlaf, frist, gestartet, ok in (("Zeit abgelaufen", 60, 1, None, False),
+                                                       ("abgebrochen", 60, 60, abbrechen, False),
+                                                       ("normal beendet", 0, 60, None, True)):
+                with self.subTest(fall=fall):
+                    beginn = time.time()
+                    r = server.lauf([sys.executable, "-c", kind, str(schlaf)], None, frist, gestartet)
+                    self.assertLess(time.time() - beginn, 8)
+                    self.assertEqual(r["ok"], ok)
+                    self.assertIn("angefangen", r["ausgabe"])  # was bis dahin kam, geht nicht verloren
+        finally:
+            for pid in (pids.read_text().split() if pids.exists() else []):
+                try:
+                    os.kill(int(pid), 9)
+                except ProcessLookupError:
+                    pass
+
+    def test_lauf_ueberlebt_ausgabe_die_kein_utf8_ist(self):
+        """Ein Befehl kann Bytes ausgeben, die kein UTF-8 sind (ein Dateiname, eine fremde Fehlermeldung). lauf() warf
+        dann UnicodeDecodeError, und schon der Serverstart über neu_einlesen() brach ab."""
+        r = server.lauf([sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'caf\\xe9 fertig'); sys.stderr.buffer.write(b'\\xff')"],
+                        None, 10)
+        self.assertTrue(r["ok"], r)
+        self.assertIn("fertig", r["stdout"])
+
+    def test_beim_verlassen_nur_laufende_prozesse_beenden(self):
+        """bedienen() beendete beim Verlassen jeden Prozess, den es je gab, auch längst beendete: Deren Prozessgruppen-ID
+        kann inzwischen einem fremden Prozess gehören. Und es las self.prozesse ohne Sperre, während ein Lauf sie änderte."""
+        srv = mock.Mock(laeufe_sperre=threading.Lock())
+        srv.serve_forever.side_effect = KeyboardInterrupt
+        gesperrt = []
+        prozess = lambda code: mock.Mock(poll=lambda: gesperrt.append(srv.laeufe_sperre.locked()) or code)
+        fertig, laeuft = prozess(0), prozess(None)
+        srv.prozesse = {"suche": fertig, "bewertung": laeuft}
+        start = self.tmp / "start.html"
+        start.write_text("x")
+        with mock.patch.object(server.signal, "signal"), mock.patch.object(server, "beenden") as beenden:
+            server.bedienen(srv, start)
+        beenden.assert_called_once_with(laeuft)
+        self.assertEqual(gesperrt, [True, True])
+        self.assertFalse(start.exists())
+
+    def test_stand_kopiert_den_lauf_unter_der_sperre(self):
+        """abbrechen() setzt „abgebrochen“ unter der Sperre; stand() kopierte den Eintrag danach ohne sie, und ein
+        gleichzeitiges Hinzufügen brach das Kopieren mit RuntimeError ab."""
+        gesperrt, sperre = [], self.srv.laeufe_sperre
+
+        class Lauf(dict):
+            def items(eintrag):
+                gesperrt.append(sperre.locked())
+                return super().items()
+        self.srv.laeufe["bewertung"] = Lauf(laeuft=True, beginn=time.time())
+        self.assertTrue(self.srv.stand("bewertung")["laeuft"])
+        self.assertEqual(gesperrt, [True])
+
     def test_abbrechen_ohne_lauf_und_ohne_token(self):
         for art in ("bewertung", "suche"):
             with self.subTest(art=art):
@@ -599,9 +750,12 @@ class Server(unittest.TestCase):
         status, antwort = self.suchen()
         self.assertEqual((status, antwort["ok"], antwort["ausgabe"]), (200, True, "## Bedarf\nHTML-Folien"))
         argv = (self.tmp / "argv").read_text().split("\n")
-        self.assertEqual(argv[:2], ["-p", "/3zero-harness-inventur suche Präsentationen als HTML"])
-        for erwartet in ("--json-schema", "WebSearch", "WebFetch", "Bash(npx skills find *)"):
+        self.assertEqual(argv[:2], ["-p", "/inventur:3zero-harness-inventur suche Präsentationen als HTML"])
+        for erwartet in ("--json-schema", "WebSearch", "WebFetch", "Bash(npx skills find *)",
+                         "--restricted", "--strict-mcp-config", "--no-session-persistence"):
             self.assertIn(erwartet, argv)
+        self.assertEqual(argv[argv.index("--tools") + 1], "Read,Glob,Grep,WebSearch,WebFetch,Bash")
+        self.assertEqual(argv[argv.index("--permission-prompts") + 1], "none")
         for verboten in ("Edit", "Write", "Bash(python3 *)", "Bash(gh api *)", "--dangerously-skip-permissions"):
             self.assertNotIn(verboten, argv)
         cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
@@ -653,6 +807,9 @@ class Server(unittest.TestCase):
         self.assertFalse(server.nur_manuell_gesetzt("defaults:\n  allow_implicit_invocation: false\n"))
         self.assertFalse(server.nur_manuell_gesetzt(
             "policy:\n  allow_implicit_invocation: true\ndefaults:\n  allow_implicit_invocation: false\n"))
+        # Ein Kommentar hinter dem Wert oder hinter policy: ändert nichts; so liest es auch codex.nur_manuell
+        self.assertTrue(server.nur_manuell_gesetzt("policy:\n  allow_implicit_invocation: false  # nur per $name\n"))
+        self.assertTrue(server.nur_manuell_gesetzt("policy:  # Codex\n  allow_implicit_invocation: false\n"))
 
     def test_warnung_mit_klammer_auf_stderr_verwirft_das_ergebnis_nicht(self):
         """`claude_json` schnitt von der ersten { bis zur letzten } über stdout UND stderr. Eine Warnung wie
@@ -971,6 +1128,63 @@ enabled = true
         text = server.toml_text_setzen('[mcp_servers.a]  # mein Server\nenabled = true\n', "mcp_servers.a", "enabled", "false")
         self.assertEqual(text, '[mcp_servers.a]  # mein Server\nenabled = false\n')
 
+    def test_toml_text_setzen_findet_den_kopf_in_anderer_schreibweise(self):
+        """Der Kopf wurde nur als exakter Text gesucht. Bei [mcp_servers."foo"] oder [ mcp_servers.foo ] hängte der Server
+        eine zweite Tabelle an; die Datei parste nicht mehr, und die Aktion scheiterte mit „Cannot declare …“."""
+        for kopf in ('[mcp_servers."foo"]', "[ mcp_servers . foo ]", "[mcp_servers.'foo']  # Kommentar"):
+            with self.subTest(kopf=kopf):
+                self.assertEqual(server.toml_text_setzen(f'{kopf}\ncommand = "x"\n', "mcp_servers.foo", "enabled", "false"),
+                                 f'{kopf}\nenabled = false\ncommand = "x"\n')
+        self.assertEqual(server.toml_text_setzen("[plugins.'a@b']\nenabled = true\n", 'plugins."a@b"', "enabled", "false"),
+                         "[plugins.'a@b']\nenabled = false\n")
+
+    def test_toml_text_setzen_ueberspringt_mehrzeilige_strings(self):
+        """Eine Zeile in einem mehrzeiligen String, die mit [ beginnt, beendete die Tabelle zu früh oder galt selbst als
+        Kopf: Der Server schrieb in den String oder fügte eine zweite enabled-Zeile ein, und die Datei parste nicht mehr."""
+        text = '[mcp_servers.foo]\ndescription = """\n[kein Kopf]\nenabled = true\n"""\nenabled = true\n'
+        neu = tomllib.loads(server.toml_text_setzen(text, "mcp_servers.foo", "enabled", "false"))
+        self.assertEqual(neu["mcp_servers"]["foo"], {"description": "[kein Kopf]\nenabled = true\n", "enabled": False})
+        text = "notiz = '''\n[mcp_servers.foo]\n'''\n[mcp_servers.foo]\nenabled = true\n"
+        neu = tomllib.loads(server.toml_text_setzen(text, "mcp_servers.foo", "enabled", "false"))
+        self.assertEqual(neu, {"notiz": "[mcp_servers.foo]\n", "mcp_servers": {"foo": {"enabled": False}}})
+
+    def test_toml_text_setzen_behaelt_crlf(self):
+        """splitlines() und "\\n".join machten aus einer CRLF-Datei stillschweigend eine mit LF, und im Dotfiles-Repo
+        war jede Zeile geändert."""
+        text = '# eigene\r\n[mcp_servers.foo]\r\ncommand = "x"\r\n'
+        self.assertEqual(server.toml_text_setzen(text, "mcp_servers.foo", "enabled", "false"),
+                         '# eigene\r\n[mcp_servers.foo]\r\nenabled = false\r\ncommand = "x"\r\n')
+        self.assertEqual(server.toml_text_setzen(text, "mcp_servers.neu", "enabled", "false"),
+                         text + "\r\n[mcp_servers.neu]\r\nenabled = false\r\n")
+
+    def test_toml_in_anderer_form_meldet_bitte_von_hand(self):
+        """Als Inline-Tabelle oder mit gepunkteten Schlüsseln lässt sich die Tabelle nicht per Kopf ergänzen. Die Rücknahme
+        griff, aber die Meldung („Cannot declare …“) sagte nicht, was zu tun ist."""
+        config = self.mit_config()
+        for tabelle, inhalt in (("mcp_servers.foo", '[mcp_servers]\nfoo = { command = "x" }\n'),
+                                ("mcp_servers.foo", 'mcp_servers.foo.command = "x"\n'),
+                                ('plugins."a@b"', '[plugins]\n"a@b" = { enabled = true }\n')):
+            with self.subTest(inhalt=inhalt):
+                config.write_text(inhalt)
+                self.schreibe_inventar([{"id": "x", "name": "x", "aktionen": {
+                    "deaktivieren": {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "false"}}}}])
+                antwort = self.ausfuehren("x", "deaktivieren")[1]
+                self.assertFalse(antwort["ok"])
+                self.assertIn("von Hand", antwort["ausgabe"])
+                self.assertEqual(config.read_text(), inhalt)
+
+    def test_config_mit_bom(self):
+        """Mit UTF-8-BOM scheiterte tomllib schon am ersten Zeichen: Jede Codex-Aktion schlug fehl, und die Läufe verloren
+        Modell und Denktiefe. Die BOM bleibt beim Zurückschreiben stehen, der Server ändert nur den einen Wert."""
+        config = self.mit_config()
+        config.write_bytes(b"\xef\xbb\xbf" + self.CONFIG.encode())
+        self.schreibe_inventar([{"id": "plugin:documents@openai-primary-runtime", "name": "documents", "aktionen": {
+            "deaktivieren": {"toml": {"tabelle": 'plugins."documents@openai-primary-runtime"', "schluessel": "enabled", "wert": "false"}}}}])
+        antwort = self.ausfuehren("plugin:documents@openai-primary-runtime", "deaktivieren")[1]
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual(config.read_bytes(), b"\xef\xbb\xbf" + self.CONFIG.replace("enabled = true", "enabled = false").encode())
+        self.assertEqual(server.codex_modell(config), ["-m", "gpt-test"])
+
     def test_toml_pfad(self):
         self.assertEqual(server.toml_pfad('plugins."a@b".mcp_servers.c'), ["plugins", "a@b", "mcp_servers", "c"])
         self.assertEqual(server.toml_pfad("mcp_servers.node_repl"), ["mcp_servers", "node_repl"])
@@ -1033,6 +1247,73 @@ enabled = true
         self.assertEqual(cfg["skills"]["config"], [{"enabled": False, "path": str(anderer)}, {"path": str(skill), "enabled": True}])
         self.assertIn(von_hand, config.read_text())
         self.assertFalse(self.ausfuehren("skill:grilling", "einschalten")[1]["ok"])  # kein Block schaltet ihn mehr ab
+
+    def skill_mit_aktionen(self):
+        """Ein Skill mit deaktivieren und einschalten über [[skills.config]]."""
+        skill = self.tmp / "skills/grilling/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("---\nname: grilling\n---\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:grilling", "name": "grilling", "aktionen": {
+            "deaktivieren": {"skill_aus": str(skill)}, "einschalten": {"skill_an": str(skill)}}}])
+        return skill
+
+    def test_deaktivieren_nach_einschalten_haengt_keinen_zweiten_block_an(self):
+        """Einschalten lässt den Block mit enabled = true stehen. Deaktivieren suchte danach nur einen Block mit
+        enabled = false und hängte jedes Mal einen neuen an; die Datei wuchs mit jedem Hin und Her."""
+        config = self.mit_config()
+        skill = self.skill_mit_aktionen()
+        for aktion in ("deaktivieren", "einschalten", "deaktivieren", "einschalten", "deaktivieren"):
+            antwort = self.ausfuehren("skill:grilling", aktion)[1]
+            self.assertTrue(antwort["ok"], (aktion, antwort))
+        self.assertEqual(tomllib.loads(config.read_text())["skills"]["config"], [{"path": str(skill), "enabled": False}])
+        self.assertEqual(config.read_text().count("[[skills.config]]"), 1)
+
+    def test_skills_config_als_array_meldet_bitte_von_hand(self):
+        """[skills] config = [{…}] liest sich wie [[skills.config]]-Blöcke, lässt sich aber nicht per Kopf ergänzen:
+        Deaktivieren scheiterte mit „Cannot mutate …“, Einschalten fand keinen Block und meldete, die Einstellung stehe
+        nach dem Schreiben nicht in der Datei."""
+        config = self.mit_config()
+        skill = self.skill_mit_aktionen()
+        for aktion, inhalt in (("deaktivieren", f'[skills]\nconfig = [{{ path = "{skill}", enabled = true }}]\n'),
+                               ("einschalten", f'skills.config = [{{ path = "{skill}", enabled = false }}]\n')):
+            with self.subTest(aktion=aktion):
+                config.write_text(inhalt)
+                antwort = self.ausfuehren("skill:grilling", aktion)[1]
+                self.assertFalse(antwort["ok"])
+                self.assertIn("von Hand", antwort["ausgabe"])
+                self.assertEqual(config.read_text(), inhalt)
+
+    def test_crlf_bleibt_in_config_und_openai_yaml(self):
+        """read_text() und splitlines() machten aus CRLF stillschweigend LF, in config.toml wie in agents/openai.yaml."""
+        config = self.mit_config()
+        vorher = self.CONFIG.replace("\n", "\r\n").encode()
+        config.write_bytes(vorher)
+        skill = self.skill_mit_aktionen()
+        self.assertTrue(self.ausfuehren("skill:grilling", "deaktivieren")[1]["ok"])
+        self.assertTrue(self.ausfuehren("skill:grilling", "einschalten")[1]["ok"])
+        self.assertEqual(config.read_bytes(), vorher + f'\r\n[[skills.config]]\r\npath = "{skill}"\r\nenabled = true\r\n'.encode())
+        ordner = self.tmp / "skills/teach"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: teach\n---\n")
+        (ordner / "agents/openai.yaml").write_bytes(b"interface:\r\n  display_name: Teach\r\npolicy:\r\n  allow_implicit_invocation: true\r\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:teach", "name": "teach", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:teach", "nur manuell")[1]["ok"])
+        self.assertEqual((ordner / "agents/openai.yaml").read_bytes(),
+                         b"interface:\r\n  display_name: Teach\r\npolicy:\r\n  allow_implicit_invocation: false\r\n")
+
+    def test_nur_manuell_mit_kommentar_hinter_policy(self):
+        """`policy:  # Kommentar` ist ein Block wie `policy:`; der Server hielt den Kommentar für einen Wert und lehnte ab."""
+        self.mit_config()
+        ordner = self.tmp / "skills/kommentiert"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: kommentiert\n---\n")
+        (ordner / "agents/openai.yaml").write_text("policy:  # Codex\n  allow_implicit_invocation: true\n")
+        self.schreibe_inventar([], skills=[{"id": "skill:k", "name": "k", "aktionen": {
+            "nur manuell": {"nur_manuell": str(ordner)}, "wieder automatisch": {"automatisch": str(ordner)}}}])
+        antwort = self.ausfuehren("skill:k", "nur manuell")[1]
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(), "policy:  # Codex\n  allow_implicit_invocation: false\n")
+        self.assertTrue(self.ausfuehren("skill:k", "wieder automatisch")[1]["ok"])
 
     def test_wieder_automatisch_stellt_die_policy_zurueck(self):
         self.mit_config()

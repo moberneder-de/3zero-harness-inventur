@@ -45,10 +45,12 @@ def data_uri(inhalt, mime):
 
 
 def lies_json(pfad):
+    """Nur ein JSON-Objekt, sonst {}: Alle Aufrufer lesen mit .get weiter, auch in Dateien, die andere geschrieben haben."""
     try:
-        return json.loads(Path(pfad).read_text(encoding="utf-8"))
+        daten = json.loads(Path(pfad).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    return daten if isinstance(daten, dict) else {}
 
 
 CFG = lies_json(HOME / ".claude.json")
@@ -75,7 +77,8 @@ def datum_ms(ms):
 def frontmatter(pfad):
     """Liest den YAML-Kopf einer Markdown-Datei (einfache Teilmenge, ohne PyYAML)."""
     try:
-        text = Path(pfad).read_text(encoding="utf-8")
+        # utf-8-sig: sonst steht ein BOM vor dem ---; replace: eine Datei in Latin-1 behält ihre Beschreibung
+        text = Path(pfad).read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return {}
     m = re.match(r"^---\s*\n(.*?)\n---", text, re.S)
@@ -152,11 +155,17 @@ def skill_eintrag(anzeige, typ, datei, plugin_aktiv=True, schluessel=None):
     }
 
 
+def autoren():
+    """Anzeigenamen aus der Bewertung; sie stammt aus einem Lauf und kann alles Mögliche enthalten."""
+    a = BEWERTUNG.get("autoren")
+    return a if isinstance(a, dict) else {}
+
+
 def cli_quelle(repo):
     besitzer = repo.split("/")[0]
     return {
         "art": "skills-CLI",
-        "autor": BEWERTUNG.get("autoren", {}).get(besitzer, besitzer),
+        "autor": autoren().get(besitzer, besitzer),
         "repo": repo,
         "url": f"https://github.com/{repo}",
     }
@@ -241,12 +250,15 @@ def projekt_skills(projekte):
     ergebnis, gesehen = [], {CLAUDE.resolve()}
     for pfad in sorted(projekte):
         wurzel = Path(pfad) / ".claude"
-        if not wurzel.is_dir() or wurzel.resolve() in gesehen:
+        try:
+            if not wurzel.is_dir() or wurzel.resolve() in gesehen:
+                continue
+            gesehen.add(wurzel.resolve())
+            dateien = [(o.name, "Skill", o / "SKILL.md") for o in sorted((wurzel / "skills").iterdir())] if (wurzel / "skills").is_dir() else []
+            dateien += [(d.stem, "Befehl", d) for d in sorted(wurzel.glob("commands/*.md"))]
+        except OSError:  # etwa ~/Documents, das macOS ohne Freigabe verweigert: nur dieses Projekt fällt weg
             continue
-        gesehen.add(wurzel.resolve())
         lock = lies_json(Path(pfad) / "skills-lock.json").get("skills", {})
-        dateien = [(o.name, "Skill", o / "SKILL.md") for o in sorted((wurzel / "skills").iterdir())] if (wurzel / "skills").is_dir() else []
-        dateien += [(d.stem, "Befehl", d) for d in sorted(wurzel.glob("commands/*.md"))]
         for name, typ, datei in dateien:
             if not datei.is_file():
                 continue
@@ -262,10 +274,13 @@ def projekt_skills(projekte):
 def hook_eintraege(roh, schluessel, quelle, pfad, status="aktiv"):
     """Ein Eintrag je Ereignis aus einem hooks-Block (settings.json oder hooks/hooks.json), mit allen Befehlen darunter."""
     ergebnis = []
-    for ereignis, gruppen in sorted((roh or {}).items()):
+    for ereignis, gruppen in sorted((roh if isinstance(roh, dict) else {}).items()):
+        if not isinstance(gruppen, list):  # fremde hooks.json: was nicht die erwartete Form hat, fällt weg
+            continue
         befehle = [{"befehl": h.get("command") or h.get("prompt") or h.get("url") or h.get("type"),
                     "matcher": g.get("matcher"), "bedingung": h.get("if")}
-                   for g in gruppen for h in g.get("hooks", [])]
+                   for g in gruppen if isinstance(g, dict) and isinstance(g.get("hooks"), list)
+                   for h in g["hooks"] if isinstance(h, dict)]
         ergebnis.append({"id": f"hook:{schluessel}:{ereignis}", "name": ereignis, "typ": "Hook", "ereignis": ereignis,
                          "status": status, "befehle": befehle, "quelle": dict(quelle), "pfad": str(pfad),
                          "tokens": 0, "ausgabe": None, "dauer": None})
@@ -384,9 +399,14 @@ def werkzeug_praefix(name):
     return re.sub(r"[^A-Za-z0-9_-]", "_", name)
 
 
-def mcp_messungen(dateien):
+def mcp_messungen(dateien, praefixe=()):
     """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Anweisungsblock in Tokens, Aufrufe.
-    Die Schemata sofort geladener Werkzeuge stehen nicht im Transkript; `tokens` misst nur den Anweisungsblock."""
+    Die Schemata sofort geladener Werkzeuge stehen nicht im Transkript; `tokens` misst nur den Anweisungsblock.
+    `praefixe` sind die Werkzeugpräfixe der bekannten Server: Ein Servername kann selbst `__` enthalten."""
+    laengste = sorted(praefixe, key=len, reverse=True)
+
+    def server(n):
+        return next((p for p in laengste if n.startswith(f"mcp__{p}__")), None) or n.split("__")[1]
     werkzeuge, tokens, aufrufe = {}, {}, {}
     grenze = zeitgrenze()
     for datei in dateien:
@@ -407,7 +427,7 @@ def mcp_messungen(dateien):
                     namen = a.get("addedNames") or [e.get("name") for e in a.get("entries") or []]
                     for n in namen:
                         if isinstance(n, str) and n.startswith("mcp__"):
-                            werkzeuge.setdefault(n.split("__")[1], set()).add(n)
+                            werkzeuge.setdefault(server(n), set()).add(n)
                 elif a.get("type") == "mcp_instructions_delta":
                     for name, block in zip(a.get("addedNames") or [], a.get("addedBlocks") or []):
                         tokens[werkzeug_praefix(name)] = round(len(block) / 4)
@@ -416,7 +436,7 @@ def mcp_messungen(dateien):
                     name = c.get("name") if isinstance(c, dict) and c.get("type") == "tool_use" else None
                     # Werkzeugliste und Anweisungsblock beschreiben den Server, nicht ein Ereignis, und bleiben
                     if isinstance(name, str) and name.startswith("mcp__") and (d.get("timestamp") or "")[:19] >= grenze:
-                        aufrufe.setdefault(name.split("__")[1], []).append((d.get("timestamp") or "")[:10])
+                        aufrufe.setdefault(server(name), []).append((d.get("timestamp") or "")[:10])
     return {s: {"werkzeuge": len(werkzeuge.get(s, ())), "tokens": tokens.get(s, 0),
                 "nutzung": {"anzahl": len(aufrufe[s]), "zuletzt": max(aufrufe[s])} if s in aufrufe else None}
             for s in set(werkzeuge) | set(tokens) | set(aufrufe)}
@@ -447,7 +467,8 @@ def plugin_skill_dateien(wurzel, mkt_eintrag, manifest):
     Ordner — aber nur, wenn er dem Plugin gehört: Repo-Marktplätze teilen einen Checkout, und dort lägen die
     Skills aller Plugins des Repos mit. Ein eigenes .claude-plugin/plugin.json unterscheidet beide Fälle."""
     if mkt_eintrag.get("skills"):
-        return [wurzel / p / "SKILL.md" for p in mkt_eintrag["skills"]]
+        pfade = mkt_eintrag["skills"]
+        return [wurzel / p / "SKILL.md" for p in ([pfade] if isinstance(pfade, str) else pfade) if isinstance(p, str)]
     return sorted(wurzel.glob("skills/*/SKILL.md")) if manifest else []
 
 
@@ -486,7 +507,7 @@ def plugins():
 
         autor = (manifest.get("author") or mkt_eintrag.get("author") or mkt_datei.get("owner") or {})
         autor = autor.get("name") if isinstance(autor, dict) else str(autor)
-        autor = BEWERTUNG.get("autoren", {}).get(autor, autor)
+        autor = autoren().get(autor, autor)
 
         skill_dateien = plugin_skill_dateien(wurzel, mkt_eintrag, manifest)
         teile = []
@@ -502,7 +523,8 @@ def plugins():
             t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}
         bestandteile += teile
         hooks_datei = wurzel / "hooks" / "hooks.json"
-        hooks_roh = lies_json(hooks_datei).get("hooks", {})
+        hooks_roh = lies_json(hooks_datei).get("hooks")
+        hooks_roh = hooks_roh if isinstance(hooks_roh, dict) else {}
         for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
             hooks.append({**h, "plugin": pid})
 
@@ -564,10 +586,28 @@ def zustand_deutsch(roh):
     return roh
 
 
+GEHEIM_NAME = r"[\w-]*(?:token|key|secret|password|passwd|auth)[\w-]*"
+GEHEIM = [
+    (re.compile(r"(\w+://)[^/@\s]+@"), r"\1…@"),  # nutzer:passwort@ in einer URL
+    (re.compile(r"([?&][^=&#\s]+=)[^&#\s]+"), r"\1…"),  # Werte in der Query
+    (re.compile(rf"((?:^|\s)--?{GEHEIM_NAME}[= ])(?!-)\S+", re.I), r"\1…"),  # --api-key X, --token=X
+    (re.compile(rf"((?:^|\s){GEHEIM_NAME}=)\S+", re.I), r"\1…"),  # GITHUB_TOKEN=X
+    (re.compile(r"(Bearer\s+)\S+", re.I), r"\1…"),
+]
+
+
+def verdecken(text):
+    """Zugangsdaten in URL und Argumenten eines MCP-Servers durch … ersetzen: Das Ziel steht im Inventar, im Dashboard
+    und im Kontext des Bewertungslaufs."""
+    for muster, ersatz in GEHEIM:
+        text = muster.sub(ersatz, text)
+    return text
+
+
 def ziel_text(c):
     if c.get("url"):
-        return c["url"]
-    return " ".join([c.get("command", "")] + [str(a) for a in c.get("args", [])]).strip()
+        return verdecken(c["url"])
+    return verdecken(" ".join([c.get("command") or ""] + [str(a) for a in c.get("args") or []]).strip())
 
 
 def mcp_server(plugin_liste, live, messungen=None):
@@ -599,7 +639,7 @@ def mcp_server(plugin_liste, live, messungen=None):
         echt = s.get("schluessel", name)  # der Name, unter dem Claude Code den Server führt
         if live is not None and echt in live:
             status = zustand_deutsch(live[echt]["zustand"])
-            s["ziel"] = s["ziel"] or live[echt]["ziel"]
+            s["ziel"] = s["ziel"] or verdecken(live[echt]["ziel"])
         elif s.get("plugin_status") and s["plugin_status"] != "aktiv":
             status = "inaktiv (Plugin aus)"
         else:
@@ -666,11 +706,18 @@ def befehl(e, empfehlung):
         if e["ereignis"] == "Statuszeile":
             return '~/.claude/settings.json → "statusLine" entfernen'
         return f'~/.claude/settings.json → "hooks" → "{e["ereignis"]}" entfernen'
-    if empfehlung in ("abschalten", "nur manuell"):
-        wert = "off" if empfehlung == "abschalten" else "user-invocable-only"
-        return f"~/.claude/settings.json → \"skillOverrides\": {{\"{e['name']}\": \"{wert}\"}}"
+    # Plugins und MCP-Server vor skillOverrides: Ein Override unter ihrem Namen bewirkt nichts
     if eid.startswith("plugin:"):
-        return f"claude plugin uninstall {shellwort(e['name'] + '@' + e['marktplatz'])}"
+        pid = shellwort(e['name'] + '@' + e['marktplatz'])
+        if empfehlung == "nur manuell":
+            return f'nur je Skill: ~/.claude/settings.json → "skillOverrides" → "{e["name"]}:<skill>": "user-invocable-only"'
+        return f"claude plugin disable {pid}" if empfehlung == "abschalten" else f"claude plugin uninstall {pid}"
+    if eid.startswith("mcp:") and empfehlung == "abschalten" and not e.get("projekt"):
+        sperre = json.dumps({"serverName": e.get("schluessel", e["name"])}, ensure_ascii=False)
+        return f'~/.claude/settings.json → "deniedMcpServers" → {sperre} ergänzen'
+    if empfehlung in ("abschalten", "nur manuell") and not eid.startswith("mcp:"):
+        wert = "off" if empfehlung == "abschalten" else "user-invocable-only"
+        return f"~/.claude/settings.json → \"skillOverrides\": {json.dumps({e.get('schluessel', e['name']): wert}, ensure_ascii=False)}"
     if eid.startswith("mcp:"):
         if e.get("projekt") and e["status"] == "Ordner fehlt":
             # claude mcp remove -s local braucht den Projektordner als Arbeitsverzeichnis
@@ -819,10 +866,42 @@ def verlauf_fortschreiben(pfad, eintrag):
         reihe = []
     if not isinstance(reihe, list):
         reihe = []
-    reihe = [e for e in reihe if isinstance(e, dict) and e.get("datum") != eintrag["datum"]] + [eintrag]
+    reihe = [e for e in reihe if isinstance(e, dict) and isinstance(e.get("datum"), str) and e["datum"] != eintrag["datum"]] + [eintrag]
     reihe.sort(key=lambda e: e["datum"])
     harness.schreiben(pfad, json.dumps(reihe, ensure_ascii=False, indent=1))
     return reihe
+
+
+def eindeutige_ids(alle):
+    """Ein Skill und ein Befehl gleichen Namens hießen beide skill:x, ein Projektserver in .mcp.json und lokal beide
+    mcp:Projekt/x — der Server nähme bei einer Aktion den ersten. Der erste behält die ID, die übrigen tragen ihre Art."""
+    gruppen = {}
+    for e in alle:
+        gruppen.setdefault(e["id"], []).append(e)
+    for gruppe in gruppen.values():
+        for e in gruppe[1:]:
+            e["id"] += "~" + (e.get("art") or e["typ"]).lower()
+
+
+def eingebaute(bewertung):
+    """Die eingebauten Skills aus der Bewertung, nur mit den Feldern, die das Dashboard braucht. Die Bewertung stammt
+    aus einem Lauf, der fremde Skill-Texte liest; alles Weitere landete sonst ungeprüft auf der Seite mit dem Token."""
+    return [{"name": b["name"], "was": b.get("was") if isinstance(b.get("was"), str) else "",
+             "tokens": b["tokens"] if isinstance(b.get("tokens"), int) else 0, "nutzung": nutzung(b["name"])}
+            for b in bewertung.get("eingebaut") or [] if isinstance(b, dict) and isinstance(b.get("name"), str)]
+
+
+def fuers_dashboard(inhalt):
+    """Gruppen, Hinweise und Stand kommen ungeprüft aus der Bewertung. Das Template stürzte ab, wenn `mitglieder` fehlte
+    oder `stand` keine Zeichenkette war, und zeigte dann nicht einmal den Knopf „neu bewerten“."""
+    gruppen = inhalt.get("gruppen") if isinstance(inhalt.get("gruppen"), list) else []
+    hinweise = inhalt.get("hinweise") if isinstance(inhalt.get("hinweise"), list) else []
+    stand = inhalt.get("bewertung_stand")
+    return {**inhalt,
+            "gruppen": [{**g, "mitglieder": [m for m in g["mitglieder"] if isinstance(m, str)]}
+                        for g in gruppen if isinstance(g, dict) and isinstance(g.get("mitglieder"), list)],
+            "hinweise": [h for h in hinweise if isinstance(h, dict) and isinstance(h.get("titel"), str) and isinstance(h.get("text"), str)],
+            "bewertung_stand": stand if isinstance(stand, str) else None}
 
 
 def claude_inventar():
@@ -836,16 +915,17 @@ def claude_inventar():
     for p in plugin_liste:
         p["tokens"] += sum(h["tokens"] for h in hooks if h.get("plugin") == f"{p['name']}@{p['marktplatz']}")
     live = mcp_live()
-    mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien))
+    # erst die Server, dann die Messung: Welcher Server ein Werkzeug anbietet, lässt sich nur an ihren Namen ablesen
+    praefixe = [werkzeug_praefix(s.get("schluessel", s["name"])) for s in mcp_server(plugin_liste, live)]
+    mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien, praefixe))
     mcp_projekte = projekt_mcp(CFG.get("projects") or {})
     alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
+    eindeutige_ids(alle)
     bewerte(alle)
     for e in alle:
         e["aktionen"] = aktionen(e)
 
-    eingebaut = []
-    for b in BEWERTUNG.get("eingebaut", []):
-        eingebaut.append({**b, "nutzung": nutzung(b["name"])})
+    eingebaut = eingebaute(BEWERTUNG)
 
     unbewertet, entfallen = abgleich(alle, BEWERTUNG)
     # Overrides gelten nach Namen, auch für Projekt- und eingebaute Skills
@@ -874,6 +954,7 @@ def main(argv=None):
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
     wahl = parser.parse_args(argv).harness
     DATEN.mkdir(parents=True, exist_ok=True)
+    DATEN.chmod(0o700)  # Pfade und MCP-Ziele gehen andere Benutzer des Rechners nichts an
     if wahl:
         harness.merken(DATEN, wahl)
     h = wahl or harness.aktuell(DATEN)
@@ -887,6 +968,7 @@ def main(argv=None):
         inhalt = codex.inventar()
     else:
         inhalt = claude_inventar()
+    inhalt = fuers_dashboard(inhalt)
     jetzt = datetime.now()
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
@@ -897,7 +979,8 @@ def main(argv=None):
              "bewertung_erstellt": datei_stand(DATEN / angaben["bewertung"]), **inhalt}
     harness.schreiben(DATEN / angaben["inventar"], json.dumps(daten, ensure_ascii=False, indent=1))
 
-    einbettung = json.dumps(daten, ensure_ascii=False).replace("</", "<\\/")
+    # jedes < escapen, nicht nur </: Mit <!--<script aus einem Namen beendete das folgende </script> das Skript nicht mehr
+    einbettung = json.dumps(daten, ensure_ascii=False).replace("<", "\\u003c")
     vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
                .replace("__LOGO__", data_uri(LOGO.read_bytes(), "image/svg+xml"))
                .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))

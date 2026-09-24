@@ -7,9 +7,11 @@ es nie. Codex führt keine Nutzungszähler; die Nutzung stammt aus den Sitzungsp
 
 import json
 import re
+import shlex
 import tomllib
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import harness
 from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, ziel_text
@@ -24,7 +26,7 @@ SKILL_PFAD = re.compile(r"(/[^\s'\"<>]+/SKILL\.md)")
 
 def lies_toml(pfad):
     try:
-        return tomllib.loads(Path(pfad).read_text(encoding="utf-8"))
+        return tomllib.loads(Path(pfad).read_text(encoding="utf-8-sig"))  # utf-8-sig: ein BOM lehnt tomllib sonst ab
     except (OSError, ValueError):
         return {}
 
@@ -36,7 +38,7 @@ def config_lesbar():
     if not datei.is_file():
         return True
     try:
-        tomllib.loads(datei.read_text(encoding="utf-8"))
+        tomllib.loads(datei.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return False
     return True
@@ -58,24 +60,36 @@ def abgeschaltete(cfg):
 def nur_manuell(ordner):
     """policy.allow_implicit_invocation: false in agents/openai.yaml: Codex lädt den Skill nicht in den Katalog, er läuft nur per $name."""
     try:
-        text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8-sig")
     except OSError:
         return False
     # nur im policy-Block: Ein gleichnamiger Schlüssel unter defaults: oder interface: bedeutet etwas anderes
     # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
-    block = re.search(r"^policy:[^\S\n]*\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
-    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", block.group(1), re.M) is not None
+    block = re.search(r"^policy:[^\S\n]*(#.*)?\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
+    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*(#.*)?$", block.group(2), re.M) is not None
 
 
 def yaml_beschreibung(ordner):
     """Codex kennt neben SKILL.md ein zweites Format: agents/openai.yaml mit einem interface-Block.
     Gebraucht wird daraus nur die kurze Beschreibung — sie ist es, die in jede Sitzung lädt."""
     try:
-        text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8-sig")
     except OSError:
         return ""
-    m = re.search(r"^\s+short_description:\s*(.+?)\s*$", text, re.M)
-    return m.group(1).strip("\"'") if m else ""
+    m = re.search(r"^([ \t]+)short_description:[ \t]*(.*?)[ \t]*$", text, re.M)
+    if not m:
+        return ""
+    wert = m.group(2)
+    if wert[:1] not in ("", ">", "|"):
+        return wert.strip("\"'")
+    # Blockskalar oder Wert erst in der nächsten Zeile: Der Text steht in den tiefer eingerückten Folgezeilen, nur `|` behält die Umbrüche
+    zeilen = []
+    for zeile in text[m.end():].splitlines()[1:]:
+        if zeile.strip() and len(zeile) - len(zeile.lstrip()) <= len(m.group(1)):
+            break
+        if zeile.strip():
+            zeilen.append(zeile.strip())
+    return ("\n" if wert[:1] == "|" else " ").join(zeilen)
 
 
 def skill_datei(ordner):
@@ -111,10 +125,18 @@ def skill_eintrag(anzeige, datei, aus, aktiv=True):
         "tokens": round(len(f"- {anzeige}: {beschreibung}") / 4) if im_kontext else 0,
         "nutzung": None,
         "pfad": str(datei),
+        "ordner": str(ordner),  # nicht Path(pfad).parent: bei agents/openai.yaml wäre das agents/
         "meta_autor": meta.get("author"),
         # nur dann lässt er sich über das Dashboard wieder einschalten: Der Block in config.toml hängt am Pfad
         **({"abgeschaltet": True} if abgeschaltet else {}),
     }
+
+
+def skill_lock(datei):
+    """Die Einträge unter `skills` einer Lock-Datei von npx skills. Gültiges JSON, das kein Objekt ist, ergibt {}."""
+    lock = lies_json(datei)
+    lock = lock.get("skills") if isinstance(lock, dict) else None
+    return lock if isinstance(lock, dict) else {}
 
 
 def quelle_cli(repo, autoren):
@@ -139,7 +161,7 @@ def eigene_skills(aus, lock, autoren):
             if verweis.is_file() and verweis.resolve() == datei.resolve():
                 e["geteilt"] = True
             eintrag = lock.get(ordner.name) if wurzel == AGENTS / "skills" else None
-            if eintrag:
+            if isinstance(eintrag, dict) and eintrag:
                 pfad = eintrag.get("skillPath", "")
                 e["quelle"] = quelle_cli(eintrag.get("source", ""), autoren)
                 e["installiert"] = (eintrag.get("installedAt") or "")[:10] or None
@@ -185,6 +207,34 @@ def nutzungsschluessel(pfad):
     return str(cache.joinpath(teile[1], *teile[3:])) if len(teile) > 3 else str(p)
 
 
+def skill_pfade(befehl, cwd):
+    """Die SKILL.md, die ein Befehl liest. Codex protokolliert ihn als argv-Liste (['/bin/zsh', '-lc', '<Skript>']),
+    das Arbeitsverzeichnis als file://-Adresse. Zerlegt wie in der Shell: Mit einer Regex endete ein Pfad am ersten
+    Leerzeichen („Workation 2026“), und relative Pfade fehlten ganz."""
+    if isinstance(cwd, str) and cwd.startswith("file://"):
+        cwd = unquote(urlparse(cwd).path)
+    pfade = []
+    for teil in befehl if isinstance(befehl, list) else [befehl]:
+        if not isinstance(teil, str) or "SKILL.md" not in teil:
+            continue
+        try:
+            lexer = shlex.shlex(teil, posix=True, punctuation_chars=True)  # trennt auch an ; | & ( ) < >
+            lexer.whitespace_split = True
+            woerter = list(lexer)
+        except ValueError:
+            woerter = SKILL_PFAD.findall(teil)  # offene Anführungszeichen, etwa in einem Heredoc: wie bisher
+        for wort in woerter:
+            if Path(wort).name != "SKILL.md":
+                continue
+            if wort.startswith("~/"):
+                pfade.append(str(HOME / wort[2:]))
+            elif wort.startswith("/"):
+                pfade.append(wort)
+            elif isinstance(cwd, str) and cwd:
+                pfade.append(str(Path(cwd) / wort))
+    return pfade
+
+
 def nutzung_zaehlen(dateien):
     """Skills zählen je Sitzung einmal: per $name gewählt oder ihre SKILL.md gelesen. MCP-Server zählen je Aufruf.
     Eine Sitzung zählt ganz nicht mit, wenn sie selbst diesen Skill wählt oder im Projektordner lief: sonst zählte
@@ -192,7 +242,7 @@ def nutzung_zaehlen(dateien):
     hier = str(HIER.resolve())
     skills, mcp = {}, {}
     for datei in dateien:
-        gelesen, mcp_gelesen, ueberspringen = {}, {}, False
+        gelesen, mcp_gelesen, ueberspringen, sitzung_cwd = {}, {}, False, None
         try:
             f = open(datei, encoding="utf-8", errors="replace")
         except OSError:
@@ -209,6 +259,7 @@ def nutzung_zaehlen(dateien):
                     cwd = (meta.get("payload") or {}).get("cwd") if meta.get("type") == "session_meta" else None
                     if isinstance(cwd, str) and str(Path(cwd).resolve()) == hier:
                         ueberspringen = True
+                    sitzung_cwd = cwd
                 if "SKILL.md" not in zeile and '"McpToolCall"' not in zeile:
                     continue
                 try:
@@ -222,7 +273,7 @@ def nutzung_zaehlen(dateien):
                     mcp_gelesen.setdefault(item["server"], []).append(tag)
                     continue
                 if payload.get("type") == "item_completed" and item.get("type") == "CommandExecution":
-                    pfade = SKILL_PFAD.findall(str(item.get("command")))
+                    pfade = skill_pfade(item.get("command"), item.get("cwd") or sitzung_cwd)
                 elif "skills.selected_skill_instructions" in zeile:
                     pfade = re.findall(r"<path>([^<]+/SKILL\.md)</path>", str(payload))
                 else:
@@ -387,8 +438,10 @@ def mcp_server(cfg, plugin_liste, mcp_tage):
         if isinstance(c, dict):
             status = "aktiv" if c.get("enabled", True) is not False else "deaktiviert"
             ergebnis.append(eintrag(f"mcp:{name}", name, "User", "~/.codex/config.toml", c, status, name))
+    mehrfach = mehrfache_namen(f"{pl['name']}@{pl['marktplatz']}" for pl in plugin_liste)
     for pl in plugin_liste:
         pid = f"{pl['name']}@{pl['marktplatz']}"
+        praefix = pid if pl["name"] in mehrfach else pl["name"]  # wie bei den Skills solcher Plugins
         schalter = ((cfg.get("plugins") or {}).get(pid) or {}).get("mcp_servers") or {}
         for sname, c in sorted(pl["mcp"].items()):
             if pl["status"] not in LAEDT:
@@ -397,7 +450,7 @@ def mcp_server(cfg, plugin_liste, mcp_tage):
                 status = "deaktiviert"
             else:
                 status = "aktiv"
-            ergebnis.append(eintrag(f"mcp:plugin:{pl['name']}:{sname}", f"plugin:{pl['name']}:{sname}", "Plugin", pid, c, status, sname))
+            ergebnis.append(eintrag(f"mcp:plugin:{praefix}:{sname}", f"plugin:{praefix}:{sname}", "Plugin", pid, c, status, sname))
     return ergebnis
 
 
@@ -412,7 +465,7 @@ def projekte(cfg, aus, autoren):
         if not ordner.is_dir() or ordner.resolve() == HOME.resolve():
             continue
         vertraut = isinstance(p, dict) and p.get("trust_level") == "trusted"
-        lock = lies_json(ordner / "skills-lock.json").get("skills", {})
+        lock = skill_lock(ordner / "skills-lock.json")
         namen = set()  # bei gleichem Namen zählt der erste, wie in eigene_skills(): zwei Einträge trügen dieselbe ID
         for wurzel in (ordner / ".agents" / "skills", ordner / ".codex" / "skills"):
             for datei in sorted(wurzel.glob("*/SKILL.md")):
@@ -421,7 +474,8 @@ def projekte(cfg, aus, autoren):
                     continue
                 namen.add(name)
                 e = skill_eintrag(name, datei, aus)
-                repo = (lock.get(name) or {}).get("source")
+                eintrag = lock.get(name)
+                repo = eintrag.get("source") if isinstance(eintrag, dict) else None
                 e.update(projekt=pfad,
                          quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
                 skills.append(e)
@@ -455,14 +509,14 @@ def befehl(e, empfehlung):
             return f'{e["quelle"]} → [mcp_servers.{e["name"]}] entfernen'
         return f"codex plugin remove {shellwort(e['quelle'])}" if e["art"] == "Plugin" else f"codex mcp remove {shellwort(e['name'])}"
     if empfehlung == "nur manuell":
-        return f"{Path(e['pfad']).parent}/agents/openai.yaml → policy: allow_implicit_invocation: false"
+        return f"{e['ordner']}/agents/openai.yaml → policy: allow_implicit_invocation: false"
     if empfehlung == "abschalten":
         return f'~/.codex/config.toml → [[skills.config]] path = "{e["pfad"]}", enabled = false'
     if e.get("plugin"):
         return f"codex plugin remove {shellwort(e['plugin'])}"
     if e["quelle"]["art"] == "skills-CLI":
         return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {shellwort(e['name'])}"
-    return papierkorb_befehl(shellwort(Path(e["pfad"]).parent))
+    return papierkorb_befehl(shellwort(e["ordner"]))
 
 
 def toml_schluessel(name):
@@ -505,7 +559,7 @@ def aktionen(e):
         # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":
             return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
-        return {"deinstallieren": {"papierkorb": str(Path(e["pfad"]).parent)}}
+        return {"deinstallieren": {"papierkorb": e["ordner"]}}
     a = {}
     if not e.get("plugin"):
         if e.get("update"):
@@ -514,7 +568,7 @@ def aktionen(e):
             # npx skills remove --global entfernt den Skill für alle Harnesses, die ihn lesen
             a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
-            ziel = str(Path(e["pfad"]).parent)
+            ziel = e["ordner"]
             schritt = {"papierkorb": ziel}
             if Path(ziel).resolve().is_relative_to((AGENTS / "skills").resolve()):
                 schritt["gemeinsam"] = True
@@ -526,9 +580,9 @@ def aktionen(e):
     if not e.get("plugin"):
         # agents/openai.yaml im Plugin-Ordner überschriebe das Plugin beim nächsten Update
         if e["aufruf"] != "nur $":
-            a["nur manuell"] = {"nur_manuell": str(Path(e["pfad"]).parent)}
+            a["nur manuell"] = {"nur_manuell": e["ordner"]}
         else:
-            a["wieder automatisch"] = {"automatisch": str(Path(e["pfad"]).parent)}
+            a["wieder automatisch"] = {"automatisch": e["ordner"]}
     return a
 
 
@@ -538,7 +592,7 @@ def inventar():
     bewertung = lies_json(harness.DATEN / harness.HARNESSE["codex"]["bewertung"])
     autoren = bewertung.get("autoren", {})
     aus = abgeschaltete(cfg)
-    lock = lies_json(AGENTS / ".skill-lock.json").get("skills", {})
+    lock = skill_lock(AGENTS / ".skill-lock.json")
 
     plugin_liste, plugin_teile, plugin_hooks = plugins(cfg, aus, autoren)
     skills = eigene_skills(aus, lock, autoren) + plugin_teile

@@ -10,6 +10,7 @@ frei von persönlichen Daten und lässt sich veröffentlichen.
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 DATEN = Path.home() / ".3zero-harness-inventur"
@@ -24,12 +25,20 @@ STANDARD = "claude-code"
 
 
 def schreiben(pfad, text):
-    """Schreibt über <pfad>.neu und tauscht in einem Schritt: Der Server liest Inventar, Dashboard und harness.json
-    bei jedem Klick, auch während build.py läuft, und sähe sonst eine halbe Datei. Einem Symlink folgt es."""
+    """Schreibt in eine Zwischendatei und tauscht in einem Schritt: Der Server liest Inventar, Dashboard und harness.json
+    bei jedem Klick, auch während build.py läuft, und sähe sonst eine halbe Datei. Einem Symlink folgt es.
+    Die Zwischendatei hat einen eigenen Namen je Aufruf: Mit festem Namen nahmen sich zwei Schreiber die Datei weg."""
     pfad = Path(pfad).resolve()
-    neu = pfad.with_name(pfad.name + ".neu")
-    neu.write_text(text, encoding="utf-8")
-    os.replace(neu, pfad)
+    fd, neu = tempfile.mkstemp(dir=pfad.parent, prefix=pfad.name + ".", suffix=".neu")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if pfad.exists():  # mkstemp legt 0600 an; eine vorhandene Datei behält ihre Rechte
+            os.chmod(neu, pfad.stat().st_mode & 0o777)
+        os.replace(neu, pfad)
+    except BaseException:
+        Path(neu).unlink(missing_ok=True)
+        raise
 
 
 def aktuell(ordner):
@@ -37,7 +46,7 @@ def aktuell(ordner):
         wert = json.loads((Path(ordner) / "harness.json").read_text(encoding="utf-8")).get("harness")
     except (OSError, ValueError, AttributeError):
         return STANDARD
-    return wert if wert in HARNESSE else STANDARD
+    return wert if isinstance(wert, str) and wert in HARNESSE else STANDARD
 
 
 def merken(ordner, harness_id):

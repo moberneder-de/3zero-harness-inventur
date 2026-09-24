@@ -103,6 +103,35 @@ class ZweitesFormat(CodexOrdner):
         self.assertEqual([(s["name"], s["beschreibung"], s["aufruf"]) for s in skills],
                          [("openai-docs", "Doku zu Codex und den Modellen", "automatisch + $")])
 
+    def test_aktionen_treffen_den_skill_ordner(self):
+        """`pfad` ist hier agents/openai.yaml, sein Elternordner also agents/: Deinstallieren legte nur diesen
+        in den Papierkorb und meldete ok, der Skill blieb liegen."""
+        ordner = self.home / ".agents/skills/openai-docs"
+        self.schreibe(ordner / "agents/openai.yaml", self.YAML)
+        (s,) = codex.eigene_skills((set(), set()), {}, {})
+        a = codex.aktionen(s)
+        self.assertEqual((a["deinstallieren"]["papierkorb"], a["nur manuell"]["nur_manuell"]), (str(ordner), str(ordner)))
+        self.assertEqual(codex.befehl(s, "deinstallieren"), codex.papierkorb_befehl(str(ordner)))
+        self.assertEqual(codex.befehl(s, "nur manuell"), f"{ordner}/agents/openai.yaml → policy: allow_implicit_invocation: false")
+
+    def test_beschreibung_als_blockskalar(self):
+        """`short_description: >-` mit eingerückten Folgezeilen ergab die Beschreibung „>-“."""
+        ordner = self.home / ".agents/skills/x"
+        self.schreibe(ordner / "agents/openai.yaml",
+                      "interface:\n  short_description: >-\n    Doku zu Codex\n    und den Modellen\n  icon_small: x.svg\n")
+        self.assertEqual(codex.yaml_beschreibung(ordner), "Doku zu Codex und den Modellen")
+        self.schreibe(ordner / "agents/openai.yaml", "interface:\n  short_description: |\n    Erste Zeile\n\n    Zweite\n")
+        self.assertEqual(codex.yaml_beschreibung(ordner), "Erste Zeile\nZweite")
+        self.schreibe(ordner / "agents/openai.yaml", "interface:\n  short_description:\n    erst in der nächsten Zeile\n")
+        self.assertEqual(codex.yaml_beschreibung(ordner), "erst in der nächsten Zeile")
+
+    def test_openai_yaml_mit_bom(self):
+        """Mit BOM stand vor `policy:` ein unsichtbares Zeichen, der Block galt als fehlend."""
+        ordner = self.home / ".agents/skills/x"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "agents/openai.yaml").write_text("\ufeffpolicy:\n  allow_implicit_invocation: false\n", encoding="utf-8")
+        self.assertTrue(codex.nur_manuell(ordner))
+
     def test_ordner_ohne_beides_zaehlt_nicht(self):
         self.schreibe(self.home / ".agents/skills/leer/README.md", "nichts")
         self.assertEqual(codex.eigene_skills((set(), set()), {}, {}), [])
@@ -125,6 +154,11 @@ class NurManuell(CodexOrdner):
         self.assertFalse(codex.nur_manuell(self.yaml(
             "defaults:\n  allow_implicit_invocation: false\npolicy:\n  allow_implicit_invocation: true\n")))
 
+    def test_kommentar_am_zeilenende(self):
+        """`false  # nur per $` und `policy: # x` sind gültiges YAML, zählten aber nicht, weil das Muster mit `\\s*$` endete."""
+        self.assertTrue(codex.nur_manuell(self.yaml("policy:\n  allow_implicit_invocation: false  # nur per $\n")))
+        self.assertTrue(codex.nur_manuell(self.yaml("policy: # x\n  allow_implicit_invocation: false\n")))
+
     def test_ohne_datei_und_ohne_schluessel(self):
         self.assertFalse(codex.nur_manuell(self.home / ".agents/skills/gibt-es-nicht"))
         self.assertFalse(codex.nur_manuell(self.yaml("policy:\n  andere: false\n")))
@@ -143,6 +177,15 @@ class KaputteConfig(CodexOrdner):
         self.schreibe(self.home / ".codex/config.toml", 'model = "gpt-5"\n')
         self.assertTrue(codex.config_lesbar())
 
+    def test_datei_mit_bom(self):
+        """Ein Editor unter Windows schreibt gern ein BOM davor. tomllib lehnt es ab: Die Datei galt als kaputt,
+        und alle MCP-Server, Plugins und Projekte verschwanden aus dem Inventar."""
+        datei = self.home / ".codex/config.toml"
+        datei.parent.mkdir(parents=True)
+        datei.write_text('\ufeff[mcp_servers.node_repl]\ncommand = "n"\n', encoding="utf-8")
+        self.assertTrue(codex.config_lesbar())
+        self.assertEqual(list(codex.lies_toml(datei).get("mcp_servers", {})), ["node_repl"])
+
 
 class Nutzung(CodexOrdner):
     def zeile(self, tag, payload):
@@ -150,7 +193,7 @@ class Nutzung(CodexOrdner):
 
     def test_skills_je_sitzung_mcp_je_aufruf(self):
         skill = self.skill(self.home / ".agents/skills", "archify")
-        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": f"['/bin/zsh', '-lc', \"sed -n '1,240p' {skill}\"]"}}
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": ["/bin/zsh", "-lc", f"sed -n '1,240p' {skill}"]}}
         mcp = {"type": "item_completed", "item": {"type": "McpToolCall", "server": "node_repl", "tool": "js"}}
         gewaehlt = {"type": "message", "role": "user", "content": [{"type": "input_text", "text": f"<skill>\n<name>archify</name>\n<path>{skill}</path>\n---"}],
                     "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["skills.selected_skill_instructions"]}}
@@ -170,7 +213,7 @@ class Nutzung(CodexOrdner):
         cache = self.home / ".codex/plugins/cache"
         alt = self.skill(cache / "openai-bundled/sites/0.1.43/skills", "sites-building")
         neu = self.skill(cache / "openai-curated-remote/sites/0.1.65/skills", "sites-building")
-        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": f"['/bin/zsh', '-lc', \"cat {alt}\"]"}}
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": ["/bin/zsh", "-lc", f"cat {alt}"]}}
         self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl", self.zeile("2026-09-01", lesen))
         skills, _ = codex.nutzung_zaehlen(codex.sitzungen())
         self.assertEqual(codex.nutzung(skills.get(codex.nutzungsschluessel(neu))), {"anzahl": 1, "zuletzt": "2026-09-01"})
@@ -193,13 +236,47 @@ class Nutzung(CodexOrdner):
         self.assertNotEqual(codex.nutzungsschluessel(cache / "m/p/1/skills/x/SKILL.md"),
                             codex.nutzungsschluessel(cache / "m/p/1/skills/y/SKILL.md"))
 
+    def test_pfade_mit_leerzeichen_relativ_und_mit_tilde(self):
+        """Die alte Regex fand nur absolute Pfade ohne Leerzeichen: Aus '/…/Mein Projekt/.agents/skills/a/SKILL.md'
+        wurde '/.agents/skills/a', aus `cat .agents/skills/b/SKILL.md` wurde '/skills/b'. Projekt-Skills in Ordnern
+        mit Leerzeichen und relative Lesezugriffe zählten so nie. Codex protokolliert den Befehl als argv-Liste und
+        das Arbeitsverzeichnis als file://-Adresse."""
+        projekt = self.tmp / "Mein Projekt"
+        a = self.skill(projekt / ".agents/skills", "a")
+        b = self.skill(projekt / ".agents/skills", "b")
+        c = self.skill(self.home / ".agents/skills", "c")
+        def befehl(tag, skript, cwd=None):
+            item = {"type": "CommandExecution", "command": ["/bin/zsh", "-lc", skript]}
+            if cwd:
+                item["cwd"] = cwd
+            return self.zeile(tag, {"type": "item_completed", "item": item})
+        meta = json.dumps({"type": "session_meta", "payload": {"cwd": str(projekt)}})
+        eins = self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl", "\n".join([
+            befehl("2026-09-01", f"sed -n '1,200p' '{a}'", projekt.as_uri()),
+            befehl("2026-09-01", "cat .agents/skills/b/SKILL.md; ls", projekt.as_uri()),
+            befehl("2026-09-01", "cat ~/.agents/skills/c/SKILL.md")]))
+        # ohne cwd am Befehl gilt das der Sitzung
+        zwei = self.schreibe(self.home / ".codex/sessions/2026/09/02/rollout-2.jsonl",
+                             "\n".join([meta, befehl("2026-09-02", "cat .agents/skills/b/SKILL.md")]))
+        skills, _ = codex.nutzung_zaehlen([eins, zwei])
+        self.assertEqual([codex.nutzung(skills.get(codex.nutzungsschluessel(s))) for s in (a, b, c)],
+                         [{"anzahl": 1, "zuletzt": "2026-09-01"}, {"anzahl": 2, "zuletzt": "2026-09-02"}, {"anzahl": 1, "zuletzt": "2026-09-01"}])
+
+    def test_unvollstaendige_anfuehrungszeichen_zaehlen_wie_bisher(self):
+        """Ein Skript, das shlex nicht zerlegen kann (offene Anführungszeichen, etwa in einem Heredoc), zählt absolute Pfade wie bisher."""
+        skill = self.skill(self.home / ".agents/skills", "archify")
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": ["/bin/zsh", "-lc", f"cat {skill}; echo \"offen"]}}
+        eins = self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl", self.zeile("2026-09-01", lesen))
+        skills, _ = codex.nutzung_zaehlen([eins])
+        self.assertEqual(codex.nutzung(skills.get(codex.nutzungsschluessel(skill))), {"anzahl": 1, "zuletzt": "2026-09-01"})
+
     def test_sitzung_die_den_inventur_skill_waehlt_zaehlt_nicht(self):
         """Interaktive Läufe von $3zero-harness-inventur lesen selbst viele SKILL.md; das darf nicht als Nutzung zählen."""
         skill = self.skill(self.home / ".agents/skills", "archify")
         gewaehlt = {"type": "message", "role": "user", "content": [{"type": "input_text",
                     "text": f"<skill>\n<name>3zero-harness-inventur</name>\n<path>{self.home}/.codex/skills/3zero-harness-inventur/SKILL.md</path>\n---"}],
                     "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["skills.selected_skill_instructions"]}}
-        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": f"['/bin/zsh', '-lc', \"sed -n '1,240p' {skill}\"]"}}
+        lesen = {"type": "item_completed", "item": {"type": "CommandExecution", "command": ["/bin/zsh", "-lc", f"sed -n '1,240p' {skill}"]}}
         mcp = {"type": "item_completed", "item": {"type": "McpToolCall", "server": "node_repl", "tool": "js"}}
         eins = self.schreibe(self.home / ".codex/sessions/2026/09/01/rollout-1.jsonl",
                              "\n".join([self.zeile("2026-09-01", gewaehlt), self.zeile("2026-09-01", lesen), self.zeile("2026-09-01", mcp)]))
@@ -211,7 +288,7 @@ class Nutzung(CodexOrdner):
         skill = self.skill(self.home / ".agents/skills", "archify")
         meta = json.dumps({"type": "session_meta", "payload": {"cwd": str(codex.HIER)}})
         lesen = self.zeile("2026-09-02", {"type": "item_completed", "item": {"type": "CommandExecution",
-                           "command": f"['/bin/zsh', '-lc', \"sed -n '1,240p' {skill}\"]"}})
+                           "command": ["/bin/zsh", "-lc", f"sed -n '1,240p' {skill}"]}})
         eins = self.schreibe(self.home / ".codex/sessions/2026/09/02/rollout-2.jsonl", "\n".join([meta, lesen]))
         skills, server = codex.nutzung_zaehlen([eins])
         self.assertEqual((skills, server), ({}, {}))
@@ -304,6 +381,15 @@ class Mcp(CodexOrdner):
         self.assertEqual((server["mcp:node_repl"]["gesperrt"], server["mcp:node_repl"]["aus_in_projekten"]), (False, []))
         self.assertNotIn(GEHEIM, json.dumps(list(server.values())))
 
+    def test_plugin_in_zwei_marktplaetzen_behaelt_beide_server(self):
+        """Sonst hießen beide mcp:plugin:docs:srv, und „deaktivieren“ beim zweiten schriebe in plugins."docs@m1"."""
+        plugin_liste = [{"name": "docs", "marktplatz": m, "status": "aktiv", "mcp": {"srv": {"command": "x"}}} for m in ("m1", "m2")]
+        plugin_liste.append({"name": "pdf", "marktplatz": "m1", "status": "aktiv", "mcp": {"srv": {"command": "y"}}})
+        server = {m["id"]: m for m in codex.mcp_server({}, plugin_liste, {})}
+        self.assertEqual(sorted(server), ["mcp:plugin:docs@m1:srv", "mcp:plugin:docs@m2:srv", "mcp:plugin:pdf:srv"])
+        tabelle = codex.aktionen(server["mcp:plugin:docs@m2:srv"])["deaktivieren"]["toml"]["tabelle"]
+        self.assertEqual(tabelle, 'plugins."docs@m2".mcp_servers.srv')
+
     def test_werkzeuge_und_kontext_bleiben_ungemessen(self):
         # Codex protokolliert weder die Werkzeugliste eines Servers noch seinen Anweisungsblock
         (server,) = codex.mcp_server({"mcp_servers": {"node_repl": {"command": "n"}}}, [], {})
@@ -321,7 +407,7 @@ class Befehle(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         boese = f"$(touch {tmp}/entstanden) `id` x"
         faelle = [
-            ({"id": "skill:x", "name": "x", "pfad": f"/h/{boese}/x/SKILL.md", "quelle": {"art": "lokal"}}, ["mv", f"/h/{boese}/x", "/h/.Trash/"]),
+            ({"id": "skill:x", "name": "x", "pfad": f"/h/{boese}/x/SKILL.md", "ordner": f"/h/{boese}/x", "quelle": {"art": "lokal"}}, ["mv", f"/h/{boese}/x", "/h/.Trash/"]),
             ({"id": "skill:x", "name": boese, "pfad": "/h/x/SKILL.md", "quelle": {"art": "skills-CLI"}}, ["npx", "skills", "remove", "--global", boese]),
             ({"id": "skill:x", "name": "x", "pfad": "/h/x/SKILL.md", "plugin": f"{boese}@m", "quelle": {"art": "Plugin"}}, ["codex", "plugin", "remove", f"{boese}@m"]),
             ({"id": "plugin:x", "name": boese, "marktplatz": "m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
@@ -338,7 +424,7 @@ class Befehle(unittest.TestCase):
         self.assertFalse((tmp / "entstanden").exists())
 
     def test_texte_je_art(self):
-        skill = {"id": "skill:grilling", "name": "grilling", "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
+        skill = {"id": "skill:grilling", "name": "grilling", "pfad": "/h/.agents/skills/grilling/SKILL.md", "ordner": "/h/.agents/skills/grilling", "quelle": {"art": "skills-CLI"}}
         self.assertEqual(codex.befehl(skill, "entfernen"), "npx skills remove --global grilling")
         self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
         self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
@@ -428,6 +514,21 @@ class HooksUndProjekte(CodexOrdner):
             skills, _ = codex.projekte({"projects": {str(kit): {}}}, (set(), set()), {})
         self.assertEqual([(s["id"], s["pfad"]) for s in skills], [("skill:Kit/x", str(kit / ".agents/skills/x/SKILL.md"))])
 
+    def test_lock_ohne_objekt_bricht_nicht_ab(self):
+        """Gültiges JSON, aber kein Objekt (`[]`, `{"skills": []}`, ein Eintrag als Text) warf AttributeError
+        bei `.get` — build.py stürzte ab, und ohne gelungenen Lauf startet der Server nicht."""
+        kit = self.tmp / "Kit"
+        self.skill(kit / ".agents/skills", "x")
+        self.skill(self.home / ".agents/skills", "y")
+        with mock.patch.object(codex, "HOME", self.home), mock.patch.object(codex, "updates_markieren"):
+            for lock in ([], {"skills": []}, {"skills": {"x": "kaputt", "y": "kaputt"}}):
+                with self.subTest(lock=lock):
+                    self.schreibe(kit / "skills-lock.json", json.dumps(lock))
+                    self.schreibe(self.home / ".agents/.skill-lock.json", json.dumps(lock))
+                    skills, _ = codex.projekte({"projects": {str(kit): {}}}, (set(), set()), {})
+                    self.assertEqual([s["quelle"]["art"] for s in skills], ["lokal"])
+                    self.assertEqual([s["quelle"]["art"] for s in codex.inventar()["skills"]], ["lokal"])
+
     def test_kaputte_projects_bricht_nicht_ab(self):
         self.assertEqual(codex.projekte({"mcp_servers": ["x"], "projects": ["y"]}, (set(), set()), {}), ([], []))
 
@@ -469,13 +570,13 @@ class Aktionen(unittest.TestCase):
 
     def test_skills(self):
         cli = {"id": "skill:grilling", "name": "grilling", "typ": "Skill", "status": "aktiv", "aufruf": "automatisch + $",
-               "pfad": "/h/.agents/skills/grilling/SKILL.md", "quelle": {"art": "skills-CLI"}}
+               "pfad": "/h/.agents/skills/grilling/SKILL.md", "ordner": "/h/.agents/skills/grilling", "quelle": {"art": "skills-CLI"}}
         self.assertEqual(codex.aktionen({**cli, "update": True}), {
             "aktualisieren": {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]},
             "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"], "gemeinsam": True},
             "deaktivieren": {"skill_aus": "/h/.agents/skills/grilling/SKILL.md"},
             "nur manuell": {"nur_manuell": "/h/.agents/skills/grilling"}})
-        eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "name": "pdf", "quelle": {"art": "lokal"}}
+        eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "ordner": "/h/.codex/skills/pdf", "name": "pdf", "quelle": {"art": "lokal"}}
         self.assertEqual(codex.aktionen(eigen)["deinstallieren"],
                          {"papierkorb": "/h/.codex/skills/pdf"})
         aus = {**cli, "status": "aus", "aufruf": "nur $", "abgeschaltet": True}
@@ -494,9 +595,9 @@ class Aktionen(unittest.TestCase):
         """gemeinsam=True gilt bei npx skills remove immer und bei mv nur unter ~/.agents/skills."""
         with mock.patch.object(codex, "AGENTS", Path("/x/agents")):
             agents_skill = {"id": "skill:kopie", "name": "kopie", "typ": "Skill", "status": "aktiv", "aufruf": "automatisch + $",
-                            "pfad": "/x/agents/skills/kopie/SKILL.md", "quelle": {"art": "lokal"}}
+                            "pfad": "/x/agents/skills/kopie/SKILL.md", "ordner": "/x/agents/skills/kopie", "quelle": {"art": "lokal"}}
             self.assertTrue(codex.aktionen(agents_skill)["deinstallieren"]["gemeinsam"])
-            eigen = {**agents_skill, "pfad": "/h/.codex/skills/pdf/SKILL.md", "quelle": {"art": "Symlink"}}
+            eigen = {**agents_skill, "pfad": "/h/.codex/skills/pdf/SKILL.md", "ordner": "/h/.codex/skills/pdf", "quelle": {"art": "Symlink"}}
             self.assertNotIn("gemeinsam", codex.aktionen(eigen)["deinstallieren"])
 
     def test_hooks_ohne_aktionen(self):

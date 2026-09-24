@@ -27,6 +27,10 @@ import sys
 import tempfile
 import threading
 import time
+
+if sys.version_info < (3, 11):  # /usr/bin/python3 ist auf dem Mac 3.9; import tomllib scheiterte dort mit einem Traceback
+    sys.exit(f"server.py braucht Python 3.11 oder neuer, gestartet mit {sys.version.split()[0]}.")
+
 import tomllib
 import urllib.parse
 import webbrowser
@@ -41,10 +45,19 @@ TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
 
 # Bewertung nachziehen: Claude Code ohne Oberfläche. Der Lauf liest fremde Skill-Texte und Hook-Skripte, die
 # eine Anweisung an ihn enthalten können, deshalb bekommt er weder Bash noch Write: kein Befehl, keine neue Datei.
-# `Edit` bleibt, ist aber wirkungslos außerhalb des Arbeitsordners, weil BEWERTEN_SPERREN das Home sperrt —
-# pfadgebundene Regeln in --allowedTools greifen nicht, `deny` in einer eigenen Einstellungsdatei greift (nachgemessen).
-# build.py führt der Server davor und danach selbst aus, wie beim Codex-Lauf.
+# --allowedTools genehmigt nur vorab und schränkt nichts ein; mit `defaultMode: auto` in den Einstellungen des
+# Benutzers liefen auch andere Werkzeuge. Die Grenze ziehen CLAUDE_GRENZEN: --tools legt fest, welche Werkzeuge es
+# gibt, --restricted ignoriert die Einstellungen des Benutzers und begrenzt die Datei-Werkzeuge auf den Arbeitsordner
+# und --add-dir, hier das Home zum Lesen. Darin sperrt BEWERTEN_SPERREN `Edit`; beschreibbar bleibt nur der
+# Arbeitsordner im Temp-Ordner — ohne --restricted schrieb Edit auch außerhalb des Home, etwa in /opt/homebrew
+# (nachgemessen). build.py führt der Server davor und danach selbst aus, wie beim Codex-Lauf.
 BEWERTEN_SPERREN = {"permissions": {"deny": ["Edit(~/**)", "Write(~/**)"]}}
+# Ohne Sitzungsprotokoll (sonst zählte build.py die Läufe in den Messwerten mit), ohne MCP-Server des Benutzers,
+# und was eine Rückfrage bräuchte, lehnt der Lauf ab.
+CLAUDE_GRENZEN = ["--restricted", "--strict-mcp-config", "--no-session-persistence", "--permission-prompts", "none",
+                  "--add-dir", str(Path.home())]
+# --restricted lädt ~/.claude/skills nicht, ein Plugin per --plugin-dir schon (nachgemessen): Der Skill heißt dann so.
+SKILL_AUFRUF = "/inventur:3zero-harness-inventur"
 BEWERTEN_HINWEIS = (
     "Dieser Lauf kommt aus dem Dashboard-Server. Der Server hat build.py gerade ausgeführt, die Ausgabe steht unten, "
     "und führt es nach deinem Lauf erneut aus: Überspringe die Schritte 1 und 5, führe build.py nicht aus und öffne nichts. "
@@ -56,10 +69,22 @@ BEWERTEN_HINWEIS = (
 )
 
 
-def bewerten_argv(arbeitsordner, daten, einstellungen, build_ausgabe):
-    return ["claude", "-p", f"/3zero-harness-inventur\n\nAusgabe von build.py:\n{build_ausgabe}",
+def skill_plugin(skill, arbeitsordner):
+    """Der Skill als Plugin im Arbeitsordner, für --plugin-dir. Dort, weil --restricted die Datei-Werkzeuge auf den
+    Arbeitsordner begrenzt und der Lauf den Skill sonst nicht lesen könnte; als Kopie, weil Edit über einen Symlink
+    den Skill im Projekt ändern könnte."""
+    plugin = Path(arbeitsordner) / "inventur-plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "inventur"}), encoding="utf-8")
+    shutil.copytree(skill, plugin / "skills" / "3zero-harness-inventur")
+    return plugin
+
+
+def bewerten_argv(arbeitsordner, daten, einstellungen, build_ausgabe, plugin):
+    return ["claude", "-p", f"{SKILL_AUFRUF}\n\nAusgabe von build.py:\n{build_ausgabe}",
             "--model", "opus", "--output-format", "json", "--settings", str(einstellungen),
-            "--allowedTools", "Read", "Edit", "Glob", "Grep",
+            "--tools", "Read,Edit,Glob,Grep", "--allowedTools", "Read", "Edit", "Glob", "Grep",
+            "--permission-mode", "acceptEdits", *CLAUDE_GRENZEN, "--plugin-dir", str(plugin),
             "--append-system-prompt", BEWERTEN_HINWEIS.format(arbeitsordner=arbeitsordner, daten=daten)]
 
 # Suchen liest fremde Inhalte aus dem Netz, deshalb nur Lese- und Suchrechte: kein Schreiben, kein python3, kein gh.
@@ -158,7 +183,7 @@ SUCHEN_SCHEMA_CODEX = {
 def codex_modell(config):
     """Modell und Denktiefe aus ~/.codex/config.toml: --ignore-user-config ließe sie sonst weg."""
     try:
-        cfg = tomllib.loads(Path(config).read_text(encoding="utf-8"))
+        cfg = tomllib.loads(Path(config).read_text(encoding="utf-8-sig"))  # utf-8-sig: mit BOM scheiterte tomllib
     except (OSError, ValueError):
         return []
     argv = ["-m", cfg["model"]] if isinstance(cfg.get("model"), str) else []
@@ -172,26 +197,99 @@ def toml_pfad(tabelle):
     return [t.strip('"') for t in re.findall(r'"[^"]*"|[^.]+', tabelle)]
 
 
+def text_lesen(datei):
+    """Liest ohne Übersetzung der Zeilenenden: read_text() machte aus CRLF stillschweigend LF. Eine BOM bleibt als
+    erstes Zeichen stehen, damit die Rücknahme die Datei genau so wiederherstellt."""
+    return Path(datei).read_bytes().decode("utf-8")
+
+
+def zeilen_trennen(text):
+    """(Zeilen, Zeilenende): CRLF, wenn die Datei so geschrieben ist. Zusammensetzen mit nl.join(zeilen) + nl."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    return text.removesuffix(nl).split(nl), nl
+
+
+def toml_kopf(zeile):
+    """(Schlüssel, Array-Tabelle?) eines Tabellenkopfs wie [ a."b" ] oder [[a.b]], sonst None. Über die Schlüssel
+    verglichen findet sich der Kopf auch mit Leerzeichen, Anführungszeichen oder Kommentar, wie ein Mensch ihn schreibt."""
+    if not zeile.lstrip().startswith("["):
+        return None
+    try:
+        daten = tomllib.loads(zeile)
+    except ValueError:
+        return None
+    pfad = []
+    while isinstance(daten, dict) and daten:
+        (schluessel, daten), = daten.items()
+        pfad.append(schluessel)
+    return pfad, isinstance(daten, list)
+
+
+# Strings und Kommentare in TOML, von links gelesen; nur so lässt sich sagen, ob eine Zeile in einem mehrzeiligen String liegt
+TOML_STRINGS = re.compile(r'"""(?:[^\\]|\\.)*?"""(?!")|\'\'\'.*?\'\'\'(?!\')|"(?:[^"\\\n]|\\.)*"|\'[^\'\n]*\'|#[^\n]*', re.S)
+
+
+def toml_zeilen(text):
+    """(Zeilen, Zeilenende, {Zeilennummer: Kopf}, Zeilen in mehrzeiligen Strings). Eine Zeile in einem mehrzeiligen
+    String ist kein Kopf und keine Zuweisung, auch wenn sie mit [ oder `enabled =` beginnt."""
+    zeilen, nl = zeilen_trennen(text)
+    im_string = set()
+    for m in TOML_STRINGS.finditer(text):
+        if m.group().startswith(('"""', "'''")):
+            erste = text.count(nl, 0, m.start()) + 1
+            im_string.update(range(erste, erste + m.group().count(nl)))
+    koepfe = {i: k for i, z in enumerate(zeilen) if i not in im_string and (k := toml_kopf(z))}
+    return zeilen, nl, koepfe, im_string
+
+
 def toml_text_setzen(text, tabelle, schluessel, wert):
     """Setzt `schluessel = wert` in [tabelle]: vorhandene Zeile ersetzen, sonst in die Tabelle einfügen,
     sonst die Tabelle anhängen. Alles andere bleibt Zeichen für Zeichen stehen."""
-    zeilen = text.splitlines()
-    kopf = f"[{tabelle}]"
-    ist_kopf = re.compile(rf"\s*{re.escape(kopf)}\s*(#.*)?")  # ein Kommentar hinter dem Kopf ist gültiges TOML
-    try:
-        start = next(i for i, z in enumerate(zeilen) if ist_kopf.fullmatch(z))
-    except StopIteration:
-        rumpf = text if text.endswith("\n") or not text else text + "\n"
-        return f"{rumpf}\n{kopf}\n{schluessel} = {wert}\n"
-    ende = next((i for i in range(start + 1, len(zeilen)) if zeilen[i].lstrip().startswith("[")), len(zeilen))
+    zeilen, nl, koepfe, im_string = toml_zeilen(text)
+    ziel = toml_kopf(f"[{tabelle}]")
+    start = next((i for i, kopf in koepfe.items() if kopf == ziel), None)
+    if start is None:
+        rumpf = text if text.endswith(nl) or not text else text + nl
+        return f"{rumpf}{nl}[{tabelle}]{nl}{schluessel} = {wert}{nl}"
+    ende = next((i for i in koepfe if i > start), len(zeilen))
     muster = re.compile(rf"^\s*{re.escape(schluessel)}\s*=")
     for i in range(start + 1, ende):
-        if muster.match(zeilen[i]):
+        if i not in im_string and muster.match(zeilen[i]):
             zeilen[i] = f"{schluessel} = {wert}"
             break
     else:
         zeilen.insert(start + 1, f"{schluessel} = {wert}")
-    return "\n".join(zeilen) + "\n"
+    return nl.join(zeilen) + nl
+
+
+def skills_config_setzen(text, ziel, wert):
+    """Setzt `enabled = wert` in jedem [[skills.config]]-Block, dessen path auf `ziel` zeigt; fehlt die Zeile, kommt sie
+    unter den Kopf. Liefert (neuer Text, ob es einen solchen Block gab)."""
+    zeilen, nl, koepfe, im_string = toml_zeilen(text)
+    grenzen = [*koepfe, len(zeilen)]
+    gefunden = False
+    for start, ende in reversed(list(zip(grenzen, grenzen[1:]))):  # von hinten: eingefügte Zeilen verschieben nichts davor
+        if koepfe[start] != (["skills", "config"], True):
+            continue
+        try:
+            block = tomllib.loads(nl.join(zeilen[start + 1:ende]))
+        except ValueError:
+            continue
+        if not (isinstance(block.get("path"), str) and Path(block["path"]).expanduser().resolve() == ziel):
+            continue
+        gefunden = True
+        treffer = [i for i in range(start + 1, ende) if i not in im_string and re.match(r"\s*enabled\s*=", zeilen[i])]
+        for i in treffer:
+            zeilen[i] = f"enabled = {wert}"
+        if not treffer and wert == "false":  # ohne enabled-Zeile ist der Block schon an
+            zeilen.insert(start + 1, f"enabled = {wert}")
+    return nl.join(zeilen) + nl, gefunden
+
+
+def skill_eintraege(daten, ziel):
+    """Die Einträge in skills.config, deren path auf `ziel` zeigt. Codex vergleicht Pfade aufgelöst, also ohne Symlinks."""
+    return [e for e in (daten.get("skills") or {}).get("config") or []
+            if isinstance(e, dict) and isinstance(e.get("path"), str) and Path(e["path"]).expanduser().resolve() == ziel]
 
 
 def codex_bewerten(ordner, daten, arbeitsordner, ergebnis, build_ausgabe, modell):
@@ -237,8 +335,8 @@ def nur_manuell_gesetzt(text):
     unter defaults: oder interface: ließe sonst einen fehlgeschlagenen Schreibvorgang als Erfolg durchgehen.
     Dieselbe Prüfung macht `nur_manuell` in codex.py beim Einlesen — die beiden gehören zusammen."""
     # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
-    block = re.search(r"^policy:[^\S\n]*\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
-    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*$", block.group(1), re.M) is not None
+    block = re.search(r"^policy:[^\S\n]*(#.*)?\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
+    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*(#.*)?$", block.group(2), re.M) is not None
 
 
 def gueltige_bewertung(kopie):
@@ -253,10 +351,8 @@ def gueltige_bewertung(kopie):
 
 
 def zurueckschreiben(bewertung, ziel):
-    ziel = ziel.resolve()  # einem Symlink folgen: os.replace ersetzte sonst den Link selbst durch eine normale Datei
-    neu = ziel.with_name(ziel.name + ".neu")
-    neu.write_text(json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(neu, ziel)
+    # harness.schreiben folgt einem Symlink und nimmt je Aufruf eine eigene Zwischendatei statt <datei>.neu
+    harness.schreiben(ziel, json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n")
 
 
 def in_den_papierkorb(ziel):
@@ -336,17 +432,33 @@ def lauf(argv, cwd, timeout, gestartet=None):
     """`gestartet` bekommt den laufenden Prozess, damit ihn jemand abbrechen kann."""
     try:
         p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, start_new_session=True)
+                             text=True, errors="replace", start_new_session=True)
     except OSError as fehler:
         return {"ok": False, "ausgabe": str(fehler), "stdout": ""}
     if gestartet:
         gestartet(p)
-    try:
-        stdout, stderr = p.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as fehler:
-        beenden(p)
-        p.communicate()
-        return {"ok": False, "ausgabe": str(fehler), "stdout": ""}
+    frist, abgelaufen, beendet = time.monotonic() + timeout, False, False
+    while True:
+        try:
+            stdout, stderr = p.communicate(timeout=1)
+            break
+        except subprocess.TimeoutExpired as fehler:
+            if p.poll() is None and time.monotonic() < frist:
+                continue
+            if p.poll() is None:
+                abgelaufen = True
+                beenden(p)
+                p.wait()
+            elif beendet:
+                # Der Prozess ist beendet, aber ein Enkel in eigener Session (dem beenden() entkommen) hält die Pipe
+                # offen. Darauf zu warten hieße, bis der Enkel endet; so lange hielte eine Bewertung die Sperre.
+                p.stdout.close()
+                p.stderr.close()
+                stdout, stderr = (b.decode(errors="replace") if b else "" for b in (fehler.output, fehler.stderr))
+                break
+            beendet = True  # noch eine Runde, um zu lesen, was schon in der Pipe steht
+    if abgelaufen:
+        return {"ok": False, "ausgabe": (f"{subprocess.TimeoutExpired(argv, timeout)}\n\n{stdout}{stderr}").strip(), "stdout": ""}
     # `ausgabe` ist für den Benutzer und enthält beides; `stdout` bleibt getrennt, weil eine geschweifte Klammer
     # in einer Warnung auf stderr sonst den JSON-Ausschnitt zerreißt und ein gelungener Lauf als Fehler gälte.
     return {"ok": p.returncode == 0, "ausgabe": (stdout + stderr).strip(), "stdout": stdout}
@@ -414,13 +526,32 @@ class Inventarserver(ThreadingHTTPServer):
         aendern(daten)
         self.schreiben(self.settings, json.dumps(daten, indent=2, ensure_ascii=False) + "\n")
 
-    def config_aendern(self, neuer_text, pruefen):
-        """Schreibt config.toml und nimmt die Änderung zurück, wenn sie die Datei zerstört oder nicht wirkt."""
-        alt = self.codex_config.read_text(encoding="utf-8")
-        self.sichern(self.codex_config)
-        self.schreiben(self.codex_config, neuer_text)
+    def config_lesen(self):
+        """config.toml ohne BOM, mit den Zeilenenden der Datei."""
+        return text_lesen(self.codex_config).removeprefix("\ufeff")
+
+    def von_hand(self, was, fehler=""):
+        return {"ok": False, "ausgabe": f"{was} steht in {self.codex_config} in einer Form, die der Server nicht ändert "
+                                        f"(Inline-Tabelle, gepunktete Schlüssel oder Array statt eigenem Kopf). Bitte von Hand ändern. {fehler}".strip()}
+
+    def config_aendern(self, neuer_text, pruefen, was):
+        """Schreibt config.toml und nimmt die Änderung zurück, wenn sie die Datei zerstört oder nicht wirkt.
+        `was` nennt die Stelle, wenn sich die Datei so nicht ändern lässt."""
+        alt = text_lesen(self.codex_config)
         try:
-            daten = tomllib.loads(self.codex_config.read_text(encoding="utf-8"))
+            tomllib.loads(alt.removeprefix("\ufeff"))
+        except ValueError as fehler:
+            return {"ok": False, "ausgabe": f"{self.codex_config} ist kein gültiges TOML, nicht geändert: {fehler}"}
+        try:
+            tomllib.loads(neuer_text)
+        except ValueError as fehler:
+            # Steht die Stelle schon in anderer Form da, kollidiert ein neuer Kopf damit („Cannot declare …“)
+            return self.von_hand(was, f"({fehler})")
+        self.sichern(self.codex_config)
+        # Eine BOM bleibt stehen: Der Server ändert nur den einen Wert, nicht die Kodierung der Datei
+        self.schreiben(self.codex_config, ("\ufeff" if alt.startswith("\ufeff") else "") + neuer_text)
+        try:
+            daten = tomllib.loads(self.config_lesen())
             if not pruefen(daten):
                 raise ValueError("Die Einstellung steht nach dem Schreiben nicht in der Datei.")
         except Exception as fehler:  # jeder Fehler nach dem Schreiben muss zurückrollen, nicht nur ValueError/OSError
@@ -431,7 +562,7 @@ class Inventarserver(ThreadingHTTPServer):
     def toml_setzen(self, tabelle, schluessel, wert):
         if not self.codex_config.is_file():
             return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
-        alt = self.codex_config.read_text(encoding="utf-8")
+        alt = self.config_lesen()
         pfad = toml_pfad(tabelle) + [schluessel]
 
         def pruefen(daten):
@@ -443,19 +574,28 @@ class Inventarserver(ThreadingHTTPServer):
                     return False
             return json.dumps(daten.get(pfad[-1])) == wert
 
-        fehler = self.config_aendern(toml_text_setzen(alt, tabelle, schluessel, wert), pruefen)
+        fehler = self.config_aendern(toml_text_setzen(alt, tabelle, schluessel, wert), pruefen, f"[{tabelle}]")
         return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [{tabelle}] {schluessel} = {wert}"}
 
     def skill_abschalten(self, pfad):
+        """Stellt vorhandene [[skills.config]]-Blöcke dieses Pfads auf false und hängt nur ohne einen neuen an. Nur
+        anhängen hieß: Nach „einschalten“ (der Block bleibt mit true stehen) kam mit jedem „deaktivieren“ einer dazu."""
         if not self.codex_config.is_file():
             return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
-        alt = self.codex_config.read_text(encoding="utf-8")
-        eintrag = {"path": pfad, "enabled": False}
-        pruefen = lambda daten: eintrag in (daten.get("skills") or {}).get("config", [])
+        ziel = Path(pfad).expanduser().resolve()
+        alt = self.config_lesen()
+
+        def pruefen(daten):
+            eintraege = skill_eintraege(daten, ziel)
+            return bool(eintraege) and all(e.get("enabled", True) is False for e in eintraege)
         if pruefen(tomllib.loads(alt)):
             return {"ok": True, "ausgabe": f"steht schon in ~/.codex/config.toml: [[skills.config]] path = {json.dumps(pfad)}"}
-        block = f'\n[[skills.config]]\npath = {json.dumps(pfad, ensure_ascii=False)}\nenabled = false\n'
-        fehler = self.config_aendern((alt if alt.endswith("\n") else alt + "\n") + block, pruefen)
+        neu, gefunden = skills_config_setzen(alt, ziel, "false")
+        if not gefunden:
+            _, nl = zeilen_trennen(alt)
+            rumpf = alt if alt.endswith(nl) or not alt else alt + nl
+            neu = f"{rumpf}{nl}[[skills.config]]{nl}path = {json.dumps(pfad, ensure_ascii=False)}{nl}enabled = false{nl}"
+        fehler = self.config_aendern(neu, pruefen, "skills.config")
         return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [[skills.config]] path = {json.dumps(pfad)}, enabled = false"}
 
     def skill_einschalten(self, pfad):
@@ -463,26 +603,15 @@ class Inventarserver(ThreadingHTTPServer):
         Der Block bleibt stehen, damit die Datei sonst Zeichen für Zeichen gleich bleibt."""
         if not self.codex_config.is_file():
             return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
-        ziel = Path(pfad).expanduser().resolve()  # Codex vergleicht Pfade aufgelöst, also ohne Symlinks
-        schaltet_ab = lambda daten: any(
-            isinstance(e, dict) and e.get("enabled", True) is False and isinstance(e.get("path"), str)
-            and Path(e["path"]).expanduser().resolve() == ziel for e in (daten.get("skills") or {}).get("config") or [])
-        alt = self.codex_config.read_text(encoding="utf-8")
+        ziel = Path(pfad).expanduser().resolve()
+        schaltet_ab = lambda daten: any(e.get("enabled", True) is False for e in skill_eintraege(daten, ziel))
+        alt = self.config_lesen()
         if not schaltet_ab(tomllib.loads(alt)):
             return {"ok": False, "ausgabe": f"Kein [[skills.config]]-Block schaltet {pfad} ab"}
-        zeilen = alt.splitlines()
-        kopf = re.compile(r"\s*\[\[skills\.config\]\]\s*(#.*)?")
-        for start in [i for i, z in enumerate(zeilen) if kopf.fullmatch(z)]:
-            ende = next((i for i in range(start + 1, len(zeilen)) if zeilen[i].lstrip().startswith("[")), len(zeilen))
-            try:
-                block = tomllib.loads("\n".join(zeilen[start + 1:ende]))
-            except ValueError:
-                continue
-            if isinstance(block.get("path"), str) and Path(block["path"]).expanduser().resolve() == ziel:
-                for i in range(start + 1, ende):
-                    if re.match(r"\s*enabled\s*=", zeilen[i]):
-                        zeilen[i] = "enabled = true"
-        fehler = self.config_aendern("\n".join(zeilen) + "\n", lambda daten: not schaltet_ab(daten))
+        neu, gefunden = skills_config_setzen(alt, ziel, "true")
+        if not gefunden:  # der Eintrag steht in einem Array skills.config = [...], nicht als eigener Block
+            return self.von_hand("skills.config")
+        fehler = self.config_aendern(neu, lambda daten: not schaltet_ab(daten), "skills.config")
         return fehler or {"ok": True, "ausgabe": f"~/.codex/config.toml → [[skills.config]] path = {json.dumps(str(pfad))}, enabled = true"}
 
     def nur_manuell_datei(self, ordner, manuell=True):
@@ -491,17 +620,17 @@ class Inventarserver(ThreadingHTTPServer):
         leeren Zeile mit Einrückung 0) und übernimmt dessen Einrückung; alles andere bleibt erhalten. Schreibt
         bei fehlgeschlagener Prüfung den ursprünglichen Stand zurück, wie config_aendern es für config.toml tut.
         `manuell=False` ist die Gegen-Aktion „wieder automatisch“ und stellt denselben Schlüssel auf true."""
-        if not (Path(ordner) / "SKILL.md").is_file():
-            return {"ok": False, "ausgabe": f"{ordner} enthält keine SKILL.md"}
+        if not any((Path(ordner) / f).is_file() for f in ("SKILL.md", "agents/openai.yaml")):
+            return {"ok": False, "ausgabe": f"{ordner} enthält weder SKILL.md noch agents/openai.yaml"}
         datei = Path(ordner) / "agents" / "openai.yaml"
-        alt = datei.read_text(encoding="utf-8") if datei.is_file() else None
+        alt = text_lesen(datei) if datei.is_file() else None
         wert = "false" if manuell else "true"
         if not manuell and not (alt is not None and nur_manuell_gesetzt(alt)):
             return {"ok": False, "ausgabe": f"{datei} stellt den Skill nicht auf nur manuell"}
         if alt is not None:
-            zeilen = alt.splitlines()
+            zeilen, nl = zeilen_trennen(alt)
             start = next((i for i, z in enumerate(zeilen) if re.match(r"^policy:\s*", z)), None)
-            if start is not None and not re.fullmatch(r"policy:\s*", zeilen[start]):
+            if start is not None and not re.fullmatch(r"policy:\s*(#.*)?", zeilen[start]):
                 art = "eine Inline-Notation" if "{" in zeilen[start] else "einen Wert"
                 return {"ok": False, "ausgabe": f"{datei} nutzt {art} für policy, bitte von Hand ändern"}
             if start is None:
@@ -521,13 +650,13 @@ class Inventarserver(ThreadingHTTPServer):
                     folge = next((z for z in zeilen[start + 1:ende] if z.strip()), None)
                     einrueckung = folge[:len(folge) - len(folge.lstrip())] if folge else "  "
                     zeilen.insert(start + 1, f"{einrueckung}allow_implicit_invocation: false")
-            text = "\n".join(zeilen) + "\n"
+            text = nl.join(zeilen) + nl
             self.sichern(datei)
         else:
             datei.parent.mkdir(parents=True, exist_ok=True)
             text = "policy:\n  allow_implicit_invocation: false\n"
         self.schreiben(datei, text)
-        if nur_manuell_gesetzt(datei.read_text(encoding="utf-8")) != manuell:
+        if nur_manuell_gesetzt(text_lesen(datei)) != manuell:
             if alt is not None:
                 self.schreiben(datei, alt)
             else:
@@ -605,6 +734,11 @@ class Inventarserver(ThreadingHTTPServer):
                 return in_den_papierkorb(schritt["papierkorb"])
             if "hook_entfernen" in schritt:
                 return self.hook_entfernen(schritt["hook_entfernen"])
+            if schritt["argv"][:1] == ["npx"]:
+                # Im Projektordner nähme npx sonst ein node_modules/.bin des Projekts und dessen .npmrc (nachgemessen).
+                # Mit leerem --prefix nicht; der Befehl selbst läuft weiter im Projektordner.
+                with tempfile.TemporaryDirectory() as leer:
+                    return lauf(["npx", "--prefix", leer, *schritt["argv"][1:]], schritt.get("cwd"), 120)
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):
@@ -627,8 +761,10 @@ class Inventarserver(ThreadingHTTPServer):
                 kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
                 einstellungen = arbeitsordner / "settings.json"
                 einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
-                c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"]), arbeitsordner)
-                text = claude_text(c["ausgabe"])
+                plugin = skill_plugin(self.ordner / "skill", arbeitsordner)
+                c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"], plugin), arbeitsordner)
+                # nur stdout: eine geschweifte Klammer in einer Warnung auf stderr zerrisse den JSON-Ausschnitt
+                text = claude_text(c["stdout"]) if claude_json(c["stdout"]) else c["ausgabe"]
                 if not c["ok"]:
                     return {"ok": False, "ausgabe": text}
                 bewertung = gueltige_bewertung(kopie)
@@ -671,8 +807,9 @@ class Inventarserver(ThreadingHTTPServer):
             return {"ok": False, "ausgabe": "Die Bewertung läuft gerade und liest den Bestand neu ein. "
                                             "Warte, bis sie fertig ist, dann noch einmal suchen."}
         self.kandidaten = []
-        argv = ["claude", "-p", f"/3zero-harness-inventur suche {bedarf}", "--model", "opus", "--output-format", "json",
-                "--json-schema", json.dumps(SUCHEN_SCHEMA), "--allowedTools", *SUCHEN_WERKZEUGE, "--append-system-prompt", SUCHEN_HINWEIS]
+        argv = ["claude", "-p", f"{SKILL_AUFRUF} suche {bedarf}", "--model", "opus", "--output-format", "json",
+                "--json-schema", json.dumps(SUCHEN_SCHEMA), "--tools", "Read,Glob,Grep,WebSearch,WebFetch,Bash",
+                "--allowedTools", *SUCHEN_WERKZEUGE, *CLAUDE_GRENZEN, "--append-system-prompt", SUCHEN_HINWEIS]
         with self.sperre:
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         if not r["ok"]:
@@ -685,10 +822,11 @@ class Inventarserver(ThreadingHTTPServer):
         with tempfile.TemporaryDirectory() as tmp:
             einstellungen = Path(tmp) / "settings.json"
             einstellungen.write_text(json.dumps(SUCHEN_SPERREN), encoding="utf-8")
-            r = self.langer_lauf("suche", [*argv, "--settings", str(einstellungen)], tmp)
+            plugin = skill_plugin(self.ordner / "skill", tmp)
+            r = self.langer_lauf("suche", [*argv, "--settings", str(einstellungen), "--plugin-dir", str(plugin)], tmp)
         ergebnis = (claude_json(r["stdout"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
-            return {"ok": False, "ausgabe": claude_text(r["ausgabe"])}
+            return {"ok": False, "ausgabe": claude_text(r["stdout"]) if claude_json(r["stdout"]) else r["ausgabe"]}
         self.kandidaten = [geprueft(k) for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
         return {"ok": True, "ausgabe": str(ergebnis.get("bericht", "")), "kandidaten": self.kandidaten}
 
@@ -760,11 +898,12 @@ class Inventarserver(ThreadingHTTPServer):
                 lauf_ = self.laeufe[art] = None
                 if art == "suche":
                     self.kandidaten = []
-        if not lauf_:
-            return {"laeuft": False}
-        if lauf_["laeuft"]:
-            return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
-        return lauf_
+            # die Kopie unter der Sperre: abbrechen() fügt „abgebrochen“ hinzu, das Kopieren bräche sonst ab
+            if not lauf_:
+                return {"laeuft": False}
+            if lauf_["laeuft"]:
+                return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
+            return dict(lauf_)
 
     def installieren(self, k, nur_manuell):
         """`k` ist der Kandidat selbst, nicht seine Nummer: Zwischen Prüfung und Zugriff konnte eine neue Suche
@@ -824,7 +963,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(403, "Das Dashboard öffnet sich nur mit dem Schlüssel des laufenden Servers: "
                                       f"{self.server.daten / 'start.html'} öffnen oder die Adresse aus dem Terminal nehmen, "
                                       "in dem server.py läuft.", "text/plain")
-        html = self.server.datei("dashboard").read_text(encoding="utf-8")
+        datei = self.server.datei("dashboard")
+        try:
+            html = datei.read_text(encoding="utf-8")
+        except OSError as fehler:
+            return self.antworte(500, f"{datei.name} fehlt oder ist nicht lesbar ({fehler}). Beim ersten Lauf oder nach einem "
+                                      "abgebrochenen build.py: im Projektordner python3 build.py ausführen, dann neu laden.", "text/plain")
         html = html.replace(TOKEN_PLATZHALTER, TOKEN_PLATZHALTER.replace("null", json.dumps(self.server.token)), 1)
         self.antworte(200, html, "text/html")
 
@@ -874,6 +1018,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.antworte(200, ergebnis)
         try:
             treffer = self.server.schritt(anfrage["id"], anfrage["aktion"])
+        except OSError as fehler:
+            return self.antworte(200, {"ok": False, "ausgabe": f"Das Inventar fehlt oder ist nicht lesbar ({fehler}). "
+                                                               "Im Projektordner python3 build.py ausführen, dann neu laden."})
         except (ValueError, KeyError, TypeError):
             treffer = None
         if not treffer:
@@ -950,8 +1097,10 @@ def bedienen(srv, start):
         pass
     finally:
         start.unlink(missing_ok=True)  # der Schlüssel gilt nur für diesen Lauf
-        for prozess in srv.prozesse.values():  # eigene Prozessgruppe: Ctrl+C im Terminal erreicht sie nicht mehr
-            beenden(prozess)
+        with srv.laeufe_sperre:
+            for prozess in srv.prozesse.values():  # eigene Prozessgruppe: Ctrl+C im Terminal erreicht sie nicht mehr
+                if prozess.poll() is None:  # die Gruppen-ID eines beendeten kann schon einem fremden Prozess gehören
+                    beenden(prozess)
 
 
 def main():

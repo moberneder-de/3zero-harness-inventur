@@ -112,6 +112,9 @@ td { padding: 9px 10px; border-bottom: 1px solid var(--border-light); vertical-a
 td.name { min-width: 150px; }
 td.name strong { color: var(--text-dark); font-weight: 600; overflow-wrap: break-word; }
 td.zahl, th.zahl { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Knöpfe, die wie Text aussehen: Name zum Aufklappen, Spaltenkopf zum Sortieren. Damit gehen beide auch per Tastatur */
+button.aufklappen, button.sortieren { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+button.aufklappen:focus-visible, button.sortieren:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 tr.haupt { cursor: pointer; }
 tr.haupt:hover td { background: var(--bg-hover); }
 tr.offen td { background: var(--bg-gray); border-bottom-color: transparent; }
@@ -173,10 +176,11 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .suchfeld textarea { flex: 1 1 320px; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: var(--bg); resize: vertical; }
 .suchfeld .btn:disabled { opacity: .5; cursor: default; }
 /* Dialog: gebaut wie die Service-Card des Brand-Kits, dahinter der Hero-Overlay; ohne Schatten, das Kit kennt sie nur als Hover-Rückmeldung */
-dialog.frage { border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 28px 24px; width: min(520px, calc(100vw - 40px)); color: var(--text); }
+dialog.frage { border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 28px 24px; width: min(520px, calc(100vw - 40px)); background: var(--bg); color: var(--text); }
 dialog.frage::backdrop { background: rgba(0,0,0,.52); }
 dialog.frage h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
 dialog.frage p { margin: 0 0 10px; }
+dialog.frage ul { margin: 0 0 10px; padding-left: 18px; max-height: 40vh; overflow: auto; font-size: 14px; }
 dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
 .kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
@@ -283,9 +287,9 @@ const AKTIONEN = !!TOKEN;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const txt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
-const datum = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : "–";
+const datum = s => s ? esc(`${String(s).slice(8, 10)}.${String(s).slice(5, 7)}.${String(s).slice(0, 4)}`) : "–";
 /* „2026-09-18 23:35“ wird zu „18.09.2026 23:35“ */
-const zeitpunkt = s => s ? `${datum(s)} ${s.slice(11)}` : "–";
+const zeitpunkt = s => s ? `${datum(s)} ${esc(String(s).slice(11))}` : "–";
 /* Marken der beiden Harnesses, nur zur Kennzeichnung des inventarisierten Werkzeugs.
    Claude: Simple Icons 16.28.0 (CC0). OpenAI: offizielles Brand-Asset. Beide über den Skill archify bezogen.
    Schwarz wäre auf dem dunklen Kopf unsichtbar, deshalb trägt die OpenAI-Blüte Weiß statt ihres Hex 000000. */
@@ -374,8 +378,10 @@ function typText(e) {
 /* Kontextlast je Sitzung: automatisch geladene Beschreibungen und was SessionStart-Hooks einspielen.
    Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Dazu, was wegfällt, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
-/* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand */
-const umgesetzt = e => ({ "abschalten": e.override === "off" || (CODEX && e.status === "aus"), "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
+/* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand.
+   Abgeschaltete Plugins und MCP-Server tragen den Status „deaktiviert“, gesperrte MCP-Server zusätzlich `gesperrt`. */
+const umgesetzt = e => ({ "abschalten": e.override === "off" || e.gesperrt === true || e.status === "deaktiviert" || (CODEX && e.status === "aus"),
+  "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
 /* Wie kontextlast() in build.py: ohne die eingebauten Skills des Harness, damit die Zahl in beiden
    Dashboards dasselbe bedeutet. Was sie unter Codex kosten, steht in ihrer Zeile im Tab „Skills“. */
 const JE_SITZUNG = [...D.skills, ...D.hooks, ...D.mcp];
@@ -440,8 +446,8 @@ function wahlFeld(e) {
   const namen = Object.keys(e.aktionen || {});
   if (!namen.length) return '<span class="leer">–</span>';
   const g = gewaehlt(e);
-  return `<select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}">
-    <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${a}</option>`).join("")}</select>`;
+  return `<select class="wahl${g ? " gesetzt" : ""}" data-wahl="${esc(e.id)}" aria-label="Aktion für ${esc(e.name)}"${beschaeftigt ? " disabled" : ""}>
+    <option value="">keine</option>${namen.map(a => `<option${a === g ? " selected" : ""}>${esc(a)}</option>`).join("")}</select>`;
 }
 const wahlZelle = e => AKTIONEN ? `<td>${wahlFeld(e)}</td>` : "";
 
@@ -494,7 +500,7 @@ function renderUeberblick() {
     ? `<h2 class="kontext-titel">Kontextlast</h2>
        <div class="unterreiter schmal" role="tablist">
          <button type="button" role="tab" id="kontext-reiter-herkunft" aria-controls="kontext-herkunft" aria-selected="true">nach Herkunft</button>
-         <button type="button" role="tab" id="kontext-reiter-zeit" aria-controls="kontext-zeit" aria-selected="false">über die Zeit</button>
+         <button type="button" role="tab" id="kontext-reiter-zeit" aria-controls="kontext-zeit" aria-selected="false" tabindex="-1">über die Zeit</button>
        </div>${balken}${zeit}`
     : balken;
   return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + kontext);
@@ -592,6 +598,8 @@ function verlauf() {
   </div>`;
 }
 
+/* Der Name ist ein Knopf: So klappt die Detailzeile auch per Tastatur auf, ein Klick auf die übrige Zeile genügt weiterhin */
+const aufklapp = name => `<button type="button" class="aufklappen" aria-expanded="false"><strong>${esc(name)}</strong></button>`;
 function detailZeile(spalten, paare) {
   const dl = paare.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("");
   return `<tr class="detail" hidden><td colspan="${spalten}"><dl>${dl}</dl></td></tr>`;
@@ -605,7 +613,7 @@ function renderMcp() {
   const ausIn = n => n ? ` <span class="klein">· aus in ${n} ${n === 1 ? "Projekt" : "Projekten"}</span>` : "";
   const werkzeuge = m => typeof m.werkzeuge === "number" ? zahl(m.werkzeuge) : ungemessen;
   const kontext = m => typeof m.tokens === "number" ? (m.tokens ? "≈ " + zahl(m.tokens) : '<span class="leer">–</span>') : ungemessen;
-  const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td>
+  const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}</td>
       <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td>
       <td class="zahl">${werkzeuge(m)}</td><td class="zahl">${kontext(m)}</td><td class="zahl">${nutzungText(m)}</td>
       <td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
@@ -635,7 +643,7 @@ function renderPlugins() {
       anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
-    return `<tr class="haupt"><td class="name"><strong>${esc(p.name)}</strong><div class="klein">${esc(p.marktplatz)}</div></td>
+    return `<tr class="haupt"><td class="name">${aufklapp(p.name)}<div class="klein">${esc(p.marktplatz)}</div></td>
       <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}</td><td class="klein">${teile || "–"}</td>
       <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td>${wahlZelle(p)}</tr>` +
       detailZeile(8 + SP, [
@@ -674,7 +682,8 @@ function renderSkillsRahmen() {
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl" id="f-anzahl"></span></div>`;
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
-    .map(([k, t, c]) => `<th class="${k ? "sortierbar" : ""} ${c || ""}" ${k ? `data-sort="${k}"` : ""}>${t}${k ? " ↕" : ""}</th>`).join("") + WAHL_KOPF;
+    .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}"><button type="button" class="sortieren">${t} <span class="richtung" aria-hidden="true">↕</span></button></th>`
+      : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
     je(`Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`,
@@ -697,10 +706,16 @@ function skillsFiltern() {
   liste.sort((a, b) => (zahlwert(a) === null
     ? a.name.localeCompare(b.name)
     : (zahlwert(a) > zahlwert(b) ? 1 : zahlwert(a) < zahlwert(b) ? -1 : 0)) * F.richtung);
+  document.querySelectorAll("#skills th[data-sort]").forEach(th => {
+    const aktiv = th.dataset.sort === F.sort;
+    if (aktiv) th.setAttribute("aria-sort", F.richtung === 1 ? "ascending" : "descending");
+    else th.removeAttribute("aria-sort");
+    th.querySelector(".richtung").textContent = aktiv ? (F.richtung === 1 ? "↑" : "↓") : "↕";
+  });
   document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
-    return `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong><div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
+    return `<tr class="haupt"><td class="name">${aufklapp(s.name)}<div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
         ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}${s.geteilt ? `<span class="tag">${esc(GETEILT)}</span>` : ""}</td>
       <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
@@ -726,7 +741,7 @@ function renderProjekte() {
   D.projekt_mcp.forEach(m => zu(m.projekt).mcp.push(m));
   D.mcp.filter(m => !m.gesperrt).forEach(m => m.aus_in_projekten.forEach(p => zu(p).aus.push(m.name)));
 
-  const skillZeile = s => `<tr class="haupt"><td class="name"><strong>${esc(s.name)}</strong></td><td>${esc(s.typ)}</td>
+  const skillZeile = s => `<tr class="haupt"><td class="name">${aufklapp(s.name)}</td><td>${esc(s.typ)}</td>
       <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${esc(s.aufruf)}</td>
       <td class="zahl">${s.tokens ? "≈ " + zahl(s.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${nutzungText(s)}</td>
       <td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
@@ -738,7 +753,7 @@ function renderProjekte() {
       ["Datei", `<code>${esc(s.pfad)}</code>`],
       ["Umsetzen", befehlZeile(s.befehl)],
     ]);
-  const mcpZeile = m => `<tr class="haupt"><td class="name"><strong>${esc(m.name)}</strong></td><td>MCP-Server</td>
+  const mcpZeile = m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}</td><td>MCP-Server</td>
       <td>${m.art === "lokal" ? "lokal in ~/.claude.json" : esc(m.art)}</td><td>${statusBadge(m.status)}</td>
       <td class="zahl"><span class="leer">–</span></td><td class="zahl">${nutzungText(m)}</td>
       <td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
@@ -776,7 +791,7 @@ function renderHooks() {
   const ausgabe = h => h.ausgabe ? `≈ ${zahl(h.ausgabe.tokens)} <span class="klein">· ${zahl(h.ausgabe.laeufe)}× · ${datum(h.ausgabe.zuletzt)}</span>` : '<span class="leer">keine erfasst</span>';
   const dauer = h => h.dauer ? `${zahl(h.dauer.median)} ms <span class="klein">· ${zahl(h.dauer.messungen)}×</span>` : ungemessen;
   const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
-  const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name"><strong>${esc(h.name)}</strong></td>
+  const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name">${aufklapp(h.name)}</td>
       <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="klein">${h.befehle.length === 1 ? "1 Befehl" : `${h.befehle.length} Befehle`}</td>
       <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
       <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
@@ -798,15 +813,15 @@ function renderHinweise() {
   const hinweise = [...D.hinweise];
   if (D.overrides_verwaist.length) hinweise.unshift({ titel: "skillOverrides für Skills, die es nicht gibt",
     text: `\`~/.claude/settings.json\` legt unter skillOverrides noch fest: ${D.overrides_verwaist.map(n => `\`${n}\``).join(", ")}. Kein installierter oder eingebauter Skill heißt so, der Eintrag wirkt also nicht. Lösch ihn von Hand, sonst gilt er wieder, sobald ein Skill mit diesem Namen dazukommt.` });
-  const karten = hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p>
-    ${(h.befehle || []).map(befehlZeile).join("")}</article>`).join("");
+  const karten = hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p></article>`).join("");
   return abschnitt("hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
 }
 
 /* Gewählte Aktionen über server.py starten, einzeln oder alle nacheinander */
 const ERGEBNIS = new Map();
 /* offenerLauf: zu welchem Claude-Lauf auf dem Server die Karte gehört („bewertung“); Schließen verwirft ihn dort */
-let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false;
+/* seiteVeraltet: Der Server steht auf dem anderen Harness; die Karte bietet dann nur „Seite neu laden“ an */
+let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false, seiteVeraltet = false;
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
@@ -861,7 +876,8 @@ function renderMeldung() {
   const lang = inhalt.length > 2000; /* längere Berichte erst gekürzt zeigen */
   document.getElementById("meldung-bereich").innerHTML = meldung
     ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
-       ${bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="bewertung"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
+       ${seiteVeraltet ? '<button type="button" class="kopieren" id="meldung-neu-laden">Seite neu laden</button>'
+         : bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="bewertung"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
          : '<button type="button" class="kopieren" id="meldung-zu">schließen</button>'}</div>
        <div class="inhalt${lang ? " gekuerzt" : ""}">${inhalt}</div>
        ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}</div>`
@@ -898,11 +914,14 @@ function zeichne() {
   renderAktionen();
   renderEmpfInhalt();
   renderSuchInhalt();
+  /* Die Bestandstabellen entstehen nicht neu: Ihre Auswahl bleibt gesperrt, solange etwas läuft */
+  document.querySelectorAll("select.wahl").forEach(s => { s.disabled = beschaeftigt; });
 }
 /* Bestätigung im 3zero-Stil statt confirm(); Esc und „Abbrechen“ zählen als Nein */
-function frage(titel, text, ja) {
+function frage(titel, text, ja, liste = []) {
   const d = document.getElementById("frage");
   d.innerHTML = `<h3 id="frage-titel">${esc(titel)}</h3>${text.split("\n\n").map(p => `<p>${esc(p)}</p>`).join("")}
+    ${liste.length ? `<ul>${liste.map(z => `<li>${esc(z)}</li>`).join("")}</ul>` : ""}
     <form method="dialog"><button class="btn btn-outline" value="nein" autofocus>Abbrechen</button><button class="btn btn-primary" value="ja">${esc(ja)}</button></form>`;
   d.returnValue = "";
   d.showModal();
@@ -948,7 +967,8 @@ async function api(pfad, daten) {
   try {
     /* X-Harness: Startet der Skill im anderen Harness, während die Seite offen ist, lehnt der Server ab, statt dessen Konfiguration zu ändern */
     const r = await fetch(pfad, { method: "POST", headers: { "X-Token": TOKEN, "X-Harness": D.harness, "Content-Type": "application/json" }, body: daten && JSON.stringify(daten) });
-    return await r.json();
+    /* 409 heißt nur: Der Server steht inzwischen auf dem anderen Harness. Kein Fehler des Laufs, die Seite ist veraltet */
+    return r.status === 409 ? { ...await r.json(), harnessWechsel: true } : await r.json();
   } catch (_) {
     return { ok: false, verbindung: false, ausgabe: "Keine Antwort vom Server. Läuft python3 server.py noch?" };
   }
@@ -957,9 +977,11 @@ async function mitSperre(arbeit) {
   beschaeftigt = true; zeichne();
   try { await arbeit(); } finally { beschaeftigt = false; zeichne(); }
 }
-async function fuehreAus(e) {
+/* Die Aktion kommt vom Aufrufer, festgehalten beim Klick bzw. bei der Bestätigung: Liest man sie erst hier,
+   liefe nach einer Umstellung während der Warteschlange eine Aktion, die niemand bestätigt hat */
+async function fuehreAus(e, aktion) {
   ERGEBNIS.set(e.id, { laeuft: true }); zeichne();
-  ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion: gewaehlt(e) }));
+  ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion }));
 }
 
 function renderHilfe() {
@@ -973,7 +995,7 @@ function renderHilfe() {
       <li>„neu bewerten“ startet <code>codex exec</code> in einer Sandbox: Codex schreibt nur in eine Arbeitskopie von bewertung-codex.json in einem Temp-Ordner, ohne Netz, ohne deine eigenen Plugins, MCP-Server und Regeln; der Server prüft die Kopie und übernimmt sie. Den Bestand liest der Server davor und danach selbst ein. Bewertung und Suche lassen sich mit „abbrechen“ beenden; die bisherige Bewertung gilt dann weiter.</li>
       <li>Codex-Läufe aus dem Dashboard nutzen die Anmeldung von Codex (<code>codex login status</code>). Solange die über dein ChatGPT-Konto läuft, verbrauchen sie Kontingent deines Abos.</li>
     </ul>`], ["Bestand lesen", `<ul>
-      <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
+      <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>OpenAI/Codex</b> ist in Codex eingebaut.</li>
       <li>Plugin-Status: <b>aktiv</b> und <b>deaktiviert</b> nach <code>enabled</code> in config.toml, <b>im Konto</b> für Plugins aus dem ChatGPT-Konto, <b>wirkungslos</b> für openai-curated-Einträge, die Codex wegen des Online-Katalogs ignoriert, <b>nicht aktiviert</b> für Plugins ohne Eintrag.</li>
       <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update.</li>
@@ -982,7 +1004,7 @@ function renderHilfe() {
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
-      <li>Der Tab „Empfehlungen“ zeigt nur Offenes. Steht ein Skill schon auf „abschalten“ oder „nur manuell“, erscheint er unter „Schon umgesetzt“ und zählt im Überblick nicht mehr mit.</li>
+      <li>Der Tab „Empfehlungen“ zeigt nur Offenes. Ist ein Eintrag schon abgeschaltet (auch ein deaktiviertes Plugin oder ein deaktivierter MCP-Server) oder steht er auf „nur manuell“, erscheint er unter „Schon umgesetzt“ und zählt im Überblick nicht mehr mit.</li>
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
@@ -1015,7 +1037,7 @@ function renderHilfe() {
       <li>Mit dem Server geht beides über die Knöpfe im Kopf: „neu einlesen“ startet <code>build.py</code>, „neu bewerten“ den Claude-Lauf. Die Bewertung läuft im Hintergrund und dauert einige Minuten; lädst du die Seite zwischendurch neu, läuft sie weiter. Ihre Zusammenfassung bleibt als Karte oben stehen, bis du sie schließt. Bewertung und Suche lassen sich mit „abbrechen“ beenden; die bisherige Bewertung gilt dann weiter.</li>
       <li>Claude-Läufe aus dem Dashboard nutzen die Anmeldung von Claude Code. Solange die über dein claude.ai-Konto läuft (<code>claude auth status</code>), verbrauchen sie Kontingent deines Abos und kosten keine API-Gebühren.</li>
     </ul>`], ["Bestand lesen", `<ul>
-      <li>Ein Klick auf eine Zeile klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
+      <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam, und damit, wie er wieder geht: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>Anthropic/Claude Code</b> ist in Claude Code eingebaut. Den Autor nennen die Details.</li>
       <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
@@ -1024,7 +1046,7 @@ function renderHilfe() {
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
-      <li>Der Tab „Empfehlungen“ zeigt nur Offenes. Steht ein Skill schon auf „abschalten“ oder „nur manuell“, erscheint er unter „Schon umgesetzt“ und zählt im Überblick nicht mehr mit.</li>
+      <li>Der Tab „Empfehlungen“ zeigt nur Offenes. Ist ein Eintrag schon abgeschaltet (auch ein deaktiviertes Plugin oder ein gesperrter MCP-Server) oder steht er auf „nur manuell“, erscheint er unter „Schon umgesetzt“ und zählt im Überblick nicht mehr mit.</li>
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab „Empfehlungen“ oder alles über „alle … ausführen“ im Kopf, nach einer Bestätigung.</li>
@@ -1051,7 +1073,7 @@ function renderHilfe() {
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
       <li>Updates: <code>build.py</code> fragt per <code>gh api</code> den aktuellen Stand des Skill-Ordners auf GitHub ab und vergleicht ihn mit dem Stand bei der Installation (<code>skillFolderHash</code>). Ohne <code>gh</code> oder Netz fehlt nur diese Angabe; fehlt der Ordner upstream, ebenfalls.</li>
     </ul>`]];
-  const reiter = teile.map(([titel], i) => `<button type="button" role="tab" id="hilfe-reiter-${i}" aria-controls="hilfe-teil-${i}" aria-selected="${i === 0}">${titel}</button>`).join("");
+  const reiter = teile.map(([titel], i) => `<button type="button" role="tab" id="hilfe-reiter-${i}" aria-controls="hilfe-teil-${i}" aria-selected="${i === 0}"${i ? ' tabindex="-1"' : ""}>${titel}</button>`).join("");
   const inhalte = teile.map(([, html], i) => `<div role="tabpanel" id="hilfe-teil-${i}" aria-labelledby="hilfe-reiter-${i}"${i ? " hidden" : ""}>${html}</div>`).join("");
   return abschnitt("hilfe", "So funktioniert das Dashboard",
     `<div class="hilfe"><div class="unterreiter" role="tablist" aria-label="Hilfe">${reiter}</div>${inhalte}</div>`);
@@ -1059,12 +1081,24 @@ function renderHilfe() {
 function waehleReiter(gewaehlt) {
   gewaehlt.parentElement.querySelectorAll('[role="tab"]').forEach(r => {
     r.setAttribute("aria-selected", r === gewaehlt);
+    r.tabIndex = r === gewaehlt ? 0 : -1; /* Tab springt zum Inhalt, zwischen den Reitern wechseln die Pfeiltasten */
     document.getElementById(r.getAttribute("aria-controls")).hidden = r !== gewaehlt;
   });
 }
+document.addEventListener("keydown", ev => {
+  const reiter = ev.target.closest?.('[role="tab"]');
+  if (!reiter || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(ev.key)) return;
+  const alle = [...reiter.parentElement.querySelectorAll('[role="tab"]')];
+  const i = alle.indexOf(reiter);
+  const ziel = alle[{ ArrowLeft: (i - 1 + alle.length) % alle.length, ArrowRight: (i + 1) % alle.length, Home: 0, End: alle.length - 1 }[ev.key]];
+  ev.preventDefault();
+  waehleReiter(ziel);
+  ziel.focus();
+});
 
 function kopiere(text, knopf) {
-  const fertig = () => { const alt = knopf.textContent; knopf.textContent = "kopiert"; setTimeout(() => { knopf.textContent = alt; }, 1400); };
+  /* Den Ursprungstext am Knopf merken: Ein zweiter Klick binnen 1,4 s hielte sonst „kopiert“ für den Ursprung */
+  const fertig = () => { knopf.dataset.ursprung ??= knopf.textContent; knopf.textContent = "kopiert"; setTimeout(() => { knopf.textContent = knopf.dataset.ursprung; }, 1400); };
   const notweg = () => {
     const ta = document.createElement("textarea");
     ta.value = text; document.body.appendChild(ta); ta.select();
@@ -1141,7 +1175,6 @@ document.addEventListener("click", ev => {
   }
   const reiter = ev.target.closest('[role="tab"]');
   if (reiter) { waehleReiter(reiter); return; }
-  if (ev.target.closest("a, button, input, select")) return;
   const th = ev.target.closest("th[data-sort]");
   if (th) {
     F.richtung = F.sort === th.dataset.sort ? -F.richtung : (th.dataset.sort === "name" ? 1 : -1);
@@ -1149,15 +1182,19 @@ document.addEventListener("click", ev => {
     skillsFiltern();
     return;
   }
+  const auf = ev.target.closest("button.aufklappen");
+  if (auf) { klappe(auf.closest("tr.haupt")); return; }
+  if (ev.target.closest("a, button, input, select")) return;
   const zeile = ev.target.closest("tr.haupt");
-  if (zeile && !window.getSelection().toString()) {
-    const detail = zeile.nextElementSibling;
-    if (detail?.classList.contains("detail")) {
-      detail.hidden = !detail.hidden;
-      zeile.classList.toggle("offen", !detail.hidden);
-    }
-  }
+  if (zeile && !window.getSelection().toString()) klappe(zeile);
 });
+function klappe(zeile) {
+  const detail = zeile.nextElementSibling;
+  if (!detail?.classList.contains("detail")) return;
+  detail.hidden = !detail.hidden;
+  zeile.classList.toggle("offen", !detail.hidden);
+  zeile.querySelector("button.aufklappen")?.setAttribute("aria-expanded", !detail.hidden);
+}
 for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"], ["f-geteilt", "geteilt"]]) {
   document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
 }
@@ -1175,7 +1212,7 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", async ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #meldung-neu-laden, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen]");
     if (!knopf) return;
     if (knopf.dataset.abbrechen) {
       /* Nur anstoßen: Das Ende meldet die laufende Abfrage des Standes, auch wenn der Lauf gerade von selbst fertig wurde */
@@ -1183,6 +1220,7 @@ if (TOKEN) {
       api("/api/abbrechen", { art: knopf.dataset.abbrechen });
       return;
     }
+    if (knopf.id === "meldung-neu-laden") return location.reload();
     if (knopf.id === "meldung-zu") {
       if (offenerLauf) api(`/api/${offenerLauf}`, { verwerfen: true });
       offenerLauf = ""; return setMeldung("");
@@ -1192,22 +1230,26 @@ if (TOKEN) {
       kandidaten = []; INSTALLATION.clear(); return renderSuchInhalt();
     }
     if (knopf.id === "alle-ausfuehren") {
-      const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok);
-      const warnungen = [...new Set(offen.map(e => warnung(e, gewaehlt(e))).filter(Boolean))];
-      if (await frage("Aktionen ausführen", `${offen.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`
-          + (warnungen.length ? "\n\n" + warnungen.join("\n\n") : ""), `${offen.length} ausführen`))
-        mitSperre(async () => { for (const e of offen) await fuehreAus(e); });
+      /* Eintrag und Aktion hier festhalten: Genau diese Paare stehen im Dialog und laufen danach */
+      const paare = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).map(e => [e, gewaehlt(e)]);
+      const warnungen = [...new Set(paare.map(([e, a]) => warnung(e, a)).filter(Boolean))];
+      const liste = paare.map(([e, a]) => `${a}: ${e.name}${e.projekt ? ` (${e.projekt.split("/").pop()})` : ""}`);
+      if (await frage("Aktionen ausführen", `${paare.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`
+          + (warnungen.length ? "\n\n" + warnungen.join("\n\n") : ""), `${paare.length} ausführen`, liste))
+        mitSperre(async () => { for (const [e, a] of paare) await fuehreAus(e, a); });
     } else if (knopf.id === "neu-einlesen") {
       mitSperre(async () => {
         setMeldung("Liest den Bestand neu ein …", "Inventar");
         const r = await api("/api/neu");
         if (r.ok) location.reload();
+        else if (r.harnessWechsel) harnessGewechselt(r);
         else setMeldung("Neu einlesen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
       });
     } else if (knopf.id === "bewerten") {
       if (!await frage("Bewertung nachziehen", `${je("Claude", D.harness_name)} liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos.`, "starten")) return;
       mitSperre(async () => {
         const r = await api("/api/bewerten");
+        if (r.harnessWechsel) return harnessGewechselt(r);
         if (!r.ok) return setMeldung("Bewertung nicht gestartet:\n\n" + r.ausgabe, "Fehler");
         await bewertungVerfolgen();
       });
@@ -1224,24 +1266,28 @@ if (TOKEN) {
         location.reload(); /* der Tab holt sich die Suche danach vom Server zurück, mit „installiert“ am Kandidaten */
       });
     } else {
-      mitSperre(() => fuehreAus(INDEX.get(knopf.dataset.ausfuehren)));
+      const e = INDEX.get(knopf.dataset.ausfuehren);
+      mitSperre(() => fuehreAus(e, gewaehlt(e)));
     }
   });
 
   document.getElementById("suchform").addEventListener("submit", async ev => {
     ev.preventDefault();
     const bedarf = document.getElementById("bedarf").value.trim();
-    if (!bedarf) return;
+    const knopf = document.getElementById("suchen");
+    if (!bedarf || knopf.disabled) return;
+    knopf.disabled = true; /* sofort: bis der Server antwortet, ginge sonst eine zweite Suche los */
     kandidaten = []; INSTALLATION.clear();
     const r = await api("/api/suchen", { bedarf });
     if (r.ok) return sucheVerfolgen();
     suchStand = { ...r, laeuft: false, bedarf };
-    renderSuchInhalt();
+    renderSuchInhalt(); /* gibt den Knopf wieder frei */
   });
 
   /* Laufende oder fertige Claude-Läufe liegen auf dem Server und überstehen so das Neuladen der Seite */
   api("/api/bewertung").then(b => {
-    if (b.laeuft) mitSperre(bewertungVerfolgen);
+    if (b.harnessWechsel) harnessGewechselt(b);
+    else if (b.laeuft) mitSperre(bewertungVerfolgen);
     else if ("ok" in b && b.verbindung !== false) bewertungZeigen(b);
   });
   sucheVerfolgen();
@@ -1250,12 +1296,18 @@ const warte = ms => new Promise(fertig => setTimeout(fertig, ms));
 async function bewertungVerfolgen() {
   for (;;) {
     const b = await api("/api/bewertung");
-    if (b.verbindung === false) return setMeldung(b.ausgabe, "Fehler");
-    if (!b.laeuft) return location.reload(); /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
+    /* bewertungLaeuft vor jeder Meldung zurücksetzen, sonst trägt die Fehlerkarte „abbrechen“ statt „schließen“ */
+    if (b.verbindung === false) { bewertungLaeuft = false; return setMeldung(b.ausgabe, "Fehler"); }
+    if (b.harnessWechsel) { bewertungLaeuft = false; return harnessGewechselt(b); }
+    if (!b.laeuft) { bewertungLaeuft = false; return location.reload(); } /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
     bewertungLaeuft = b.abgebrochen ? "abbruch" : "ja"; /* der Knopf entsteht alle zwei Sekunden neu und bliebe sonst klickbar */
     setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
     await warte(2000);
   }
+}
+function harnessGewechselt(b) {
+  seiteVeraltet = true;
+  setMeldung(b.ausgabe, "Anderer Harness");
 }
 function bewertungZeigen(b) {
   offenerLauf = "bewertung";
