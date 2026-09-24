@@ -427,6 +427,8 @@ class Hooks(unittest.TestCase):
         self.assertEqual(e["befehle"], [{"befehl": "pruefen", "matcher": "Edit|Write", "bedingung": None},
                                         {"befehl": "pruefen", "matcher": None, "bedingung": "Bash(git commit:*)"}])
 
+    # feste Grenze: Mit der echten Uhr fielen die Daten unten nach 14 Tagen aus dem Fenster, und der Test schlug fehl
+    @mock.patch.object(build, "zeitgrenze", lambda: "2026-09-06T00:00:00")
     def test_ausgaben_aus_transkripten(self):
         def zeile(zeit, ereignis, befehl, stdout):
             return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": {
@@ -839,6 +841,17 @@ class HarnessWahl(unittest.TestCase):
         alle = [{"id": "a", "bewertung": {"was": "x"}}, {"id": "b", "bewertung": None}]
         self.assertEqual(build.abgleich(alle, {"eintraege": {"a": {}, "c": {}}}), (["b"], ["c"]))
 
+    def test_lesefehler_und_ungenutzte_kommen_ins_inventar(self):
+        def inventar():
+            build.LESEFEHLER.append({"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"})
+            return self.leeres_inventar(skills=[{"name": "s", "im_kontext": True, "tokens": 5, "nutzung": None}])
+        build.LESEFEHLER.append({"quelle": "vom letzten Lauf", "fehler": "…"})
+        with mock.patch.object(build, "claude_inventar", side_effect=inventar), mock.patch.object(build, "version", return_value=None):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual(daten["lesefehler"], [{"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"}])
+        self.assertEqual((daten["skills"][0]["ungenutzt"], daten["ungenutzt_tage"]), (True, 30))
+
     def test_datenordner_nur_fuer_den_benutzer(self):
         """Das Inventar nennt Pfade und MCP-Ziele; andere Benutzer des Rechners sollen es nicht lesen."""
         self.daten.chmod(0o755)
@@ -877,6 +890,82 @@ class Eingebaute(unittest.TestCase):
             self.assertEqual(build.eingebaute(bewertung), [
                 {"name": "design", "was": "Entwirft", "tokens": 5, "nutzung": None},
                 {"name": "ohne-was", "was": "", "tokens": 0, "nutzung": None}])
+
+
+class Lesefehler(unittest.TestCase):
+    """Ein Absturz in build.py verhindert den Serverstart. Ein unerwarteter Fehler in einem Plugin oder Projekt
+    kostet deshalb nur diese Quelle und steht als Hinweis im Dashboard."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        build.LESEFEHLER.clear()
+        self.addCleanup(build.LESEFEHLER.clear)
+
+    def test_kaputtes_plugin_kostet_nur_sich(self):
+        for name in ("gut", "kaputt"):
+            (self.tmp / name).mkdir()
+        (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {
+            f"{n}@m": [{"scope": "user", "installPath": str(self.tmp / n)}] for n in ("gut", "kaputt")}}))
+        echt = build.plugin_skill_dateien
+
+        def dateien(wurzel, *rest):
+            if wurzel.name == "kaputt":
+                raise RuntimeError("unerwartet")
+            return echt(wurzel, *rest)
+        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "SETTINGS", {}), \
+                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}), \
+                mock.patch.object(build, "plugin_skill_dateien", side_effect=dateien):
+            liste, teile, hooks = build.plugins()
+        self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
+        self.assertEqual(build.LESEFEHLER, [{"quelle": "Plugin kaputt@m", "fehler": "RuntimeError: unerwartet"}])
+
+    def test_kaputtes_projekt_kostet_nur_sich(self):
+        for name in ("A", "B"):
+            (self.tmp / name / ".claude/skills/x").mkdir(parents=True)
+            (self.tmp / name / ".claude/skills/x/SKILL.md").write_text("---\nname: x\n---\n")
+        echt = build.skill_eintrag
+
+        def eintrag(name, typ, datei, *rest):
+            if "/A/" in str(datei):
+                raise RuntimeError("unerwartet")
+            return echt(name, typ, datei, *rest)
+        with mock.patch.object(build, "skill_eintrag", side_effect=eintrag):
+            ids = [e["id"] for e in build.projekt_skills([str(self.tmp / "A"), str(self.tmp / "B")])]
+        self.assertEqual(ids, ["skill:B/x"])
+        self.assertEqual([f["quelle"] for f in build.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
+
+    def test_kaputter_projektserver_kostet_nur_sein_projekt(self):
+        for name in ("A", "B"):
+            (self.tmp / name).mkdir()
+        echt = build.mcp_definitionen
+
+        def definitionen(ordner, manifest):
+            if ordner.name == "A":
+                raise RuntimeError("unerwartet")
+            return echt(ordner, manifest)
+        projekte = {str(self.tmp / n): {"mcpServers": {"q": {"command": "x"}}} for n in ("A", "B")}
+        with mock.patch.object(build, "GESPERRT", set()), mock.patch.object(build, "mcp_definitionen", side_effect=definitionen):
+            ids = [e["id"] for e in build.projekt_mcp(projekte)]
+        self.assertEqual(ids, ["mcp:B/q"])
+        self.assertEqual([f["quelle"] for f in build.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
+
+
+class Ungenutzt(unittest.TestCase):
+    def test_laedt_in_jede_sitzung_und_seit_30_tagen_ungenutzt(self):
+        """Wer erst seit Kurzem installiert ist, hatte keine 30 Tage, um genutzt zu werden. Für Plugins zählt deren
+        Installation; Codex kennt sie nicht und liefert nur den Stand des Ordners."""
+        def s(name, **kw):
+            return {"name": name, "im_kontext": True, "tokens": 10, "nutzung": None, **kw}
+        skills = [s("nie"), s("alt", nutzung={"anzahl": 3, "zuletzt": "2026-08-01"}),
+                  s("frisch", nutzung={"anzahl": 1, "zuletzt": "2026-09-20"}), s("neu", installiert="2026-09-10"),
+                  s("manuell", im_kontext=False, tokens=0), s("plugin-neu", plugin="p@m"), s("plugin-alt", plugin="q@m"),
+                  s("codex-neu", plugin="r@m")]
+        plugins = [{"name": "p", "marktplatz": "m", "installiert": "2026-09-15", "aktualisiert": None},
+                   {"name": "q", "marktplatz": "m", "installiert": "2026-01-01", "aktualisiert": "2026-09-01"},
+                   {"name": "r", "marktplatz": "m", "installiert": None, "aktualisiert": "2026-09-20"}]
+        build.ungenutzt_markieren(skills, plugins, datetime(2026, 9, 24))
+        self.assertEqual([x["name"] for x in skills if x.get("ungenutzt")], ["nie", "alt", "plugin-alt"])
 
 
 class Autoren(unittest.TestCase):

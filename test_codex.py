@@ -348,6 +348,22 @@ class Plugins(CodexOrdner):
                          [["sites@openai-bundled:sites-building"], ["sites@openai-curated-remote:sites-building"]])
         self.assertEqual([t["plugin"] for t in teile if t["name"].startswith("sites@openai-bundled")], ["sites@openai-bundled"])
 
+    def test_kaputtes_plugin_kostet_nur_sich(self):
+        self.plugin("m", "gut", "1.0", {"name": "gut"})
+        self.plugin("m", "kaputt", "1.0", {"name": "kaputt"})
+        echt = codex.manifest
+
+        def lesen(wurzel):
+            if wurzel.parent.name == "kaputt":
+                raise RuntimeError("unerwartet")
+            return echt(wurzel)
+        codex.LESEFEHLER.clear()
+        self.addCleanup(codex.LESEFEHLER.clear)
+        with mock.patch.object(codex, "manifest", side_effect=lesen):
+            liste, _, _ = codex.plugins({}, (set(), set()), {})
+        self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
+        self.assertEqual([f["quelle"] for f in codex.LESEFEHLER], ["Plugin kaputt@m"])
+
     def test_remote_katalog_abgeschaltet_macht_curated_wirksam(self):
         self.plugin("openai-curated", "github", "bd2122cb", {"name": "github"})
         cfg = {"plugins": {"github@openai-curated": {"enabled": True}}, "features": {"remote_plugin": False}}
@@ -493,6 +509,24 @@ class HooksUndProjekte(CodexOrdner):
                          [("skill:Kit/q-lang", "lokal", str(kit)), ("skill:Kit/seo-audit", "skills-CLI", str(kit))])
         self.assertEqual(sorted((m["id"], m["status"]) for m in mcp), [("mcp:Fremd/f", "nicht vertraut"), ("mcp:Kit/q", "eingetragen")])
         self.assertNotIn(GEHEIM, json.dumps(mcp))
+
+    def test_kaputtes_projekt_kostet_nur_sich(self):
+        """Wie in build.py: Ein unerwarteter Fehler kostet nur dieses Projekt und steht im Dashboard."""
+        for name in ("A", "B"):
+            self.skill(self.tmp / name / ".agents/skills", "x")
+        echt = codex.skill_eintrag
+
+        def eintrag(name, datei, *rest):
+            if "/A/" in str(datei):
+                raise RuntimeError("unerwartet")
+            return echt(name, datei, *rest)
+        cfg = {"projects": {str(self.tmp / n): {} for n in ("A", "B")}}
+        codex.LESEFEHLER.clear()
+        self.addCleanup(codex.LESEFEHLER.clear)
+        with mock.patch.object(codex, "skill_eintrag", side_effect=eintrag):
+            skills, _ = codex.projekte(cfg, (set(), set()), {})
+        self.assertEqual([s["id"] for s in skills], ["skill:B/x"])
+        self.assertEqual([f["quelle"] for f in codex.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
 
     def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
         """Wie in build.py: Zwei Projekte namens „app“ teilten sich sonst eine ID, und eine Aktion träfe das erste."""

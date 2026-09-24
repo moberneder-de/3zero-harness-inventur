@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import harness
-from build import abgleich, bewerte, frontmatter, hook_eintraege, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, ziel_text
+from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -356,55 +356,61 @@ def plugins(cfg, aus, autoren):
             continue
         name, mkt = plugin_ordner.name, plugin_ordner.parent.name
         pid = f"{name}@{mkt}"
-        praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
-        m = manifest(wurzel)
-        status = plugin_status(pid, mkt, cfg, (plugin_ordner / ".codex-remote-plugin-install.json").is_file())
-        aktiv = status in LAEDT
-        autor = m.get("author")
-        autor = autor.get("name") if isinstance(autor, dict) else (autor or "unbekannt")
-        autor = autoren.get(autor, autor)
-        quelle = {"art": "Plugin", "autor": autor, "repo": pid}
+        try:
+            praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
+            m = manifest(wurzel)
+            status = plugin_status(pid, mkt, cfg, (plugin_ordner / ".codex-remote-plugin-install.json").is_file())
+            aktiv = status in LAEDT
+            autor = m.get("author")
+            autor = autor.get("name") if isinstance(autor, dict) else (autor or "unbekannt")
+            autor = autoren.get(autor, autor)
+            quelle = {"art": "Plugin", "autor": autor, "repo": pid}
 
-        skills_ordner = wurzel / (m["skills"] if isinstance(m.get("skills"), str) else "skills")
-        teile = []
-        for d in sorted(skills_ordner.glob("*/SKILL.md")):
-            t = skill_eintrag(f"{praefix}:{d.parent.name}", d, aus, aktiv)
-            t.update(plugin=pid, quelle=dict(quelle))
-            teile.append(t)
+            skills_ordner = wurzel / (m["skills"] if isinstance(m.get("skills"), str) else "skills")
+            teile, plugin_hooks = [], []
+            for d in sorted(skills_ordner.glob("*/SKILL.md")):
+                t = skill_eintrag(f"{praefix}:{d.parent.name}", d, aus, aktiv)
+                t.update(plugin=pid, quelle=dict(quelle))
+                teile.append(t)
+
+            mcp_roh = teil(wurzel, m, "mcpServers", ".mcp.json")
+            mcp_roh = mcp_roh.get("mcpServers", mcp_roh)
+            mcp_roh = mcp_roh if isinstance(mcp_roh, dict) else {}
+            mcp = {n: {k: c[k] for k in MCP_FELDER if k in c} for n, c in mcp_roh.items() if isinstance(c, dict)}
+            apps = teil(wurzel, m, "apps", ".app.json").get("apps")
+            hooks_roh = lesbare_hooks(teil(wurzel, m, "hooks", "hooks/hooks.json").get("hooks"))
+            for h in hook_eintraege(hooks_roh, pid, quelle, wurzel, "aktiv" if aktiv else "aus"):
+                plugin_hooks.append({**h, "plugin": pid})
+
+            eintrag = {
+                "id": f"plugin:{pid}",
+                "name": name,
+                "marktplatz": mkt,
+                "marktplatz_repo": None,
+                "autor": autor,
+                "homepage": m.get("homepage") or m.get("repository"),
+                "version": m.get("version") or wurzel.name,
+                "installiert": None,
+                "aktualisiert": datetime.fromtimestamp(wurzel.stat().st_mtime).strftime("%Y-%m-%d"),
+                "status": status,
+                "beschreibung": m.get("description") or "",
+                "skills": [t["name"] for t in teile],
+                "befehle": [],
+                "agenten": [],
+                "apps": sorted(apps) if isinstance(apps, dict) else [],
+                "hooks": sorted(hooks_roh),
+                "mcp": mcp,
+                "tokens": sum(t["tokens"] for t in teile),
+                "nutzung": None,
+                "aktivitaet": None,
+                "pfad": str(wurzel),
+            }
+        except Exception as fehler:
+            lesefehler(f"Plugin {pid}", fehler)
+            continue
+        liste.append(eintrag)
         bestandteile += teile
-
-        mcp_roh = teil(wurzel, m, "mcpServers", ".mcp.json")
-        mcp_roh = mcp_roh.get("mcpServers", mcp_roh)
-        mcp_roh = mcp_roh if isinstance(mcp_roh, dict) else {}
-        mcp = {n: {k: c[k] for k in MCP_FELDER if k in c} for n, c in mcp_roh.items() if isinstance(c, dict)}
-        apps = teil(wurzel, m, "apps", ".app.json").get("apps")
-        hooks_roh = lesbare_hooks(teil(wurzel, m, "hooks", "hooks/hooks.json").get("hooks"))
-        for h in hook_eintraege(hooks_roh, pid, quelle, wurzel, "aktiv" if aktiv else "aus"):
-            hooks.append({**h, "plugin": pid})
-
-        liste.append({
-            "id": f"plugin:{pid}",
-            "name": name,
-            "marktplatz": mkt,
-            "marktplatz_repo": None,
-            "autor": autor,
-            "homepage": m.get("homepage") or m.get("repository"),
-            "version": m.get("version") or wurzel.name,
-            "installiert": None,
-            "aktualisiert": datetime.fromtimestamp(wurzel.stat().st_mtime).strftime("%Y-%m-%d"),
-            "status": status,
-            "beschreibung": m.get("description") or "",
-            "skills": [t["name"] for t in teile],
-            "befehle": [],
-            "agenten": [],
-            "apps": sorted(apps) if isinstance(apps, dict) else [],
-            "hooks": sorted(hooks_roh),
-            "mcp": mcp,
-            "tokens": sum(t["tokens"] for t in teile),
-            "nutzung": None,
-            "aktivitaet": None,
-            "pfad": str(wurzel),
-        })
+        hooks += plugin_hooks
     return liste, bestandteile, hooks
 
 
@@ -461,36 +467,43 @@ def projekte(cfg, aus, autoren):
     projekte_cfg = cfg.get("projects")
     projekte_cfg = projekte_cfg if isinstance(projekte_cfg, dict) else {}
     for pfad, p in sorted(projekte_cfg.items()):
-        ordner = Path(pfad)
-        if not ordner.is_dir() or ordner.resolve() == HOME.resolve():
-            continue
-        vertraut = isinstance(p, dict) and p.get("trust_level") == "trusted"
-        lock = skill_lock(ordner / "skills-lock.json")
-        namen = set()  # bei gleichem Namen zählt der erste, wie in eigene_skills(): zwei Einträge trügen dieselbe ID
-        for wurzel in (ordner / ".agents" / "skills", ordner / ".codex" / "skills"):
-            for datei in sorted(wurzel.glob("*/SKILL.md")):
-                name = datei.parent.name
-                if name in namen:
-                    continue
-                namen.add(name)
-                e = skill_eintrag(name, datei, aus)
-                eintrag = lock.get(name)
-                repo = eintrag.get("source") if isinstance(eintrag, dict) else None
-                e.update(projekt=pfad,
-                         quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
-                skills.append(e)
-        datei = ordner / ".codex" / "config.toml"
-        mcp_servers = lies_toml(datei).get("mcp_servers")
-        mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
-        for name, c in sorted(mcp_servers.items()):
-            if not isinstance(c, dict):
+        try:
+            p_skills, p_mcp = [], []
+            ordner = Path(pfad)
+            if not ordner.is_dir() or ordner.resolve() == HOME.resolve():
                 continue
-            if not vertraut:
-                status = "nicht vertraut"
-            else:
-                status = "eingetragen" if c.get("enabled", True) is not False else "deaktiviert"
-            mcp.append({"name": name, "projekt": pfad, "art": ".codex/config.toml",
-                        "quelle": str(datei), "ziel": ziel_text(c), "status": status, "gesperrt": False, "aus_in_projekten": []})
+            vertraut = isinstance(p, dict) and p.get("trust_level") == "trusted"
+            lock = skill_lock(ordner / "skills-lock.json")
+            namen = set()  # bei gleichem Namen zählt der erste, wie in eigene_skills(): zwei Einträge trügen dieselbe ID
+            for wurzel in (ordner / ".agents" / "skills", ordner / ".codex" / "skills"):
+                for datei in sorted(wurzel.glob("*/SKILL.md")):
+                    name = datei.parent.name
+                    if name in namen:
+                        continue
+                    namen.add(name)
+                    e = skill_eintrag(name, datei, aus)
+                    eintrag = lock.get(name)
+                    repo = eintrag.get("source") if isinstance(eintrag, dict) else None
+                    e.update(projekt=pfad,
+                             quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
+                    p_skills.append(e)
+            datei = ordner / ".codex" / "config.toml"
+            mcp_servers = lies_toml(datei).get("mcp_servers")
+            mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
+            for name, c in sorted(mcp_servers.items()):
+                if not isinstance(c, dict):
+                    continue
+                if not vertraut:
+                    status = "nicht vertraut"
+                else:
+                    status = "eingetragen" if c.get("enabled", True) is not False else "deaktiviert"
+                p_mcp.append({"name": name, "projekt": pfad, "art": ".codex/config.toml",
+                            "quelle": str(datei), "ziel": ziel_text(c), "status": status, "gesperrt": False, "aus_in_projekten": []})
+        except Exception as fehler:
+            lesefehler(f"Projekt {pfad}", fehler)
+            continue
+        skills += p_skills
+        mcp += p_mcp
     projekt_ids(skills, "skill")
     projekt_ids(mcp, "mcp")
     return skills, mcp

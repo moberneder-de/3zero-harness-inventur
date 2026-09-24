@@ -460,6 +460,7 @@ function renderUeberblick() {
   const plAn = D.plugins.filter(p => p.status === "aktiv").length;
   const skAn = D.skills.filter(s => s.status === "aktiv").length;
   const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !umgesetzt(e)).length;
+  const ungenutzt = D.skills.filter(s => s.ungenutzt);
   const banner = [];
   /* Nach einem frischen Bestand sind das schnell über hundert IDs; ausgeschrieben füllen sie den halben Bildschirm */
   const idListe = ids => ids.length <= 6 ? ` ${ids.map(esc).join(", ")}.`
@@ -467,6 +468,7 @@ function renderUeberblick() {
   if (D.unbewertet.length) banner.push(`<strong>${D.unbewertet.length} Einträge sind neu und noch nicht bewertet:</strong>${idListe(D.unbewertet)}`);
   if (D.entfallen.length) banner.push(`<strong>${D.entfallen.length} bewertete Einträge sind nicht mehr installiert:</strong>${idListe(D.entfallen)}`);
   if (D.live_status === false) banner.push("<strong>MCP-Status nur aus der Konfiguration:</strong> <code>claude mcp list</code> war beim Erstellen nicht erreichbar.");
+  if (D.lesefehler?.length) banner.push(`<strong>${D.lesefehler.length === 1 ? "Eine Quelle ließ" : `${D.lesefehler.length} Quellen ließen`} sich nicht einlesen und fehlen unten:</strong> ${D.lesefehler.map(f => `${esc(f.quelle)} (<code>${esc(f.fehler)}</code>)`).join(", ")}. Alles andere ist vollständig.`);
   if (D.config_lesbar === false) banner.push("<strong><code>~/.codex/config.toml</code> ließ sich nicht lesen:</strong> MCP-Server, aktivierte Plugins, abgeschaltete Skills und Projekte fehlen deshalb unten. Erst die Datei richtigstellen, dann neu einlesen — sonst bewertet der Skill einen halben Bestand.");
   const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in ${esc(D.harness_name)} <code>${je("/", "$")}3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
@@ -477,6 +479,7 @@ function renderUeberblick() {
     <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks und MCP-Anweisungen, ohne die eingebauten Skills</div></div>
     <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
     <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
+    <div class="kpi"><div class="zahl">${ungenutzt.length}<small> · ≈ ${zahl(ungenutzt.reduce((s, e) => s + e.tokens, 0))}</small></div><div class="was">Skills laden in jede Sitzung und wurden seit ${D.ungenutzt_tage} Tagen nicht genutzt (Tokens je Sitzung); im Tab Skills über den Statusfilter „${esc(UNGENUTZT)}“</div></div>
   </div>`;
 
   const summen = new Map();
@@ -669,13 +672,14 @@ function renderPlugins() {
 const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", geteilt: "", teile: true, sort: "name", richtung: 1 };
 /* Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und laden deshalb in beiden */
 const GETEILT = je("auch in Codex", "auch in Claude Code");
+const UNGENUTZT = `seit ${D.ungenutzt_tage} Tagen ungenutzt`;
 function renderSkillsRahmen() {
   const quellen = [...new Set(SKILLS.map(lieferweg))].sort((a, b) => a.localeCompare(b));
   const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
   const filter = `<div class="filter">
     <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
     <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
-    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar"], "jeder Status")}</select>
+    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar", UNGENUTZT], "jeder Status")}</select>
     <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $"]), "jeder Aufruf")}</select>
     <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
     <select id="f-geteilt" aria-label="Gilt in beiden Harnesses">${opt([`nur für ${D.harness_name}`, GETEILT], "beide Harnesses")}</select>
@@ -696,7 +700,7 @@ function skillsFiltern() {
     return (F.teile || !s.plugin)
       && (!q || `${s.name} ${s.beschreibung || ""} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
       && (!F.quelle || lieferweg(s) === F.quelle)
-      && (!F.status || (F.status === "Update verfügbar" ? s.update : s.status === F.status))
+      && (!F.status || (F.status === "Update verfügbar" ? s.update : F.status === UNGENUTZT ? s.ungenutzt : s.status === F.status))
       && (!F.aufruf || s.aufruf === F.aufruf)
       && (!F.empf || empf === F.empf)
       && (!F.geteilt || (F.geteilt === GETEILT ? !!s.geteilt : !s.geteilt));
@@ -716,7 +720,7 @@ function skillsFiltern() {
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name">${aufklapp(s.name)}<div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
-        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}${s.geteilt ? `<span class="tag">${esc(GETEILT)}</span>` : ""}</td>
+        ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}${s.ungenutzt ? `<span class="tag" title="${esc(UNGENUTZT)}, lädt aber in jede Sitzung">ungenutzt</span>` : ""}${s.geteilt ? `<span class="tag">${esc(GETEILT)}</span>` : ""}</td>
       <td>${esc(lieferweg(s))}</td><td class="nowrap klein">${s.aufruf ? esc(s.aufruf) : '<span class="leer">–</span>'}</td><td class="zahl">${kontext}</td>
       <td class="zahl">${nutzungText(s)}</td><td>${was(s)}</td><td>${empfBadge(s)}</td>${wahlZelle(s)}</tr>` +
       detailZeile(7 + SP, [
@@ -984,6 +988,23 @@ async function fuehreAus(e, aktion) {
   ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion }));
 }
 
+async function neuEinlesen() {
+  setMeldung("Liest den Bestand neu ein …", "Inventar");
+  const r = await api("/api/neu");
+  if (r.ok) location.reload();
+  else if (r.harnessWechsel) harnessGewechselt(r);
+  else setMeldung("Neu einlesen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
+}
+/* Nach gelungenen Aktionen stimmt die Seite nicht mehr: Erledigte Zeilen blieben stehen und ließen sich noch einmal
+   ausführen. Schlug etwas fehl, bleibt die Seite, damit die Meldung dazu stehen bleibt. Die gespeicherte Wahl
+   erledigter Einträge fällt weg, sonst stünde sie nach einem späteren Umschalten wieder vorbelegt da. */
+async function nachAktionen(paare) {
+  if (!paare.every(([e]) => ERGEBNIS.get(e.id)?.ok)) return;
+  paare.forEach(([e]) => delete abweichung[e.id]);
+  try { localStorage.setItem(SPEICHER, JSON.stringify(abweichung)); } catch (_) { /* ohne Speicher nichts zu löschen */ }
+  await neuEinlesen();
+}
+
 function renderHilfe() {
   const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
   const datenordner = `<li>Dashboard, Inventar und Bewertung liegen in <code>~/.3zero-harness-inventur</code>, nicht im Projektordner: Sie gehören zu deinem Rechner, das Projekt enthält nur das Werkzeug.</li>`;
@@ -998,7 +1019,7 @@ function renderHilfe() {
       <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>OpenAI/Codex</b> ist in Codex eingebaut.</li>
       <li>Plugin-Status: <b>aktiv</b> und <b>deaktiviert</b> nach <code>enabled</code> in config.toml, <b>im Konto</b> für Plugins aus dem ChatGPT-Konto, <b>wirkungslos</b> für openai-curated-Einträge, die Codex wegen des Online-Katalogs ignoriert, <b>nicht aktiviert</b> für Plugins ohne Eintrag.</li>
-      <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update.</li>
+      <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
     </ul>`], ["Empfehlungen lesen", `<ul>
@@ -1039,7 +1060,7 @@ function renderHilfe() {
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam, und damit, wie er wieder geht: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>Anthropic/Claude Code</b> ist in Claude Code eingebaut. Den Autor nennen die Details.</li>
-      <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update.</li>
+      <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       <li>Hinweise nennen Funde außerhalb der Tabellen. Einen erzeugt das Dashboard selbst: Overrides in <code>skillOverrides</code> für Skills, die es nicht gibt.</li>
@@ -1236,15 +1257,9 @@ if (TOKEN) {
       const liste = paare.map(([e, a]) => `${a}: ${e.name}${e.projekt ? ` (${e.projekt.split("/").pop()})` : ""}`);
       if (await frage("Aktionen ausführen", `${paare.length} Aktionen laufen nacheinander. Sie wirken ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`
           + (warnungen.length ? "\n\n" + warnungen.join("\n\n") : ""), `${paare.length} ausführen`, liste))
-        mitSperre(async () => { for (const [e, a] of paare) await fuehreAus(e, a); });
+        mitSperre(async () => { for (const [e, a] of paare) await fuehreAus(e, a); await nachAktionen(paare); });
     } else if (knopf.id === "neu-einlesen") {
-      mitSperre(async () => {
-        setMeldung("Liest den Bestand neu ein …", "Inventar");
-        const r = await api("/api/neu");
-        if (r.ok) location.reload();
-        else if (r.harnessWechsel) harnessGewechselt(r);
-        else setMeldung("Neu einlesen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
-      });
+      mitSperre(neuEinlesen);
     } else if (knopf.id === "bewerten") {
       if (!await frage("Bewertung nachziehen", `${je("Claude", D.harness_name)} liest den Bestand neu ein und zieht die Bewertung nach: neue Einträge beschreiben, entfernte austragen, Gruppen und Hinweise prüfen.\n\nDas dauert einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos.`, "starten")) return;
       mitSperre(async () => {
@@ -1266,8 +1281,8 @@ if (TOKEN) {
         location.reload(); /* der Tab holt sich die Suche danach vom Server zurück, mit „installiert“ am Kandidaten */
       });
     } else {
-      const e = INDEX.get(knopf.dataset.ausfuehren);
-      mitSperre(() => fuehreAus(e, gewaehlt(e)));
+      const e = INDEX.get(knopf.dataset.ausfuehren), a = gewaehlt(e);
+      mitSperre(async () => { await fuehreAus(e, a); await nachAktionen([[e, a]]); });
     }
   });
 

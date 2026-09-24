@@ -68,6 +68,14 @@ def gesperrte_namen(settings):
 
 GESPERRT = gesperrte_namen(SETTINGS)
 HOOK_TAGE = 14  # so weit zurück liest build.py die Transkripte, um Hook-Ausgaben zu messen
+UNGENUTZT_TAGE = 30  # so lange ohne Nutzung gilt ein Skill, der in jede Sitzung lädt, als ungenutzt
+# Unerwartete Fehler je Plugin oder Projekt: Sie kosten nur diese Quelle und stehen im Dashboard. Ein Absturz
+# bräche build.py ab, und ohne gelungenen Lauf startet der Server nicht.
+LESEFEHLER = []
+
+
+def lesefehler(quelle, fehler):
+    LESEFEHLER.append({"quelle": quelle, "fehler": f"{type(fehler).__name__}: {fehler}"})
 
 
 def datum_ms(ms):
@@ -258,15 +266,21 @@ def projekt_skills(projekte):
             dateien += [(d.stem, "Befehl", d) for d in sorted(wurzel.glob("commands/*.md"))]
         except OSError:  # etwa ~/Documents, das macOS ohne Freigabe verweigert: nur dieses Projekt fällt weg
             continue
-        lock = lies_json(Path(pfad) / "skills-lock.json").get("skills", {})
-        for name, typ, datei in dateien:
-            if not datei.is_file():
-                continue
-            e = skill_eintrag(name, typ, datei)
-            e["projekt"] = str(pfad)
-            repo = (lock.get(name) or {}).get("source") if typ == "Skill" else None
-            e["quelle"] = cli_quelle(repo) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"}
-            ergebnis.append(e)
+        try:
+            lock = lies_json(Path(pfad) / "skills-lock.json").get("skills", {})
+            eintraege = []
+            for name, typ, datei in dateien:
+                if not datei.is_file():
+                    continue
+                e = skill_eintrag(name, typ, datei)
+                e["projekt"] = str(pfad)
+                repo = (lock.get(name) or {}).get("source") if typ == "Skill" else None
+                e["quelle"] = cli_quelle(repo) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"}
+                eintraege.append(e)
+        except Exception as fehler:
+            lesefehler(f"Projekt {pfad}", fehler)
+            continue
+        ergebnis += eintraege
     projekt_ids(ergebnis, "skill")
     return ergebnis
 
@@ -488,73 +502,79 @@ def plugins():
     liste, bestandteile, hooks = [], [], []
     mehrfach = mehrfache_namen(installiert)
     for pid, installationen in sorted(installiert.items()):
-        inst = next((i for i in installationen if i.get("scope") == "user"), installationen[0])
-        name, _, mkt = pid.partition("@")
-        praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
-        wurzel = Path(inst["installPath"])
-        manifest = lies_json(wurzel / ".claude-plugin" / "plugin.json")
-        mkt_info = marktplaetze.get(mkt, {})
-        mkt_datei = marktplatz_datei(mkt_info)
-        mkt_eintrag = next((p for p in mkt_datei.get("plugins", []) if p.get("name") == name), {})
+        try:
+            inst = next((i for i in installationen if i.get("scope") == "user"), installationen[0])
+            name, _, mkt = pid.partition("@")
+            praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
+            wurzel = Path(inst["installPath"])
+            manifest = lies_json(wurzel / ".claude-plugin" / "plugin.json")
+            mkt_info = marktplaetze.get(mkt, {})
+            mkt_datei = marktplatz_datei(mkt_info)
+            mkt_eintrag = next((p for p in mkt_datei.get("plugins", []) if p.get("name") == name), {})
 
-        if aktiviert.get(pid) is True:
-            status = "aktiv"
-        elif pid in aktiviert:
-            status = "deaktiviert"
-        else:
-            status = "nicht aktiviert"
-        aktiv = status == "aktiv"
+            if aktiviert.get(pid) is True:
+                status = "aktiv"
+            elif pid in aktiviert:
+                status = "deaktiviert"
+            else:
+                status = "nicht aktiviert"
+            aktiv = status == "aktiv"
 
-        autor = (manifest.get("author") or mkt_eintrag.get("author") or mkt_datei.get("owner") or {})
-        autor = autor.get("name") if isinstance(autor, dict) else str(autor)
-        autor = autoren().get(autor, autor)
+            autor = (manifest.get("author") or mkt_eintrag.get("author") or mkt_datei.get("owner") or {})
+            autor = autor.get("name") if isinstance(autor, dict) else str(autor)
+            autor = autoren().get(autor, autor)
 
-        skill_dateien = plugin_skill_dateien(wurzel, mkt_eintrag, manifest)
-        teile = []
-        for d in skill_dateien:
-            if d.is_file():
-                teile.append(skill_eintrag(f"{praefix}:{d.parent.name}", "Skill", d, aktiv, f"{name}:{d.parent.name}"))
-        for d in sorted(wurzel.glob("commands/*.md")):
-            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Befehl", d, aktiv, f"{name}:{d.stem}"))
-        for d in sorted(wurzel.glob("agents/*.md")):
-            teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Agent", d, aktiv, f"{name}:{d.stem}"))
-        for t in teile:
-            t["plugin"] = pid
-            t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}
+            skill_dateien = plugin_skill_dateien(wurzel, mkt_eintrag, manifest)
+            teile, plugin_hooks = [], []
+            for d in skill_dateien:
+                if d.is_file():
+                    teile.append(skill_eintrag(f"{praefix}:{d.parent.name}", "Skill", d, aktiv, f"{name}:{d.parent.name}"))
+            for d in sorted(wurzel.glob("commands/*.md")):
+                teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Befehl", d, aktiv, f"{name}:{d.stem}"))
+            for d in sorted(wurzel.glob("agents/*.md")):
+                teile.append(skill_eintrag(f"{praefix}:{d.stem}", "Agent", d, aktiv, f"{name}:{d.stem}"))
+            for t in teile:
+                t["plugin"] = pid
+                t["quelle"] = {"art": "Plugin", "autor": autor, "repo": pid}
+            hooks_datei = wurzel / "hooks" / "hooks.json"
+            hooks_roh = lies_json(hooks_datei).get("hooks")
+            hooks_roh = hooks_roh if isinstance(hooks_roh, dict) else {}
+            for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
+                plugin_hooks.append({**h, "plugin": pid})
+
+            genutzt = [t["nutzung"] for t in teile if t["nutzung"]]
+            pnutzung = CFG.get("pluginUsage", {}).get(pid, {})
+            mkt_repo = (mkt_info.get("source") or {}).get("repo")
+            eintrag = {
+                "id": f"plugin:{pid}",
+                "name": name,
+                "marktplatz": mkt,
+                "marktplatz_repo": mkt_repo,
+                "autor": autor,
+                "homepage": manifest.get("homepage") or manifest.get("repository") or mkt_eintrag.get("homepage"),
+                "version": inst.get("version"),
+                "installiert": (inst.get("installedAt") or "")[:10] or None,
+                "aktualisiert": (inst.get("lastUpdated") or "")[:10] or None,
+                "status": status,
+                "beschreibung": manifest.get("description") or mkt_eintrag.get("description") or "",
+                "skills": [t["name"] for t in teile if t["typ"] == "Skill"],
+                "befehle": [t["name"] for t in teile if t["typ"] == "Befehl"],
+                "agenten": [t["name"] for t in teile if t["typ"] == "Agent"],
+                "hooks": sorted(hooks_roh.keys()),
+                "mcp": mcp_definitionen(wurzel, manifest),
+                "tokens": sum(t["tokens"] for t in teile),
+                "nutzung": {
+                    "anzahl": sum(n["anzahl"] for n in genutzt),
+                    "zuletzt": max((n["zuletzt"] for n in genutzt if n["zuletzt"]), default=None),
+                } if genutzt else None,
+                "aktivitaet": pnutzung.get("usageCount"),
+            }
+        except Exception as fehler:
+            lesefehler(f"Plugin {pid}", fehler)
+            continue
+        liste.append(eintrag)
         bestandteile += teile
-        hooks_datei = wurzel / "hooks" / "hooks.json"
-        hooks_roh = lies_json(hooks_datei).get("hooks")
-        hooks_roh = hooks_roh if isinstance(hooks_roh, dict) else {}
-        for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
-            hooks.append({**h, "plugin": pid})
-
-        genutzt = [t["nutzung"] for t in teile if t["nutzung"]]
-        pnutzung = CFG.get("pluginUsage", {}).get(pid, {})
-        mkt_repo = (mkt_info.get("source") or {}).get("repo")
-        liste.append({
-            "id": f"plugin:{pid}",
-            "name": name,
-            "marktplatz": mkt,
-            "marktplatz_repo": mkt_repo,
-            "autor": autor,
-            "homepage": manifest.get("homepage") or manifest.get("repository") or mkt_eintrag.get("homepage"),
-            "version": inst.get("version"),
-            "installiert": (inst.get("installedAt") or "")[:10] or None,
-            "aktualisiert": (inst.get("lastUpdated") or "")[:10] or None,
-            "status": status,
-            "beschreibung": manifest.get("description") or mkt_eintrag.get("description") or "",
-            "skills": [t["name"] for t in teile if t["typ"] == "Skill"],
-            "befehle": [t["name"] for t in teile if t["typ"] == "Befehl"],
-            "agenten": [t["name"] for t in teile if t["typ"] == "Agent"],
-            "hooks": sorted(hooks_roh.keys()),
-            "mcp": mcp_definitionen(wurzel, manifest),
-            "tokens": sum(t["tokens"] for t in teile),
-            "nutzung": {
-                "anzahl": sum(n["anzahl"] for n in genutzt),
-                "zuletzt": max((n["zuletzt"] for n in genutzt if n["zuletzt"]), default=None),
-            } if genutzt else None,
-            "aktivitaet": pnutzung.get("usageCount"),
-        })
+        hooks += plugin_hooks
     return liste, bestandteile, hooks
 
 
@@ -658,28 +678,34 @@ def projekt_mcp(projekte):
     Status nur aus der Konfiguration; ein Verbindungstest bräuchte `claude mcp list` in jedem Projekt."""
     ergebnis = []
     for pfad, p in sorted(projekte.items()):
-        ordner = Path(pfad)
-        einstellungen = [p] + [lies_json(ordner / ".claude" / f) for f in ("settings.json", "settings.local.json")]
-        freigegeben = {n for s in einstellungen for n in s.get("enabledMcpjsonServers") or []}
-        abgelehnt = {n for s in einstellungen for n in s.get("disabledMcpjsonServers") or []}
-        alle_frei = any(s.get("enableAllProjectMcpServers") for s in einstellungen)
-        server = [(n, c, ".mcp.json", str(ordner / ".mcp.json")) for n, c in mcp_definitionen(ordner, {}).items()]
-        server += [(n, c, "lokal", "~/.claude.json") for n, c in (p.get("mcpServers") or {}).items()]
-        for name, c, art, quelle in server:
-            if not ordner.is_dir():
-                status = "Ordner fehlt"
-            elif name in GESPERRT or name in (p.get("disabledMcpServers") or []):
-                status = "deaktiviert"
-            elif art == "lokal":
-                status = "eingetragen"
-            elif name in abgelehnt:
-                status = "abgelehnt"
-            elif name in freigegeben or alle_frei:
-                status = "freigegeben"
-            else:
-                status = "wartet auf Freigabe"
-            ergebnis.append({"name": name, "projekt": pfad, "art": art, "quelle": quelle,
-                             "ziel": ziel_text(c), "status": status, "gesperrt": name in GESPERRT, "aus_in_projekten": []})
+        try:
+            eintraege = []
+            ordner = Path(pfad)
+            einstellungen = [p] + [lies_json(ordner / ".claude" / f) for f in ("settings.json", "settings.local.json")]
+            freigegeben = {n for s in einstellungen for n in s.get("enabledMcpjsonServers") or []}
+            abgelehnt = {n for s in einstellungen for n in s.get("disabledMcpjsonServers") or []}
+            alle_frei = any(s.get("enableAllProjectMcpServers") for s in einstellungen)
+            server = [(n, c, ".mcp.json", str(ordner / ".mcp.json")) for n, c in mcp_definitionen(ordner, {}).items()]
+            server += [(n, c, "lokal", "~/.claude.json") for n, c in (p.get("mcpServers") or {}).items()]
+            for name, c, art, quelle in server:
+                if not ordner.is_dir():
+                    status = "Ordner fehlt"
+                elif name in GESPERRT or name in (p.get("disabledMcpServers") or []):
+                    status = "deaktiviert"
+                elif art == "lokal":
+                    status = "eingetragen"
+                elif name in abgelehnt:
+                    status = "abgelehnt"
+                elif name in freigegeben or alle_frei:
+                    status = "freigegeben"
+                else:
+                    status = "wartet auf Freigabe"
+                eintraege.append({"name": name, "projekt": pfad, "art": art, "quelle": quelle,
+                                 "ziel": ziel_text(c), "status": status, "gesperrt": name in GESPERRT, "aus_in_projekten": []})
+        except Exception as fehler:
+            lesefehler(f"Projekt {pfad}", fehler)
+            continue
+        ergebnis += eintraege
     projekt_ids(ergebnis, "mcp")
     return ergebnis
 
@@ -872,6 +898,19 @@ def verlauf_fortschreiben(pfad, eintrag):
     return reihe
 
 
+def ungenutzt_markieren(skills, plugins, heute):
+    """Markiert, was in jede Sitzung lädt, aber seit UNGENUTZT_TAGE nicht genutzt wurde: die besten Kandidaten zum
+    Aufräumen. Wer erst seit Kurzem da ist, hatte die Zeit nicht; für Plugin-Bestandteile zählt die Installation
+    des Plugins, und wo die fehlt (Codex), der Stand seines Ordners."""
+    grenze = (heute - timedelta(days=UNGENUTZT_TAGE)).strftime("%Y-%m-%d")
+    seit = {f"{p['name']}@{p['marktplatz']}": p.get("installiert") or p.get("aktualisiert") for p in plugins}
+    for e in skills:
+        genutzt = (e.get("nutzung") or {}).get("zuletzt") or ""
+        da_seit = (seit.get(e["plugin"]) if e.get("plugin") else e.get("installiert")) or ""
+        if e.get("im_kontext") and e.get("tokens") and genutzt < grenze and da_seit < grenze:
+            e["ungenutzt"] = True
+
+
 def eindeutige_ids(alle):
     """Ein Skill und ein Befehl gleichen Namens hießen beide skill:x, ein Projektserver in .mcp.json und lokal beide
     mcp:Projekt/x — der Server nähme bei einer Aktion den ersten. Der erste behält die ID, die übrigen tragen ihre Art."""
@@ -953,6 +992,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Harness-Inventur für Claude Code oder Codex")
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
     wahl = parser.parse_args(argv).harness
+    LESEFEHLER.clear()
     DATEN.mkdir(parents=True, exist_ok=True)
     DATEN.chmod(0o700)  # Pfade und MCP-Ziele gehen andere Benutzer des Rechners nichts an
     if wahl:
@@ -970,6 +1010,8 @@ def main(argv=None):
         inhalt = claude_inventar()
     inhalt = fuers_dashboard(inhalt)
     jetzt = datetime.now()
+    ungenutzt_markieren(inhalt.get("skills", []), inhalt.get("plugins", []), jetzt)
+    inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
         "datum": jetzt.strftime("%Y-%m-%d"), "kontextlast": last,
@@ -992,6 +1034,8 @@ def main(argv=None):
           f"{len(daten['projekt_mcp'])} Projekt-MCP-Server, {len(daten['hooks'])} Hooks")
     if daten["live_status"] is False:
         print("Hinweis: `claude mcp list` nicht erreichbar, MCP-Status nur aus der Konfiguration.")
+    for f in daten["lesefehler"]:
+        print(f"Übersprungen, {f['quelle']}: {f['fehler']}")
     if daten["unbewertet"]:
         print(f"Noch nicht bewertet ({len(daten['unbewertet'])}): " + ", ".join(daten["unbewertet"]))
     if daten["entfallen"]:
