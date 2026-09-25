@@ -339,6 +339,38 @@ class Server(unittest.TestCase):
         self.assertEqual({d.name: d.read_text() for d in self.tmp.glob("settings.json.bak*")},
                          {"settings.json.bak-20260920-170000": SETTINGS_VORHER, "settings.json.bak-20260920-180000": nach_der_ersten})
 
+    def test_nur_die_letzten_sicherungen_bleiben(self):
+        """Je Serverlauf kam eine Sicherung dazu, ohne dass je eine ging."""
+        for i in range(12):
+            (self.tmp / f"settings.json.bak-202609{i + 10:02d}-120000").write_text(str(i))
+        (self.tmp / "settings.json.bak-fremd").write_text("bleibt")  # kein Zeitstempel: nicht von uns
+        with mock.patch.object(server.time, "strftime", return_value="20260925-120000"):
+            self.srv.sichern(self.settings)
+        sicherungen = sorted(d.name for d in self.tmp.glob("settings.json.bak-2*"))
+        self.assertEqual(len(sicherungen), server.SICHERUNGEN)
+        self.assertEqual(sicherungen[-1], "settings.json.bak-20260925-120000")
+        self.assertTrue((self.tmp / "settings.json.bak-fremd").exists())
+
+    def test_name_mit_minus_wird_nicht_zur_option(self):
+        """Ein Skill namens „--all“ hieße für npx skills remove „alle entfernen“."""
+        self.schreibe_inventar([], skills=[{"id": "skill:--all", "name": "--all", "aktionen": {
+            "deinstallieren": {"argv": ["touch", str(self.marker), "--all"], "cwd": str(self.tmp)}}}])  # liefe er doch, dann im Temp-Ordner
+        _, antwort = self.ausfuehren("skill:--all", "deinstallieren")
+        self.assertFalse(antwort["ok"])
+        self.assertIn("Minus", antwort["ausgabe"])
+        self.assertFalse(self.marker.exists())
+
+    def test_aktion_wartet_nicht_auf_die_bewertung(self):
+        """Die Bewertung hielt die Sperre für die ganze Laufzeit von Claude, bis zu 20 Minuten; so lange hing jede Aktion."""
+        self.claude_ersatz('{"result":"fertig"}', bewertung='{"stand": "neu"}')
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace("cat <<", "sleep 3\ncat <<", 1))
+        self.assertEqual(self.anfrage("POST", "/api/bewerten")[0], 200)
+        time.sleep(0.5)
+        beginn = time.time()
+        self.assertTrue(self.ausfuehren("plugin:x@y", "deinstallieren")[1]["ok"])
+        self.assertLess(time.time() - beginn, 1.5)
+
     def test_hook_entfernen_nimmt_nur_dieses_ereignis(self):
         vorher = {"env": {"A": "1"}, "statusLine": {"type": "command", "command": "zeile.sh"},
                   "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "stop.sh"}]}],
@@ -492,7 +524,7 @@ class Server(unittest.TestCase):
             "deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "x"], "cwd": str(projekt)}}}])
         self.assertTrue(self.ausfuehren("skill:Kit/x", "deinstallieren")[1]["ok"])
         argv = (self.tmp / "argv").read_text().split("\n")
-        self.assertEqual((argv[0], argv[2:6]), ("--prefix", ["skills", "remove", "-y", "x"]))
+        self.assertEqual((argv[0], argv[2:7]), ("--prefix", ["-y", server.SKILLS_CLI, "remove", "-y", "x"]))
         self.assertFalse(Path(argv[1]).resolve().is_relative_to(projekt.resolve()))
         self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), projekt.resolve())
 
@@ -822,15 +854,12 @@ class Server(unittest.TestCase):
         _, antwort = self.suchen()
         self.assertEqual((antwort["ok"], antwort["ausgabe"]), (True, "fertig"))
 
-    def test_suche_waehrend_der_bewertung_sagt_es_statt_zu_haengen(self):
-        """Beide brauchen dieselbe Sperre für build.py. Die Bewertung hält sie bis zu 20 Minuten: Die Suche
-        stand so lange auf „läuft“, ohne dass ein Suchlauf existierte."""
+    def test_suche_waehrend_der_bewertung_laeuft(self):
+        """Die Bewertung hält die Sperre nur noch für build.py; die Suche musste deshalb nicht mehr abgelehnt werden."""
         self.claude_ersatz('{"structured_output": {"bericht": "x", "kandidaten": []}}')
         self.srv.laeufe["bewertung"] = {"laeuft": True, "beginn": time.time()}
         _, antwort = self.suchen()
-        self.assertFalse(antwort["ok"])
-        self.assertIn("Bewertung läuft", antwort["ausgabe"])
-        self.assertFalse((self.tmp / "argv").exists())  # gar kein Lauf gestartet
+        self.assertTrue(antwort["ok"])
 
     def test_installieren_ohne_kandidaten_antwortet_statt_zu_sterben(self):
         """Zwischen Prüfung und Zugriff lag nichts: Startete ein zweiter Tab eine neue Suche, gab es einen
@@ -839,6 +868,16 @@ class Server(unittest.TestCase):
         status, inhalt = self.anfrage("POST", "/api/installieren", {"nr": 0})
         self.assertEqual(status, 400)
         self.assertFalse(json.loads(inhalt)["ok"])
+
+    def test_belege_nur_mit_passenden_typen(self):
+        """Die Zahlen kommen aus einem Lauf, der fremde Seiten liest: nur bekannte Felder, Zahlen als Zahl, Text kurz."""
+        k = server.geprueft({"art": "skill", "name": "x", "was": "y", "befehl": "", "belege": {
+            "installationen": 1200, "sterne": "viele", "letzter_push": "2026-09-01", "lizenz": "x" * 200, "fremd": 1}})
+        self.assertEqual(k["belege"], {"installationen": 1200, "sterne": None, "letzter_push": "2026-09-01", "lizenz": None})
+        self.assertEqual(server.geprueft({"art": "mcp", "name": "x", "was": "y", "befehl": ""})["belege"],
+                         dict.fromkeys(server.BELEGE))
+        for schema in (server.SUCHEN_SCHEMA, server.SUCHEN_SCHEMA_CODEX):
+            self.assertIn("belege", schema["properties"]["kandidaten"]["items"]["properties"])
 
     def test_sicherer_befehl(self):
         self.assertTrue(server.sicherer_befehl("npx skills add owner/repo --skill x -g -y --agent claude-code"))
@@ -896,7 +935,7 @@ class Server(unittest.TestCase):
         status, antwort = self.installieren({"nr": 0, "nur_manuell": True})
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
-                         ["-y", "skills", "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
+                         ["-y", server.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
         cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
         self.assertFalse(cwd.is_relative_to(Path.home()))
         self.assertNotEqual(cwd, Path(tempfile.gettempdir()).resolve())
@@ -1054,7 +1093,7 @@ class Server(unittest.TestCase):
         status, antwort = self.installieren({"nr": 0})
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
-                         ["-y", "skills", "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "codex"])
+                         ["-y", server.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "codex"])
 
     def test_installieren_plugin_unter_codex(self):
         self.mit_config()

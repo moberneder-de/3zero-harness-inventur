@@ -57,6 +57,12 @@ def abgeschaltete(cfg):
     return pfade, namen
 
 
+def verwaiste_pfade(cfg):
+    """[[skills.config]]-Pfade, die es nicht mehr gibt, etwa im Versionsordner eines inzwischen aktualisierten Plugins."""
+    return sorted(e["path"] for e in (cfg.get("skills") or {}).get("config") or []
+                  if isinstance(e, dict) and isinstance(e.get("path"), str) and not Path(e["path"]).expanduser().exists())
+
+
 def nur_manuell(ordner):
     """policy.allow_implicit_invocation: false in agents/openai.yaml: Codex lädt den Skill nicht in den Katalog, er läuft nur per $name."""
     try:
@@ -631,7 +637,7 @@ def inventar():
         "live_status": None,
         "config_lesbar": config_lesbar(),
         "bewertung_stand": bewertung.get("stand"),
-        "overrides_verwaist": [],
+        "overrides_verwaist": verwaiste_pfade(cfg),
         "mcp": mcp,
         "plugins": plugin_liste,
         "skills": skills,

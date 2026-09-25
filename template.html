@@ -670,6 +670,13 @@ function renderPlugins() {
 
 /* Skills-Tabelle mit Filter und Sortierung */
 const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", geteilt: "", teile: true, sort: "name", richtung: 1 };
+/* Filter und Sortierung überleben das Neuladen, das nach jeder Aktion und nach „neu einlesen“ kommt; je Harness wie die Auswahl */
+const FILTER_SPEICHER = `3zero-harness-inventur:filter:${D.harness}`;
+const FILTERFELDER = [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"], ["f-geteilt", "geteilt"]];
+try {
+  const gemerkt = JSON.parse(localStorage.getItem(FILTER_SPEICHER)) || {};
+  for (const k in F) if (typeof gemerkt[k] === typeof F[k]) F[k] = gemerkt[k];
+} catch (_) { /* ohne Speicher gelten die Vorgaben */ }
 /* Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und laden deshalb in beiden */
 const GETEILT = je("auch in Codex", "auch in Claude Code");
 const UNGENUTZT = `seit ${D.ungenutzt_tage} Tagen ungenutzt`;
@@ -694,6 +701,7 @@ function renderSkillsRahmen() {
       `Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system. „nur $“ heißt: lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>). „Genutzt“ zählt Codex-Sitzungen. Eingebaute lassen sich nicht deinstallieren. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`));
 }
 function skillsFiltern() {
+  try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(F)); } catch (_) { /* dann gilt er nur für diese Seite */ }
   const q = F.suche.toLowerCase();
   const liste = SKILLS.filter(s => {
     const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
@@ -815,8 +823,11 @@ function renderHooks() {
 
 function renderHinweise() {
   const hinweise = [...D.hinweise];
-  if (D.overrides_verwaist.length) hinweise.unshift({ titel: "skillOverrides für Skills, die es nicht gibt",
-    text: `\`~/.claude/settings.json\` legt unter skillOverrides noch fest: ${D.overrides_verwaist.map(n => `\`${n}\``).join(", ")}. Kein installierter oder eingebauter Skill heißt so, der Eintrag wirkt also nicht. Lösch ihn von Hand, sonst gilt er wieder, sobald ein Skill mit diesem Namen dazukommt.` });
+  const verwaist = D.overrides_verwaist.map(n => `\`${n}\``).join(", ");
+  if (D.overrides_verwaist.length) hinweise.unshift(je({ titel: "skillOverrides für Skills, die es nicht gibt",
+    text: `\`~/.claude/settings.json\` legt unter skillOverrides noch fest: ${verwaist}. Kein installierter oder eingebauter Skill heißt so, der Eintrag wirkt also nicht. Lösch ihn von Hand, sonst gilt er wieder, sobald ein Skill mit diesem Namen dazukommt.` },
+    { titel: "[[skills.config]] für Pfade, die es nicht gibt",
+    text: `\`~/.codex/config.toml\` enthält noch Blöcke für ${verwaist}. Dort liegt kein Skill mehr, der Block wirkt also nicht. Das passiert oft nach einem Plugin-Update, weil der Pfad im alten Versionsordner liegt: Ein so abgeschalteter Skill ist dann wieder an. Schalte ihn im Dashboard erneut ab und lösch den alten Block von Hand.` }));
   const karten = hinweise.map(h => `<article class="karte hinweis"><h3>${esc(h.titel)}</h3><p>${txt(h.text)}</p></article>`).join("");
   return abschnitt("hinweise", "Weitere Funde in der Konfiguration", `<div class="karten">${karten}</div>`);
 }
@@ -910,8 +921,11 @@ function kandidatenBlock() {
        landete sonst per Kopierknopf in deinem Terminal. Der Server verwirft, was nicht wie eine Installation aussieht. */
     const befehl = k.befehl ? befehlZeile(k.befehl) + '<p class="klein">Geprüft ist nur die Form: bekannter Anfang, keine Shell-Zeichen. Was der Befehl installiert, prüft niemand. Vergleiche ihn vor dem Einfügen mit der Doku des Anbieters.</p>'
       : '<p class="klein">Kein prüfbarer Installationsbefehl. Hol ihn aus der Doku des Anbieters, nicht aus dieser Seite.</p>';
+    const b = k.belege || {};
+    const belege = [[b.installationen, "Installationen", zahl], [b.sterne, "Sterne", zahl], [b.letzter_push, "letzter Push", datum], [b.lizenz, "Lizenz", esc]]
+      .filter(([w]) => w != null).map(([w, was, form]) => `${was}: ${form(w)}`).join(" · ");
     return `<div class="kandidat"><strong>${esc(k.name)}</strong> <span class="tag">${ART[k.art] || esc(k.art)}</span>
-      <p>${txt(k.was)}</p>${befehl}<div class="knoepfe">${knoepfe}${status}</div></div>`;
+      <p>${txt(k.was)}</p>${belege ? `<p class="klein">${belege}</p>` : ""}${befehl}<div class="knoepfe">${knoepfe}${status}</div></div>`;
   }).join("");
 }
 function zeichne() {
@@ -1164,6 +1178,13 @@ if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
   renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();
+/* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
+for (const [id, feld] of FILTERFELDER) {
+  const el = document.getElementById(id);
+  el.value = F[feld];
+  if (el.value !== F[feld]) F[feld] = "";
+}
+document.getElementById("f-teile").checked = F.teile;
 skillsFiltern();
 if (TOKEN) zeichne(); else renderEmpfInhalt();
 renderMeldung();
@@ -1216,7 +1237,7 @@ function klappe(zeile) {
   zeile.classList.toggle("offen", !detail.hidden);
   zeile.querySelector("button.aufklappen")?.setAttribute("aria-expanded", !detail.hidden);
 }
-for (const [id, feld] of [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"], ["f-geteilt", "geteilt"]]) {
+for (const [id, feld] of FILTERFELDER) {
   document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
 }
 document.getElementById("f-teile").addEventListener("change", ev => { F.teile = ev.target.checked; skillsFiltern(); });

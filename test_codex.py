@@ -460,6 +460,15 @@ class Befehle(unittest.TestCase):
         self.assertEqual(codex.befehl({"id": "hook:b@m:Stop", "ereignis": "Stop", "pfad": "/c", "plugin": "b@m"}, None), "codex plugin remove b@m")
 
 
+class Verwaist(CodexOrdner):
+    def test_bloecke_fuer_pfade_die_es_nicht_mehr_gibt(self):
+        """Nach einem Plugin-Update zeigt ein Block auf den alten Versionsordner: Der Skill ist wieder an, der Block wirkt nicht."""
+        da = self.skill(self.home / ".agents/skills", "da")
+        cfg = {"skills": {"config": [{"path": str(da), "enabled": False}, {"path": "/weg/1.0/skills/x/SKILL.md", "enabled": False},
+                                     {"path": "~/auch-weg/SKILL.md", "enabled": True}, {"name": "nach-namen", "enabled": False}, "kaputt"]}}
+        self.assertEqual(codex.verwaiste_pfade(cfg), ["/weg/1.0/skills/x/SKILL.md", "~/auch-weg/SKILL.md"])
+
+
 class Inventar(CodexOrdner):
     def test_ganzer_bestand(self):
         self.skill(self.home / ".agents/skills", "grilling")
@@ -476,7 +485,7 @@ class Inventar(CodexOrdner):
         g = daten["skills"][0]
         self.assertEqual(g["bewertung"]["was"], "Fragt nach.")
         self.assertEqual(sorted(g["aktionen"]), ["deaktivieren", "deinstallieren", "nur manuell"])
-        self.assertEqual(g["befehl"], "mv %s ~/.Trash/" % (self.home / ".agents/skills/grilling"))
+        self.assertEqual(g["befehl"], codex.papierkorb_befehl(str(self.home / ".agents/skills/grilling")))  # ~/.Trash nur auf dem Mac
         self.assertEqual([b["name"] for b in daten["eingebaut"]], ["imagegen"])
 
 

@@ -101,8 +101,13 @@ SUCHEN_HINWEIS = (
     "GitHub-Daten (Sterne, letzter Push, Lizenz) holst du per WebFetch von https://api.github.com/repos/<owner>/<repo>, nicht mit gh. "
     "bericht ist dein Bericht aus S1 bis S5 auf Deutsch in Markdown mit Überschriften (##), Absätzen, Listen, **fett** und `code`, ohne Tabellen. "
     "kandidaten sind höchstens die drei aus S5: art skill mit repo (owner/repo) und skill (Name im Repo), "
-    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters."
+    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters. "
+    "belege: die Zahlen aus S4 (installationen, sterne, letzter_push als JJJJ-MM-TT, lizenz), unbekannt null."
 )
+# Belege aus S4 je Kandidat; unbekannt ist null
+BELEGE = {"installationen": "integer", "sterne": "integer", "letzter_push": "string", "lizenz": "string"}
+BELEGE_SCHEMA = {"type": "object", "additionalProperties": False, "required": list(BELEGE),
+                 "properties": {f: {"type": [typ, "null"]} for f, typ in BELEGE.items()}}
 SUCHEN_SCHEMA = {
     "type": "object",
     "properties": {
@@ -113,13 +118,17 @@ SUCHEN_SCHEMA = {
                 "art": {"type": "string", "enum": ["skill", "plugin", "mcp"]},
                 "name": {"type": "string"}, "was": {"type": "string"}, "befehl": {"type": "string"},
                 "repo": {"type": "string"}, "skill": {"type": "string"},
-                "plugin": {"type": "string"}, "marktplatz": {"type": "string"},
+                "plugin": {"type": "string"}, "marktplatz": {"type": "string"}, "belege": BELEGE_SCHEMA,
             },
             "required": ["art", "name", "was", "befehl"],
         }},
     },
     "required": ["bericht", "kandidaten"],
 }
+# Feste Version statt der jeweils neuesten: Sonst führte jeder Klick aus, was gerade unter „skills“ auf npm liegt.
+# Neue Version: prüfen, dann hier eintragen.
+SKILLS_CLI = "skills@1.7.0"
+SICHERUNGEN = 10  # so viele <datei>.bak-<Zeitstempel> bleiben je Datei
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 
@@ -157,7 +166,8 @@ CODEX_SUCHEN_HINWEIS = (
     "GitHub-Daten (Sterne, letzter Push) holst du mit curl -s https://api.github.com/repos/<owner>/<repo>. "
     "bericht ist dein Bericht aus S1 bis S5 auf Deutsch in Markdown mit Überschriften (##), Absätzen, Listen, **fett** und `code`, ohne Tabellen. "
     "kandidaten sind höchstens die drei aus S5: art skill mit repo (owner/repo) und skill (Name im Repo), "
-    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters; nicht zutreffende Felder sind null."
+    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters; nicht zutreffende Felder sind null. "
+    "belege: die Zahlen aus S4 (installationen, sterne, letzter_push als JJJJ-MM-TT, lizenz), unbekannt null."
 )
 # Codex prüft Schemas strikt: jedes Feld required, additionalProperties false, Optionales als null
 SUCHEN_SCHEMA_CODEX = {
@@ -169,11 +179,12 @@ SUCHEN_SCHEMA_CODEX = {
         "kandidaten": {"type": "array", "items": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["art", "name", "was", "befehl", "repo", "skill", "plugin", "marktplatz"],
+            "required": ["art", "name", "was", "befehl", "repo", "skill", "plugin", "marktplatz", "belege"],
             "properties": {
                 "art": {"type": "string", "enum": ["skill", "plugin", "mcp"]},
                 "name": {"type": "string"}, "was": {"type": "string"}, "befehl": {"type": "string"},
                 **{f: {"type": ["string", "null"]} for f in ("repo", "skill", "plugin", "marktplatz")},
+                "belege": BELEGE_SCHEMA,
             },
         }},
     },
@@ -396,8 +407,17 @@ def sicherer_befehl(befehl):
 
 
 def geprueft(k):
-    """Ein Kandidat mit dem, was der Server verantworten kann: geprüfter Befehl, geprüfte Installierbarkeit."""
-    return {**k, "befehl": k.get("befehl") if sicherer_befehl(k.get("befehl")) else "", "installierbar": installierbar(k)}
+    """Ein Kandidat mit dem, was der Server verantworten kann: geprüfter Befehl, geprüfte Installierbarkeit, Belege
+    nur mit passenden Typen."""
+    return {**k, "befehl": k.get("befehl") if sicherer_befehl(k.get("befehl")) else "", "installierbar": installierbar(k),
+            "belege": belege(k.get("belege"))}
+
+
+def belege(roh):
+    roh = roh if isinstance(roh, dict) else {}
+    passt = {"integer": lambda w: isinstance(w, int) and not isinstance(w, bool) and w >= 0,
+             "string": lambda w: isinstance(w, str) and len(w) <= 40}
+    return {f: roh.get(f) if passt[typ](roh.get(f)) else None for f, typ in BELEGE.items()}
 
 
 def installierbar(k):
@@ -505,6 +525,10 @@ class Inventarserver(ThreadingHTTPServer):
             return
         shutil.copy2(datei, datei.with_name(f"{datei.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}"))  # übernimmt Rechte und Zeitstempel
         self.gesichert.add(datei)
+        # nur die eigenen, am Zeitstempel erkannt; der Name sortiert sie zugleich nach der Zeit
+        eigene = sorted(d for d in datei.parent.glob(f"{datei.name}.bak-*") if re.fullmatch(r"\d{8}-\d{6}", d.name.rsplit(".bak-", 1)[1]))
+        for alt in eigene[:-SICHERUNGEN]:
+            alt.unlink()
 
     def schreiben(self, datei, text):
         """Schreibt atomar über <datei>.neu + os.replace, ohne die Datei zwischendurch mit weiteren
@@ -734,11 +758,14 @@ class Inventarserver(ThreadingHTTPServer):
                 return in_den_papierkorb(schritt["papierkorb"])
             if "hook_entfernen" in schritt:
                 return self.hook_entfernen(schritt["hook_entfernen"])
-            if schritt["argv"][:1] == ["npx"]:
+            if name.startswith("-") and any(str(a).startswith(name) for a in schritt["argv"][1:]):
+                return {"ok": False, "ausgabe": f"„{name}“ beginnt mit einem Minus: Der Befehl läse den Namen als Option. "
+                                                "Bitte von Hand entfernen."}
+            if schritt["argv"][:2] == ["npx", "skills"]:
                 # Im Projektordner nähme npx sonst ein node_modules/.bin des Projekts und dessen .npmrc (nachgemessen).
                 # Mit leerem --prefix nicht; der Befehl selbst läuft weiter im Projektordner.
                 with tempfile.TemporaryDirectory() as leer:
-                    return lauf(["npx", "--prefix", leer, *schritt["argv"][1:]], schritt.get("cwd"), 120)
+                    return lauf(["npx", "--prefix", leer, "-y", SKILLS_CLI, *schritt["argv"][2:]], schritt.get("cwd"), 120)
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):
@@ -754,24 +781,25 @@ class Inventarserver(ThreadingHTTPServer):
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
             if not r["ok"]:
                 return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
-            bewertung_datei = self.daten / harness.HARNESSE["claude-code"]["bewertung"]
-            with tempfile.TemporaryDirectory() as tmp:
-                arbeitsordner = Path(tmp)
-                kopie = arbeitsordner / bewertung_datei.name
-                kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
-                einstellungen = arbeitsordner / "settings.json"
-                einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
-                plugin = skill_plugin(self.ordner / "skill", arbeitsordner)
-                c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"], plugin), arbeitsordner)
-                # nur stdout: eine geschweifte Klammer in einer Warnung auf stderr zerrisse den JSON-Ausschnitt
-                text = claude_text(c["stdout"]) if claude_json(c["stdout"]) else c["ausgabe"]
-                if not c["ok"]:
-                    return {"ok": False, "ausgabe": text}
-                bewertung = gueltige_bewertung(kopie)
-                if bewertung is None:
-                    return {"ok": False, "ausgabe": "Der Lauf hat keine gültige bewertung-claude-code.json hinterlassen: " + text}
+        bewertung_datei = self.daten / harness.HARNESSE["claude-code"]["bewertung"]
+        with tempfile.TemporaryDirectory() as tmp:
+            arbeitsordner = Path(tmp)
+            kopie = arbeitsordner / bewertung_datei.name
+            kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
+            einstellungen = arbeitsordner / "settings.json"
+            einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
+            plugin = skill_plugin(self.ordner / "skill", arbeitsordner)
+            c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"], plugin), arbeitsordner)
+            # nur stdout: eine geschweifte Klammer in einer Warnung auf stderr zerrisse den JSON-Ausschnitt
+            text = claude_text(c["stdout"]) if claude_json(c["stdout"]) else c["ausgabe"]
+            if not c["ok"]:
+                return {"ok": False, "ausgabe": text}
+            bewertung = gueltige_bewertung(kopie)
+            if bewertung is None:
+                return {"ok": False, "ausgabe": "Der Lauf hat keine gültige bewertung-claude-code.json hinterlassen: " + text}
+            with self.sperre:
                 zurueckschreiben(bewertung, bewertung_datei)
-            n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+                n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def bewerten_codex(self):
@@ -782,30 +810,26 @@ class Inventarserver(ThreadingHTTPServer):
             r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
             if not r["ok"]:
                 return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
-            bewertung_datei = self.daten / harness.HARNESSE["codex"]["bewertung"]
-            with tempfile.TemporaryDirectory() as tmp:
-                arbeitsordner = Path(tmp)
-                (arbeitsordner / "bewertung-codex.json").write_text(
-                    bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
-                ergebnis = arbeitsordner / "ergebnis.md"
-                c = self.langer_lauf("bewertung", codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"],
-                                                                 codex_modell(self.codex_config)), arbeitsordner)
-                text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
-                if not c["ok"]:
-                    return {"ok": False, "ausgabe": text}
-                bewertung = gueltige_bewertung(arbeitsordner / "bewertung-codex.json")
-                if bewertung is None:
-                    return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
+        bewertung_datei = self.daten / harness.HARNESSE["codex"]["bewertung"]
+        with tempfile.TemporaryDirectory() as tmp:
+            arbeitsordner = Path(tmp)
+            (arbeitsordner / "bewertung-codex.json").write_text(
+                bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
+            ergebnis = arbeitsordner / "ergebnis.md"
+            c = self.langer_lauf("bewertung", codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"],
+                                                             codex_modell(self.codex_config)), arbeitsordner)
+            text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
+            if not c["ok"]:
+                return {"ok": False, "ausgabe": text}
+            bewertung = gueltige_bewertung(arbeitsordner / "bewertung-codex.json")
+            if bewertung is None:
+                return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
+            with self.sperre:
                 zurueckschreiben(bewertung, bewertung_datei)
-            n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+                n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def suchen(self, bedarf):
-        # Beide brauchen die Sperre für build.py, und die Bewertung hält sie bis zu 20 Minuten. Ohne diese
-        # Auskunft stünde die Suche so lange auf „läuft“, ohne dass ein Suchlauf existierte.
-        if (self.laeufe.get("bewertung") or {}).get("laeuft"):
-            return {"ok": False, "ausgabe": "Die Bewertung läuft gerade und liest den Bestand neu ein. "
-                                            "Warte, bis sie fertig ist, dann noch einmal suchen."}
         self.kandidaten = []
         argv = ["claude", "-p", f"{SKILL_AUFRUF} suche {bedarf}", "--model", "opus", "--output-format", "json",
                 "--json-schema", json.dumps(SUCHEN_SCHEMA), "--tools", "Read,Glob,Grep,WebSearch,WebFetch,Bash",
@@ -877,7 +901,7 @@ class Inventarserver(ThreadingHTTPServer):
         return lauf(argv, cwd, 1200, gestartet)
 
     def abbrechen(self, art):
-        """Ein Lauf hält die Sperre bis zu 20 Minuten; ohne Abbruch half nur, den Server zu beenden."""
+        """Ein Lauf dauert bis zu 20 Minuten; ohne Abbruch half nur, den Server zu beenden."""
         with self.laeufe_sperre:
             lauf_ = self.laeufe.get(art)
             if not lauf_ or not lauf_["laeuft"]:
@@ -910,7 +934,7 @@ class Inventarserver(ThreadingHTTPServer):
         die Liste austauschen, und der Zugriff lief ins Leere."""
         codex = self.harness() == "codex"
         if k["art"] == "skill":
-            argv = ["npx", "-y", "skills", "add", k["repo"], "--skill", k["skill"], "-g", "-y",
+            argv = ["npx", "-y", SKILLS_CLI, "add", k["repo"], "--skill", k["skill"], "-g", "-y",
                     "--agent", "codex" if codex else "claude-code"]
         elif codex:
             argv = ["codex", "plugin", "add", f"{k['plugin']}@{k['marktplatz']}"]
