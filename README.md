@@ -38,6 +38,10 @@ Elf Tabs: **Überblick**, **Empfehlungen**, **Überschneidungen**, **MCP-Server*
 
 Alle Tabs zeigen Globales, außer **Projekte** — dort steht, was nur in einzelnen Projektordnern gilt. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
 
+Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
+
+Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur diese Quelle; ein Banner oben nennt sie mit dem Fehler.
+
 Die **Hilfe** im Dashboard erklärt jede Spalte und jede Zahl, passend zum gerade gezeigten Harness.
 
 ## Die fünf Empfehlungen
@@ -54,11 +58,11 @@ Keine Empfehlung ohne Beleg aus dem Bestand. „Nie benutzt" trägt nicht, wenn 
 
 ## Aktionen ausführen
 
-Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell** und, für alles, was aus ist, die Gegen-Aktionen **einschalten** und **wieder automatisch**. Vorbelegt ist, was die Empfehlung nahelegt. Bewertung und Suche laufen im Hintergrund und lassen sich abbrechen.
+Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell** und, für alles, was aus ist, die Gegen-Aktionen **einschalten** und **wieder automatisch**. Vorbelegt ist, was die Empfehlung nahelegt. Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Bewertung und Suche laufen im Hintergrund, lassen sich abbrechen und halten Aktionen nicht auf.
 
-Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext.
+Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext. `npx skills` steht dort in fester Version (`SKILLS_CLI` in `harness.py`) und läuft mit leerem `--prefix`, damit ein Projektordner kein eigenes `skills` und keine eigene `.npmrc` unterschiebt. Einen Namen, der mit `-` beginnt, setzt der Server in keinen Befehl ein.
 
-Vor der ersten Änderung an einer Konfigurationsdatei legt er eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, von Hand aufzuräumen), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen; unter Windows bleibt dafür nur das Löschen von Hand. Alles wirkt ab der nächsten Sitzung.
+Vor der ersten Änderung an einer Konfigurationsdatei legt er eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, die letzten 10 bleiben), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen; unter Windows bleibt dafür nur das Löschen von Hand. Alles wirkt ab der nächsten Sitzung.
 
 ## Beide Harness
 
@@ -99,7 +103,7 @@ Zwei Knöpfe starten einen Agenten im Hintergrund. Beide sind eng eingezäunt, w
 
 **Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (Einstellungen und MCP-Server des Benutzers bleiben draußen), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
 
-**Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
+**Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten; Installationen, Sterne, letzter Push und Lizenz stehen als Zahlen am Kandidaten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
 
 Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-inventur`) und liegt in `skill/SKILL.md`.
 
@@ -114,6 +118,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | MCP-Server | Werkzeuge, Aufrufe und Anweisungsblock (÷ 4) aus denselben Transkripten; Schemata sofort geladener Werkzeuge fehlen dort | gezählt, Kontext zu niedrig |
 | Update verfügbar | `gh api` gegen den Stand bei der Installation (`skillFolderHash`) | genau |
 | Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
+| Ungenutzt | Nutzung und Installationsdatum, 30 Tage; unter Codex gilt für Plugins mangels Datum der Stand ihres Ordners | abgeleitet |
 
 Umgebungswerte von MCP-Servern übernimmt das Inventar nie. Was in URL oder Argumenten eines Servers nach Zugangsdaten aussieht (Passwort in der URL, Werte in der Query, `--token …`, `…_KEY=…`, `Bearer …`), ersetzt es durch „…“, bevor das Ziel im Inventar und im Dashboard steht. Das erkennt Muster, keine Bedeutung.
 
@@ -122,7 +127,7 @@ Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nic
 ## Voraussetzungen
 
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
-- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen, **`claude`** bzw. **`codex`** für die Hintergrundläufe
+- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
 
 Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst und dem Home-Verzeichnis.
@@ -133,7 +138,7 @@ Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst und dem H
 python3 -m unittest
 ```
 
-Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration.
+Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux und macOS mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`).
 
 ## Diagramme
 
