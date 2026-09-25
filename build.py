@@ -759,12 +759,12 @@ def befehl(e, empfehlung):
     if e.get("plugin"):
         return f"claude plugin uninstall {shellwort(e['plugin'])}"
     if e.get("projekt") and e["quelle"]["art"] == "skills-CLI":
-        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}"
+        return f"cd {shellwort(e['projekt'])} && npx -y {harness.SKILLS_CLI} remove {shellwort(e['name'])}"
     if e.get("projekt"):
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
         return papierkorb_befehl(shellwort(ziel))
     if e["quelle"]["art"] == "skills-CLI":
-        return f"npx skills remove --global {shellwort(e['name'])}"
+        return f"npx -y {harness.SKILLS_CLI} remove --global {shellwort(e['name'])}"
     if e["typ"] == "Befehl":
         return papierkorb_befehl(f"~/.claude/commands/{shellwort(e['name'] + '.md')}")
     return papierkorb_befehl(f"~/.claude/skills/{shellwort(e['name'])}")  # ~ bleibt ungequotet, sonst löst die Shell es nicht auf
@@ -812,16 +812,16 @@ def aktionen(e):
     if e.get("projekt"):
         # Overrides gelten global nach Namen und träfen gleichnamige Skills anderswo, deshalb nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":
-            return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
+            return {"deinstallieren": {"argv": ["npx", "-y", harness.SKILLS_CLI, "remove", "-y", e["name"]], "cwd": e["projekt"]}}
         ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
         return {"deinstallieren": {"papierkorb": ziel}}
     a = {}
     if not e.get("plugin"):
         if e.get("update"):
-            a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
+            a["aktualisieren"] = {"argv": ["npx", "-y", harness.SKILLS_CLI, "update", e["name"], "-g", "-y"]}
         if e["quelle"]["art"] == "skills-CLI":
             # npx skills remove --global entfernt den Skill für alle Harnesses, die ihn lesen
-            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
+            a["deinstallieren"] = {"argv": ["npx", "-y", harness.SKILLS_CLI, "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
             ziel = e["pfad"] if e["typ"] == "Befehl" else str(Path(e["pfad"]).parent)
             schritt = {"papierkorb": ziel}

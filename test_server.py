@@ -351,6 +351,15 @@ class Server(unittest.TestCase):
         self.assertEqual(sicherungen[-1], "settings.json.bak-20260925-120000")
         self.assertTrue((self.tmp / "settings.json.bak-fremd").exists())
 
+    def test_schreiben_laesst_eine_fremde_neu_datei_stehen(self):
+        """Mit festem Zwischennamen <datei>.neu überschrieb und verschob der Server eine gleichnamige Datei."""
+        fremd = self.tmp / "settings.json.neu"
+        fremd.write_text("fremd")
+        self.settings.chmod(0o640)
+        self.srv.schreiben(self.settings, "{}\n")
+        self.assertEqual((fremd.read_text(), self.settings.read_text()), ("fremd", "{}\n"))
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o640)
+
     def test_name_mit_minus_wird_nicht_zur_option(self):
         """Ein Skill namens „--all“ hieße für npx skills remove „alle entfernen“."""
         self.schreibe_inventar([], skills=[{"id": "skill:--all", "name": "--all", "aktionen": {
@@ -521,10 +530,10 @@ class Server(unittest.TestCase):
         projekt = self.tmp / "projekt"
         projekt.mkdir()
         self.schreibe_inventar([], mcp=[{"id": "skill:Kit/x", "name": "x", "aktionen": {
-            "deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "x"], "cwd": str(projekt)}}}])
+            "deinstallieren": {"argv": ["npx", "-y", harness.SKILLS_CLI, "remove", "-y", "x"], "cwd": str(projekt)}}}])
         self.assertTrue(self.ausfuehren("skill:Kit/x", "deinstallieren")[1]["ok"])
         argv = (self.tmp / "argv").read_text().split("\n")
-        self.assertEqual((argv[0], argv[2:7]), ("--prefix", ["-y", server.SKILLS_CLI, "remove", "-y", "x"]))
+        self.assertEqual((argv[0], argv[2:7]), ("--prefix", ["-y", harness.SKILLS_CLI, "remove", "-y", "x"]))
         self.assertFalse(Path(argv[1]).resolve().is_relative_to(projekt.resolve()))
         self.assertEqual(Path((self.tmp / "cwd").read_text().strip()).resolve(), projekt.resolve())
 
@@ -935,7 +944,7 @@ class Server(unittest.TestCase):
         status, antwort = self.installieren({"nr": 0, "nur_manuell": True})
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
-                         ["-y", server.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
+                         ["-y", harness.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "claude-code"])
         cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
         self.assertFalse(cwd.is_relative_to(Path.home()))
         self.assertNotEqual(cwd, Path(tempfile.gettempdir()).resolve())
@@ -1093,7 +1102,7 @@ class Server(unittest.TestCase):
         status, antwort = self.installieren({"nr": 0})
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertEqual((self.tmp / "argv").read_text().split("\n")[:-1],
-                         ["-y", server.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "codex"])
+                         ["-y", harness.SKILLS_CLI, "add", "zarazhangrui/frontend-slides", "--skill", "frontend-slides", "-g", "-y", "--agent", "codex"])
 
     def test_installieren_plugin_unter_codex(self):
         self.mit_config()
@@ -1353,6 +1362,18 @@ enabled = true
         self.assertTrue(antwort["ok"], antwort)
         self.assertEqual((ordner / "agents/openai.yaml").read_text(), "policy:  # Codex\n  allow_implicit_invocation: false\n")
         self.assertTrue(self.ausfuehren("skill:k", "wieder automatisch")[1]["ok"])
+
+    def test_nur_manuell_mit_bom_haengt_keinen_zweiten_block_an(self):
+        """Mit BOM vor `policy:` fand der Server den Block nicht, hängte einen zweiten an und meldete trotzdem Erfolg."""
+        self.mit_config()
+        ordner = self.tmp / "skills/bom"
+        (ordner / "agents").mkdir(parents=True)
+        (ordner / "SKILL.md").write_text("---\nname: bom\n---\n")
+        yaml = ordner / "agents/openai.yaml"
+        yaml.write_text("\ufeffpolicy:\n  allow_implicit_invocation: true\n", encoding="utf-8")
+        self.schreibe_inventar([], skills=[{"id": "skill:bom", "name": "bom", "aktionen": {"nur manuell": {"nur_manuell": str(ordner)}}}])
+        self.assertTrue(self.ausfuehren("skill:bom", "nur manuell")[1]["ok"])
+        self.assertEqual(yaml.read_text(encoding="utf-8"), "\ufeffpolicy:\n  allow_implicit_invocation: false\n")
 
     def test_wieder_automatisch_stellt_die_policy_zurueck(self):
         self.mit_config()

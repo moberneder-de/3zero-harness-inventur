@@ -380,7 +380,10 @@ function typText(e) {
 const SPAREN = ["entfernen", "abschalten", "nur manuell"];
 /* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand.
    Abgeschaltete Plugins und MCP-Server tragen den Status „deaktiviert“, gesperrte MCP-Server zusätzlich `gesperrt`. */
-const umgesetzt = e => ({ "abschalten": e.override === "off" || e.gesperrt === true || e.status === "deaktiviert" || (CODEX && e.status === "aus"),
+/* Ein Plugin lädt nur mit diesen Status (build.py: „aktiv“, codex.py: LAEDT); sonst zählen seine Teile schon heute nicht */
+const PLUGIN_LAEDT = je(["aktiv"], ["aktiv", "im Konto"]);
+const umgesetzt = e => ({ "abschalten": e.override === "off" || e.gesperrt === true || e.status === "deaktiviert" || (CODEX && e.status === "aus")
+    || (e.id?.startsWith("plugin:") && !PLUGIN_LAEDT.includes(e.status)),
   "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
 /* Wie kontextlast() in build.py: ohne die eingebauten Skills des Harness, damit die Zahl in beiden
    Dashboards dasselbe bedeutet. Was sie unter Codex kosten, steht in ihrer Zeile im Tab „Skills“. */

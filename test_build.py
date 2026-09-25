@@ -8,6 +8,9 @@ from pathlib import Path
 from unittest import mock
 
 import build
+import harness
+
+CLI = harness.SKILLS_CLI  # die feste Version, die auch im Inventar steht
 
 
 def plugin(status):
@@ -49,7 +52,7 @@ class Aktionen(unittest.TestCase):
 
     def test_skill_aus_skills_cli(self):
         self.assertEqual(build.aktionen(skill("grilling")), {
-            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"], "gemeinsam": True},
+            "deinstallieren": {"argv": ["npx", "-y", CLI, "remove", "--global", "-y", "grilling"], "gemeinsam": True},
             "deaktivieren": {"override": "off"},
             "nur manuell": {"override": "user-invocable-only"},
         })
@@ -128,7 +131,7 @@ class Aktionen(unittest.TestCase):
 
     def test_projekt_skill_nur_deinstallierbar_im_projekt(self):
         cli = {**skill("seo-audit", pfad="/x/Kit/.claude/skills/seo-audit/SKILL.md"), "id": "skill:Kit/seo-audit", "projekt": "/x/Kit"}
-        self.assertEqual(build.aktionen(cli), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo-audit"], "cwd": "/x/Kit"}})
+        self.assertEqual(build.aktionen(cli), {"deinstallieren": {"argv": ["npx", "-y", CLI, "remove", "-y", "seo-audit"], "cwd": "/x/Kit"}})
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "id": "skill:Q/q-lang", "projekt": "/x/Q"}
         self.assertEqual(build.aktionen(lokal), {"deinstallieren": {"papierkorb": "/x/Q/.claude/skills/q-lang"}})
 
@@ -143,7 +146,7 @@ class Aktionen(unittest.TestCase):
 
     def test_update_nur_fuer_skills_cli_mit_neuerem_stand(self):
         self.assertEqual(build.aktionen({**skill("grilling"), "update": True})["aktualisieren"],
-                         {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]})
+                         {"argv": ["npx", "-y", CLI, "update", "grilling", "-g", "-y"]})
         self.assertNotIn("aktualisieren", build.aktionen({**skill("grilling"), "update": False}))
         self.assertNotIn("aktualisieren", build.aktionen(skill("grilling")))
 
@@ -243,7 +246,7 @@ class ShellQuoting(unittest.TestCase):
             (projekt, ["mv", f"/x/{boese}/.claude/skills/q", "/h/.Trash/"]),
             (skill(boese, quelle_art="lokal"), ["mv", f"/h/.claude/skills/{boese}", "/h/.Trash/"]),
             (skill(boese, typ="Befehl", quelle_art="lokal"), ["mv", f"/h/.claude/commands/{boese}.md", "/h/.Trash/"]),
-            (skill(boese), ["npx", "skills", "remove", "--global", boese]),
+            (skill(boese), ["npx", "-y", CLI, "remove", "--global", boese]),
             (mcp(boese, "User", "~/.claude.json"), ["claude", "mcp", "remove", boese, "-s", "user"]),
             ({**plugin("aktiv"), "name": boese, "marktplatz": "m"}, ["claude", "plugin", "uninstall", f"{boese}@m"]),
             (mcp("plugin:p:s", "Plugin", f"{boese}@m"), ["claude", "plugin", "uninstall", f"{boese}@m"]),
@@ -544,7 +547,7 @@ class Hooks(unittest.TestCase):
 
     def test_befehl_fuer_projekt_skills(self):
         cli = {**skill("seo-audit"), "projekt": "/x/Kit"}
-        self.assertEqual(build.befehl(cli, "entfernen"), 'cd /x/Kit && npx skills remove seo-audit')
+        self.assertEqual(build.befehl(cli, "entfernen"), f'cd /x/Kit && npx -y {CLI} remove seo-audit')
         lokal = {**skill("q-lang", quelle_art="lokal", pfad="/x/Q/.claude/skills/q-lang/SKILL.md"), "projekt": "/x/Q"}
         with mock.patch.object(build.sys, "platform", "darwin"):
             self.assertEqual(build.befehl(lokal, None), 'mv /x/Q/.claude/skills/q-lang ~/.Trash/')

@@ -534,7 +534,7 @@ def befehl(e, empfehlung):
     if e.get("plugin"):
         return f"codex plugin remove {shellwort(e['plugin'])}"
     if e["quelle"]["art"] == "skills-CLI":
-        return f"cd {shellwort(e['projekt'])} && npx skills remove {shellwort(e['name'])}" if e.get("projekt") else f"npx skills remove --global {shellwort(e['name'])}"
+        return f"cd {shellwort(e['projekt'])} && npx -y {harness.SKILLS_CLI} remove {shellwort(e['name'])}" if e.get("projekt") else f"npx -y {harness.SKILLS_CLI} remove --global {shellwort(e['name'])}"
     return papierkorb_befehl(shellwort(e["ordner"]))
 
 
@@ -577,15 +577,15 @@ def aktionen(e):
     if e.get("projekt"):
         # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":
-            return {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", e["name"]], "cwd": e["projekt"]}}
+            return {"deinstallieren": {"argv": ["npx", "-y", harness.SKILLS_CLI, "remove", "-y", e["name"]], "cwd": e["projekt"]}}
         return {"deinstallieren": {"papierkorb": e["ordner"]}}
     a = {}
     if not e.get("plugin"):
         if e.get("update"):
-            a["aktualisieren"] = {"argv": ["npx", "skills", "update", e["name"], "-g", "-y"]}
+            a["aktualisieren"] = {"argv": ["npx", "-y", harness.SKILLS_CLI, "update", e["name"], "-g", "-y"]}
         if e["quelle"]["art"] == "skills-CLI":
             # npx skills remove --global entfernt den Skill für alle Harnesses, die ihn lesen
-            a["deinstallieren"] = {"argv": ["npx", "skills", "remove", "--global", "-y", e["name"]], "gemeinsam": True}
+            a["deinstallieren"] = {"argv": ["npx", "-y", harness.SKILLS_CLI, "remove", "--global", "-y", e["name"]], "gemeinsam": True}
         else:
             ziel = e["ordner"]
             schritt = {"papierkorb": ziel}

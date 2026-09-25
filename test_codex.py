@@ -8,6 +8,8 @@ from unittest import mock
 import codex
 import harness
 
+CLI = harness.SKILLS_CLI
+
 
 class CodexOrdner(unittest.TestCase):
     """Nachgebautes HOME mit .codex und .agents in einem Temp-Ordner."""
@@ -424,7 +426,7 @@ class Befehle(unittest.TestCase):
         boese = f"$(touch {tmp}/entstanden) `id` x"
         faelle = [
             ({"id": "skill:x", "name": "x", "pfad": f"/h/{boese}/x/SKILL.md", "ordner": f"/h/{boese}/x", "quelle": {"art": "lokal"}}, ["mv", f"/h/{boese}/x", "/h/.Trash/"]),
-            ({"id": "skill:x", "name": boese, "pfad": "/h/x/SKILL.md", "quelle": {"art": "skills-CLI"}}, ["npx", "skills", "remove", "--global", boese]),
+            ({"id": "skill:x", "name": boese, "pfad": "/h/x/SKILL.md", "quelle": {"art": "skills-CLI"}}, ["npx", "-y", CLI, "remove", "--global", boese]),
             ({"id": "skill:x", "name": "x", "pfad": "/h/x/SKILL.md", "plugin": f"{boese}@m", "quelle": {"art": "Plugin"}}, ["codex", "plugin", "remove", f"{boese}@m"]),
             ({"id": "plugin:x", "name": boese, "marktplatz": "m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
             ({"id": "hook:x", "plugin": f"{boese}@m"}, ["codex", "plugin", "remove", f"{boese}@m"]),
@@ -441,14 +443,14 @@ class Befehle(unittest.TestCase):
 
     def test_texte_je_art(self):
         skill = {"id": "skill:grilling", "name": "grilling", "pfad": "/h/.agents/skills/grilling/SKILL.md", "ordner": "/h/.agents/skills/grilling", "quelle": {"art": "skills-CLI"}}
-        self.assertEqual(codex.befehl(skill, "entfernen"), "npx skills remove --global grilling")
+        self.assertEqual(codex.befehl(skill, "entfernen"), f"npx -y {CLI} remove --global grilling")
         self.assertEqual(codex.befehl(skill, "nur manuell"), "/h/.agents/skills/grilling/agents/openai.yaml → policy: allow_implicit_invocation: false")
         self.assertEqual(codex.befehl(skill, "abschalten"), '~/.codex/config.toml → [[skills.config]] path = "/h/.agents/skills/grilling/SKILL.md", enabled = false')
         with mock.patch("sys.platform", "darwin"):
             self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'mv /h/.agents/skills/grilling ~/.Trash/')
         with mock.patch("sys.platform", "linux"):
             self.assertEqual(codex.befehl({**skill, "quelle": {"art": "lokal"}}, "entfernen"), 'gio trash /h/.agents/skills/grilling')
-        self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), 'cd /x/Kit && npx skills remove grilling')
+        self.assertEqual(codex.befehl({**skill, "projekt": "/x/Kit"}, None), f'cd /x/Kit && npx -y {CLI} remove grilling')
         self.assertEqual(codex.befehl({**skill, "plugin": "documents@m"}, "entfernen"), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "plugin:documents@m", "name": "documents", "marktplatz": "m"}, None), "codex plugin remove documents@m")
         self.assertEqual(codex.befehl({"id": "mcp:node_repl", "name": "node_repl", "art": "User"}, None), "codex mcp remove node_repl")
@@ -615,8 +617,8 @@ class Aktionen(unittest.TestCase):
         cli = {"id": "skill:grilling", "name": "grilling", "typ": "Skill", "status": "aktiv", "aufruf": "automatisch + $",
                "pfad": "/h/.agents/skills/grilling/SKILL.md", "ordner": "/h/.agents/skills/grilling", "quelle": {"art": "skills-CLI"}}
         self.assertEqual(codex.aktionen({**cli, "update": True}), {
-            "aktualisieren": {"argv": ["npx", "skills", "update", "grilling", "-g", "-y"]},
-            "deinstallieren": {"argv": ["npx", "skills", "remove", "--global", "-y", "grilling"], "gemeinsam": True},
+            "aktualisieren": {"argv": ["npx", "-y", CLI, "update", "grilling", "-g", "-y"]},
+            "deinstallieren": {"argv": ["npx", "-y", CLI, "remove", "--global", "-y", "grilling"], "gemeinsam": True},
             "deaktivieren": {"skill_aus": "/h/.agents/skills/grilling/SKILL.md"},
             "nur manuell": {"nur_manuell": "/h/.agents/skills/grilling"}})
         eigen = {**cli, "pfad": "/h/.codex/skills/pdf/SKILL.md", "ordner": "/h/.codex/skills/pdf", "name": "pdf", "quelle": {"art": "lokal"}}
@@ -632,7 +634,7 @@ class Aktionen(unittest.TestCase):
                 "pfad": "/h/.codex/plugins/cache/x/documents/1/skills/documents/SKILL.md"}
         self.assertEqual(codex.aktionen(teil), {"deaktivieren": {"skill_aus": teil["pfad"]}})
         projekt = {**cli, "id": "skill:Kit/seo", "name": "seo", "projekt": "/x/Kit"}
-        self.assertEqual(codex.aktionen(projekt), {"deinstallieren": {"argv": ["npx", "skills", "remove", "-y", "seo"], "cwd": "/x/Kit"}})
+        self.assertEqual(codex.aktionen(projekt), {"deinstallieren": {"argv": ["npx", "-y", CLI, "remove", "-y", "seo"], "cwd": "/x/Kit"}})
 
     def test_deinstallieren_markiert_gemeinsame_skills(self):
         """gemeinsam=True gilt bei npx skills remove immer und bei mv nur unter ~/.agents/skills."""

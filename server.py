@@ -125,9 +125,6 @@ SUCHEN_SCHEMA = {
     },
     "required": ["bericht", "kandidaten"],
 }
-# Feste Version statt der jeweils neuesten: Sonst führte jeder Klick aus, was gerade unter „skills“ auf npm liegt.
-# Neue Version: prüfen, dann hier eintragen.
-SKILLS_CLI = "skills@1.7.0"
 SICHERUNGEN = 10  # so viele <datei>.bak-<Zeitstempel> bleiben je Datei
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -345,6 +342,7 @@ def nur_manuell_gesetzt(text):
     """Steht `allow_implicit_invocation: false` im policy-Block? Nur dort zählt es. Ein gleichnamiger Schlüssel
     unter defaults: oder interface: ließe sonst einen fehlgeschlagenen Schreibvorgang als Erfolg durchgehen.
     Dieselbe Prüfung macht `nur_manuell` in codex.py beim Einlesen — die beiden gehören zusammen."""
+    text = text.removeprefix("\ufeff")  # eine BOM vor `policy:` in der ersten Zeile verdeckte den Block
     # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
     block = re.search(r"^policy:[^\S\n]*(#.*)?\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
     return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*(#.*)?$", block.group(2), re.M) is not None
@@ -531,17 +529,9 @@ class Inventarserver(ThreadingHTTPServer):
             alt.unlink()
 
     def schreiben(self, datei, text):
-        """Schreibt atomar über <datei>.neu + os.replace, ohne die Datei zwischendurch mit weiteren
-        Rechten als nötig auf der Platte liegen zu haben: die echte config.toml kann Zugangsdaten enthalten."""
-        # einem Symlink folgen (Dotfiles-Repo): os.replace ersetzte sonst den Link selbst durch eine normale Datei
-        datei = datei.resolve()
-        neu = datei.with_name(datei.name + ".neu")
-        fd = os.open(neu, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        modus = datei.stat().st_mode & 0o777 if datei.exists() else 0o600
-        os.chmod(neu, modus)
-        os.replace(neu, datei)
+        """Atomar über eine eigene Zwischendatei (0600, die echte config.toml kann Zugangsdaten enthalten), folgt einem
+        Symlink (Dotfiles-Repo) und behält die Rechte der Datei; siehe harness.schreiben."""
+        harness.schreiben(datei, text)
 
     def settings_aendern(self, aendern):
         text = self.settings.read_text(encoding="utf-8")
@@ -652,7 +642,8 @@ class Inventarserver(ThreadingHTTPServer):
         if not manuell and not (alt is not None and nur_manuell_gesetzt(alt)):
             return {"ok": False, "ausgabe": f"{datei} stellt den Skill nicht auf nur manuell"}
         if alt is not None:
-            zeilen, nl = zeilen_trennen(alt)
+            bom = "\ufeff" if alt.startswith("\ufeff") else ""  # sonst stünde sie vor `policy:`, und der Block fehlte
+            zeilen, nl = zeilen_trennen(alt.removeprefix(bom))
             start = next((i for i, z in enumerate(zeilen) if re.match(r"^policy:\s*", z)), None)
             if start is not None and not re.fullmatch(r"policy:\s*(#.*)?", zeilen[start]):
                 art = "eine Inline-Notation" if "{" in zeilen[start] else "einen Wert"
@@ -674,7 +665,7 @@ class Inventarserver(ThreadingHTTPServer):
                     folge = next((z for z in zeilen[start + 1:ende] if z.strip()), None)
                     einrueckung = folge[:len(folge) - len(folge.lstrip())] if folge else "  "
                     zeilen.insert(start + 1, f"{einrueckung}allow_implicit_invocation: false")
-            text = nl.join(zeilen) + nl
+            text = bom + nl.join(zeilen) + nl
             self.sichern(datei)
         else:
             datei.parent.mkdir(parents=True, exist_ok=True)
@@ -761,11 +752,11 @@ class Inventarserver(ThreadingHTTPServer):
             if name.startswith("-") and any(str(a).startswith(name) for a in schritt["argv"][1:]):
                 return {"ok": False, "ausgabe": f"„{name}“ beginnt mit einem Minus: Der Befehl läse den Namen als Option. "
                                                 "Bitte von Hand entfernen."}
-            if schritt["argv"][:2] == ["npx", "skills"]:
+            if schritt["argv"][:1] == ["npx"]:
                 # Im Projektordner nähme npx sonst ein node_modules/.bin des Projekts und dessen .npmrc (nachgemessen).
                 # Mit leerem --prefix nicht; der Befehl selbst läuft weiter im Projektordner.
                 with tempfile.TemporaryDirectory() as leer:
-                    return lauf(["npx", "--prefix", leer, "-y", SKILLS_CLI, *schritt["argv"][2:]], schritt.get("cwd"), 120)
+                    return lauf(["npx", "--prefix", leer, *schritt["argv"][1:]], schritt.get("cwd"), 120)
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
     def neu_einlesen(self):
@@ -934,7 +925,7 @@ class Inventarserver(ThreadingHTTPServer):
         die Liste austauschen, und der Zugriff lief ins Leere."""
         codex = self.harness() == "codex"
         if k["art"] == "skill":
-            argv = ["npx", "-y", SKILLS_CLI, "add", k["repo"], "--skill", k["skill"], "-g", "-y",
+            argv = ["npx", "-y", harness.SKILLS_CLI, "add", k["repo"], "--skill", k["skill"], "-g", "-y",
                     "--agent", "codex" if codex else "claude-code"]
         elif codex:
             argv = ["codex", "plugin", "add", f"{k['plugin']}@{k['marktplatz']}"]

@@ -22,6 +22,9 @@ HARNESSE = {
               "bewertung": "bewertung-codex.json", "verlauf": "verlauf-codex.json"},
 }
 STANDARD = "claude-code"
+# Feste Version statt der jeweils neuesten auf npm, in jedem Befehl, der skills installiert oder entfernt.
+# Neue Version: prüfen, dann hier eintragen.
+SKILLS_CLI = "skills@1.7.0"
 
 
 def schreiben(pfad, text):
