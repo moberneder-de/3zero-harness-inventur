@@ -764,7 +764,8 @@ class HarnessWahl(unittest.TestCase):
         # werkzeuge.pruefen fragte sonst das Netz und startete echte Programme
         self.werkzeuge = mock.patch.object(build.werkzeuge, "pruefen", return_value=[{"id": "python3", "status": "aktuell"}])
         self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
-                        mock.patch.object(build, "LOGO", self.tmp / "logo.svg"), self.werkzeuge]
+                        mock.patch.object(build, "LOGO", self.tmp / "logo.svg"), self.werkzeuge,
+                        mock.patch.object(build.werkzeuge, "quellcode_pruefen", return_value=[{"id": "/h/x", "ruht": True}])]
         (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
@@ -864,12 +865,15 @@ class HarnessWahl(unittest.TestCase):
     def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["werkzeuge"], [{"id": "python3", "status": "aktuell"}])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["werkzeuge"], daten["quellcode"]), ([{"id": "python3", "status": "aktuell"}], [{"id": "/h/x", "ruht": True}]))
         with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
-                mock.patch.object(build.werkzeuge, "pruefen", side_effect=RuntimeError("kaputt")):
+                mock.patch.object(build.werkzeuge, "pruefen", side_effect=RuntimeError("kaputt")), \
+                mock.patch.object(build.werkzeuge, "quellcode_pruefen", side_effect=RuntimeError("auch")):
             build.main(["--harness", "claude-code"])
         daten = json.loads((self.daten / "inventar.json").read_text())
-        self.assertEqual((daten["werkzeuge"], daten["lesefehler"]), ([], [{"quelle": "Werkzeuge", "fehler": "RuntimeError: kaputt"}]))
+        self.assertEqual((daten["werkzeuge"], daten["quellcode"], daten["lesefehler"]), ([], [], [
+            {"quelle": "Werkzeuge", "fehler": "RuntimeError: kaputt"}, {"quelle": "MCP-Server aus Quellcode", "fehler": "RuntimeError: auch"}]))
 
     def test_datenordner_nur_fuer_den_benutzer(self):
         """Das Inventar nennt Pfade und MCP-Ziele; andere Benutzer des Rechners sollen es nicht lesen."""

@@ -1017,7 +1017,12 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("Werkzeuge", fehler)
         inhalt["werkzeuge"] = []
-    inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE)
+    try:
+        inhalt["quellcode"] = werkzeuge.quellcode_pruefen(inhalt, DATEN, jetzt.date())
+    except Exception as fehler:
+        lesefehler("MCP-Server aus Quellcode", fehler)
+        inhalt["quellcode"] = []
+    inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE, ruhend_tage=werkzeuge.RUHEND_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
         "datum": jetzt.strftime("%Y-%m-%d"), "kontextlast": last,

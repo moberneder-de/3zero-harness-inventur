@@ -241,6 +241,21 @@ class Server(unittest.TestCase):
         self.assertEqual((status, antwort["ok"]), (200, True))
         self.assertTrue(self.marker.exists())
 
+    def test_python_aktualisiert_erkennt_den_geloeschten_ordner(self):
+        """Homebrew löscht beim Python-Update den alten Ordner; `python3` im PATH gibt es danach weiter, deshalb zählt
+        der Ordner, aus dem der Server seine Standardbibliothek geladen hat."""
+        self.assertFalse(server.python_aktualisiert())
+        with mock.patch.object(server.os, "__file__", str(self.tmp / "weg" / "os.py")):
+            self.assertTrue(server.python_aktualisiert())
+
+    def test_nach_python_update_meldet_jede_anfrage_den_neustart(self):
+        """Sonst scheiterte eine Bewertung mit „LookupError: unknown encoding: utf-8-sig“, und niemand sah den Grund."""
+        with mock.patch.object(server, "python_aktualisiert", return_value=True):
+            status, antwort = self.ausfuehren("plugin:x@y", "deinstallieren")
+        self.assertEqual((status, antwort["ok"]), (200, False))
+        self.assertIn("neu starten", antwort["ausgabe"])
+        self.assertFalse(self.marker.exists())
+
     def test_fehler_kommt_mit_ausgabe_zurueck(self):
         status, antwort = self.ausfuehren("plugin:x@y", "deaktivieren")
         self.assertEqual((status, antwort["ok"]), (200, False))

@@ -1,5 +1,6 @@
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import date
@@ -98,6 +99,109 @@ class Pruefen(unittest.TestCase):
                 mock.patch.object(werkzeuge, "installiert", return_value=(None, None)):
             liste = werkzeuge.pruefen({"mcp": [], "projekt_mcp": [], "hooks": []}, "codex", self.tmp, date(2026, 9, 26))
         self.assertEqual(next(w for w in liste if w["id"] == "skills")["neueste"], "1.7.0")
+
+
+def git(ordner, *argv):
+    subprocess.run(["git", "-C", str(ordner), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", *argv],
+                   check=True, capture_output=True)
+
+
+class Quellcode(unittest.TestCase):
+    """MCP-Server, die als Quellcode unter ~ liegen (meist ein Git-Klon): Pflegezustand und Abhängigkeiten."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.patch = mock.patch.object(werkzeuge, "HOME", self.home)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        # ein „Upstream“ und ein Klon davon, ohne Netz
+        self.upstream = self.tmp / "upstream"
+        self.upstream.mkdir()
+        git(self.upstream, "init", "-q")
+        (self.upstream / "index.ts").write_text("x")
+        git(self.upstream, "add", ".")
+        git(self.upstream, "commit", "-qm", "erster")
+        self.klon = self.home / ".claude/mcp-servers/notiz-mcp"
+        self.klon.parent.mkdir(parents=True)
+        git(self.tmp, "clone", "-q", str(self.upstream), str(self.klon))
+
+    def test_quellen_aus_eigenen_und_projekt_servern(self):
+        """Plugin-Server pflegt das Plugin-System, Programme außerhalb von ~ (etwa /opt/homebrew, selbst ein Git-Repo) gehören nicht dazu."""
+        projekt = self.home / "Kit"
+        (projekt / "bin").mkdir(parents=True)
+        (projekt / "package.json").write_text("{}")
+        (projekt / "bin/q.ts").write_text("x")
+        inhalt = {"mcp": [{"name": "notiz", "art": "User", "ziel": f"{self.home}/.bun/bin/bun run {self.klon}/index.ts"},
+                          {"name": "plug", "art": "Plugin", "ziel": f"node {self.klon}/index.ts"},
+                          {"name": "brew", "art": "User", "ziel": "/opt/homebrew/bin/node x.js"}],
+                  "projekt_mcp": [{"name": "q", "art": ".mcp.json", "ziel": "bun bin/q.ts", "projekt": str(projekt)}]}
+        self.assertEqual(werkzeuge.quellen(inhalt), {str(self.klon): ["notiz"], str(projekt): ["q (Kit)"]})
+
+    def test_upstream_aktuell_neuer_voraus(self):
+        self.assertEqual(werkzeuge.upstream(self.klon, lambda url: None)["status"], "aktuell")
+        (self.upstream / "neu.ts").write_text("y")
+        git(self.upstream, "add", ".")
+        git(self.upstream, "commit", "-qm", "zweiter")
+        u = werkzeuge.upstream(self.klon, lambda url: None)
+        self.assertEqual((u["status"], u["befehl"]), ("neuere Commits", f"git -C {self.klon} pull"))
+        git(self.klon, "pull", "-q")
+        (self.klon / "eigen.ts").write_text("z")
+        git(self.klon, "add", ".")
+        git(self.klon, "commit", "-qm", "eigener")
+        self.assertEqual(werkzeuge.upstream(self.klon, lambda url: None)["status"], "lokal voraus")
+
+    def test_verglichen_wird_derselbe_zweig(self):
+        """Ein eigenes Projekt steht oft auf einem Arbeitszweig; gegen den Hauptzweig verglichen hieße das „neuere Commits“."""
+        git(self.klon, "checkout", "-qb", "arbeit")
+        (self.klon / "eigen.ts").write_text("z")
+        git(self.klon, "add", ".")
+        git(self.klon, "commit", "-qm", "eigener")
+        self.assertEqual(werkzeuge.upstream(self.klon, lambda url: None)["status"], "nur lokal")
+        git(self.klon, "push", "-q", "origin", "arbeit")
+        self.assertEqual(werkzeuge.upstream(self.klon, lambda url: None)["status"], "aktuell")
+
+    def test_lokale_aenderungen_und_kein_programm_aus_der_git_config(self):
+        """core.fsmonitor in .git/config startet bei git status ein Programm; der Server liest fremde Klone."""
+        marker = self.tmp / "gelaufen"
+        git(self.klon, "config", "core.fsmonitor", f"touch {marker}; false")
+        (self.klon / "index.ts").write_text("geändert")
+        self.assertTrue(werkzeuge.upstream(self.klon, lambda url: None)["lokale_aenderungen"])
+        self.assertFalse(marker.exists())
+
+    def test_github_liefert_datum_und_ruhend(self):
+        git(self.klon, "remote", "set-url", "origin", "https://github.com/chad/notiz-mcp.git")
+        kopf = subprocess.run(["git", "-C", str(self.klon), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        antwort = [{"sha": kopf, "commit": {"committer": {"date": "2025-12-21T23:31:07Z"}}}]
+        u = werkzeuge.upstream(self.klon, lambda url: antwort if url == "https://api.github.com/repos/chad/notiz-mcp/commits?sha=main&per_page=1" else None)
+        self.assertEqual((u["status"], u["letzter_commit"], u["repo"]), ("aktuell", "2025-12-21", "chad/notiz-mcp"))
+        self.assertTrue(werkzeuge.ruht(u, date(2026, 9, 26)))
+        self.assertFalse(werkzeuge.ruht({**u, "letzter_commit": "2026-08-01"}, date(2026, 9, 26)))
+
+    def test_pakete_mit_meldungen_und_update_befehl(self):
+        (self.klon / "package.json").write_text(json.dumps({"dependencies": {"@mcp/sdk": "^1.25.1", "fehlt": "^1"}, "devDependencies": {"typescript": "^5"}}))
+        (self.klon / "bun.lock").write_text("")
+        (self.klon / "node_modules/@mcp/sdk").mkdir(parents=True)
+        (self.klon / "node_modules/@mcp/sdk/package.json").write_text('{"version": "1.25.1"}')
+        antworten = {
+            "https://registry.npmjs.org/@mcp/sdk/latest": {"version": "1.30.1"},
+            "https://api.github.com/advisories?ecosystem=npm&affects=@mcp/sdk@1.25.1": [
+                {"ghsa_id": "GHSA-1", "severity": "high", "summary": "Leck", "html_url": "https://github.com/advisories/GHSA-1",
+                 "vulnerabilities": [{"package": {"name": "@mcp/sdk"}, "vulnerable_version_range": "<= 1.25.3", "first_patched_version": "1.26.0"}]}]}
+        pakete, befehl = werkzeuge.pakete(self.klon, antworten.get)
+        self.assertEqual(pakete, [{"name": "@mcp/sdk", "installiert": "1.25.1", "neueste": "1.30.1", "meldungen": [
+            {"id": "GHSA-1", "schwere": "high", "titel": "Leck", "betroffen": "<= 1.25.3", "behoben": "1.26.0", "url": "https://github.com/advisories/GHSA-1"}]}])
+        self.assertEqual(befehl, f"cd {self.klon} && bun update @mcp/sdk")
+
+    def test_aktuelle_pakete_ohne_befehl(self):
+        (self.klon / "package.json").write_text(json.dumps({"dependencies": {"a": "^1"}}))
+        (self.klon / "package-lock.json").write_text("{}")
+        (self.klon / "node_modules/a").mkdir(parents=True)
+        (self.klon / "node_modules/a/package.json").write_text('{"version": "1.0.0"}')
+        antworten = {"https://registry.npmjs.org/a/latest": {"version": "1.0.0"}, "https://api.github.com/advisories?ecosystem=npm&affects=a@1.0.0": []}
+        self.assertEqual(werkzeuge.pakete(self.klon, antworten.get), ([{"name": "a", "installiert": "1.0.0", "neueste": "1.0.0", "meldungen": []}], None))
 
 
 if __name__ == "__main__":

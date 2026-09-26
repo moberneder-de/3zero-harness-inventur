@@ -359,6 +359,14 @@ def gueltige_bewertung(kopie):
     return bewertung if isinstance(bewertung, dict) else None
 
 
+def python_aktualisiert():
+    """Homebrew löscht beim Python-Update den Ordner der alten Version. Ein Server, der noch mit ihr läuft, findet dann
+    Teile der Standardbibliothek nicht mehr, die er erst bei Bedarf lädt, und scheitert mit Fehlern wie
+    „LookupError: unknown encoding: utf-8-sig“. `python3` im PATH gibt es weiter, deshalb zählt der Ordner, aus dem
+    der Server seine Standardbibliothek geladen hat."""
+    return not Path(os.__file__).exists()
+
+
 def zurueckschreiben(bewertung, ziel):
     # harness.schreiben folgt einem Symlink und nimmt je Aufruf eine eigene Zwischendatei statt <datei>.neu
     harness.schreiben(ziel, json.dumps(bewertung, indent=2, ensure_ascii=False) + "\n")
@@ -991,6 +999,9 @@ class Handler(BaseHTTPRequestHandler):
         token = self.headers.get("X-Token", "").encode()
         if self.headers.get("Host") not in self.server.hosts or not secrets.compare_digest(token, self.server.token.encode()):
             return self.antworte(403, {"ok": False, "ausgabe": "nicht erlaubt"})
+        if python_aktualisiert():
+            return self.antworte(200, {"ok": False, "ausgabe": f"Python wurde aktualisiert, während der Server lief: {Path(os.__file__).parent} "
+                                                               "gibt es nicht mehr. Server beenden (Ctrl+C) und mit `python3 server.py` neu starten."})
         # Beide Inventare führen dieselben IDs mit denselben Aktionsnamen. Startet der Skill im anderen Harness,
         # während die Seite offen ist, träfe ein Klick sonst dessen Konfiguration und meldete „erledigt“.
         aktuell = self.server.harness()

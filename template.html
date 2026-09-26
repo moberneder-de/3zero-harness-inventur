@@ -340,7 +340,7 @@ const STATUS = {
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
-  "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
+  "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
@@ -835,10 +835,36 @@ function renderWerkzeuge() {
       <td class="nowrap">${w.neueste ? esc(w.neueste) : '<span class="leer">unbekannt</span>'}${w.neue_linie ? `<div class="klein">neue Linie: ${esc(w.neue_linie)}</div>` : ""}</td>
       <td class="nowrap">${w.pflege_bis ? datum(w.pflege_bis) : '<span class="leer">–</span>'}</td>
       <td>${statusBadge(w.status)}</td><td class="klein">${w.gebraucht_von.map(esc).join("<br>")}</td>
-      <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>' : ""}</td></tr>`).join("");
+      <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>' : ""}${w.id === "python3" && w.befehl
+        ? '<div class="klein">Danach den Server neu starten: Er läuft sonst mit dem gelöschten alten Python weiter, und Aktionen scheitern.</div>' : ""}</td></tr>`).join("");
   return abschnitt("werkzeuge", "Werkzeuge und Laufzeiten",
-    `<div class="tabelle"><table><thead><tr><th>Werkzeug</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th>Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Werkzeug</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th>Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>` + renderQuellcode(),
     `Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten. „veraltet“ heißt: In der eigenen Versionslinie gibt es Neueres; eine neuere Linie steht darunter, macht aber nichts veraltet. „ohne Pflege“: Die Linie bekommt keine Sicherheitsupdates mehr. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Aktualisieren musst du selbst — den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code). <code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen.`);
+}
+
+/* MCP-Server, die als Quellcode unter ~ liegen. Ruht ein Projekt upstream, veralten seine Abhängigkeiten trotzdem:
+   Die Sicherheitsmeldungen gelten der installierten Version, ob sie den Server treffen, hängt davon ab, wie er das Paket nutzt. */
+function renderQuellcode() {
+  const liste = D.quellcode || [];
+  if (!liste.length) return "";
+  const upstream = q => {
+    const u = q.upstream;
+    const teile = [statusBadge(u.status)];
+    if (u.letzter_commit) teile.push(`<div class="klein">letzter Commit upstream: ${datum(u.letzter_commit)}</div>`);
+    if (q.ruht) teile.push(`<div class="klein"><strong>ruht</strong> seit über ${D.ruhend_tage} Tagen: niemand hebt die Abhängigkeiten für dich an</div>`);
+    if (u.lokale_aenderungen) teile.push('<div class="klein">lokale Änderungen: vor einem pull sichern</div>');
+    if (u.repo) teile.push(`<div class="klein">${link("https://github.com/" + u.repo, u.repo)}</div>`);
+    else if (u.remote) teile.push(`<div class="klein"><code>${esc(u.remote)}</code></div>`);
+    return teile.join("");
+  };
+  const paket = p => `<div><code>${esc(p.name)}</code> ${esc(p.installiert)}${p.neueste && p.neueste !== p.installiert ? ` → ${esc(p.neueste)}` : ""}
+    ${p.meldungen.map(m => `<div class="klein">${statusBadge("Sicherheitsmeldung")} ${esc(m.schwere || "")}: ${link(m.url, m.titel || m.id)}${m.behoben ? `, behoben in ${esc(m.behoben)}` : ""}</div>`).join("")}</div>`;
+  const zeilen = liste.map(q => `<tr><td class="name"><strong>${esc(q.name)}</strong><div class="klein">${q.server.map(esc).join(", ")}</div><div class="klein"><code>${esc(q.id)}</code></div></td>
+      <td>${upstream(q)}</td><td>${q.pakete.length ? q.pakete.map(paket).join("") : '<span class="leer">keine npm-Abhängigkeiten</span>'}</td>
+      <td style="min-width:250px">${[q.upstream.befehl, q.befehl].filter(Boolean).map(befehlZeile).join("")}</td></tr>`).join("");
+  return `<h3 style="margin-top:28px">MCP-Server aus Quellcode</h3>
+    <p class="intro">MCP-Server, die als Quellcode unter ~ liegen, meist als Git-Klon. „Upstream“ vergleicht mit dem Repo, aus dem sie stammen; ein ruhendes Projekt bekommt keine Updates mehr. Die Abhängigkeiten veralten trotzdem: Gezeigt sind die direkten npm-Pakete mit Sicherheitsmeldungen zur installierten Version (GitHub Advisory Database). Ob eine Meldung deinen Server trifft, hängt davon ab, wie er das Paket nutzt; das Update ist meist trotzdem der einfachere Weg.</p>
+    <div class="tabelle"><table><thead><tr><th>Ordner</th><th>Upstream</th><th>Abhängigkeiten</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>`;
 }
 
 function renderHinweise() {
@@ -1207,7 +1233,8 @@ for (const [id, feld] of FILTERFELDER) {
 document.getElementById("f-teile").checked = F.teile;
 skillsFiltern();
 {
-  const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length;
+  const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length
+    + (D.quellcode || []).filter(q => q.befehl || q.upstream.befehl).length;
   document.getElementById("zahl-werkzeuge").textContent = handeln ? ` (${handeln})` : "";
 }
 if (TOKEN) zeichne(); else renderEmpfInhalt();
