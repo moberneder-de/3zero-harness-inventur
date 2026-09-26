@@ -34,11 +34,13 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 ## Was das Dashboard zeigt
 
-Elf Tabs: **Überblick**, **Empfehlungen**, **Überschneidungen**, **MCP-Server**, **Plugins**, **Skills**, **Hooks**, **Projekte**, **Hinweise**, **Suche**, **Hilfe**.
+Zwölf Tabs: **Überblick**, **Empfehlungen**, **Überschneidungen**, **MCP-Server**, **Plugins**, **Skills**, **Hooks**, **Projekte**, **Werkzeuge**, **Hinweise**, **Suche**, **Hilfe**.
 
 Alle Tabs zeigen Globales, außer **Projekte** — dort steht, was nur in einzelnen Projektordnern gilt. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
 
 Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
+
+**Werkzeuge** zeigt, was die Inventur selbst und deine MCP-Server und Hooks laut ihrem Befehl brauchen (etwa Python, Node, Bun, `gh`, Claude Code oder Codex): installierte und neueste Version, Pflegeende der Versionslinie und, wo die Installationsart am Pfad erkennbar ist, den Befehl zum Aktualisieren (Homebrew, npm, `bun upgrade`, `claude update`). Aktualisiert wird nichts automatisch, auch nicht die feste Version von `skills`. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag.
 
 Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur diese Quelle; ein Banner oben nennt sie mit dem Fehler.
 
@@ -93,6 +95,7 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
   verlauf-claude-code.json       Kontextlast je Tag, erzeugt
   verlauf-codex.json             Kontextlast je Tag, erzeugt
   start.html                     Einstieg mit Schlüssel, nur solange server.py läuft
+  werkzeuge.json                 neueste Versionen der Werkzeuge, einmal am Tag abgefragt
 ```
 
 Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". Das Werkzeug läuft also auch frisch geklont.

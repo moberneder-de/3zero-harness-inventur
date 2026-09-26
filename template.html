@@ -262,6 +262,7 @@ try {
   <a href="#skills">Skills</a>
   <a href="#hooks">Hooks</a>
   <a href="#projekte">Projekte</a>
+  <a href="#werkzeuge">Werkzeuge<span id="zahl-werkzeuge"></span></a>
   <a href="#hinweise">Hinweise</a>
   <a href="#suche">Suche<span id="such-stand"></span></a>
   <a href="#hilfe">Hilfe</a>
@@ -339,6 +340,7 @@ const STATUS = {
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
+  "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
@@ -824,6 +826,21 @@ function renderHooks() {
       "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
 
+/* Laufzeiten und Kommandozeilen, die Inventur, MCP-Server und Hooks brauchen. Nur Anzeige und Befehl zum Kopieren:
+   Ein Update aus dem Browser könnte laufende MCP-Server und Hooks stören, und die feste Version von skills soll erst geprüft werden. */
+function renderWerkzeuge() {
+  const liste = D.werkzeuge || [];
+  const zeilen = liste.map(w => `<tr><td class="name"><strong>${esc(w.name)}</strong><div class="klein"><code>${esc(w.id)}</code></div></td>
+      <td class="nowrap">${w.installiert ? esc(w.installiert) : '<span class="leer">–</span>'}</td>
+      <td class="nowrap">${w.neueste ? esc(w.neueste) : '<span class="leer">unbekannt</span>'}${w.neue_linie ? `<div class="klein">neue Linie: ${esc(w.neue_linie)}</div>` : ""}</td>
+      <td class="nowrap">${w.pflege_bis ? datum(w.pflege_bis) : '<span class="leer">–</span>'}</td>
+      <td>${statusBadge(w.status)}</td><td class="klein">${w.gebraucht_von.map(esc).join("<br>")}</td>
+      <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>' : ""}</td></tr>`).join("");
+  return abschnitt("werkzeuge", "Werkzeuge und Laufzeiten",
+    `<div class="tabelle"><table><thead><tr><th>Werkzeug</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th>Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten. „veraltet“ heißt: In der eigenen Versionslinie gibt es Neueres; eine neuere Linie steht darunter, macht aber nichts veraltet. „ohne Pflege“: Die Linie bekommt keine Sicherheitsupdates mehr. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Aktualisieren musst du selbst — den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code). <code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen.`);
+}
+
 function renderHinweise() {
   const hinweise = [...D.hinweise];
   const verwaist = D.overrides_verwaist.map(n => `\`${n}\``).join(", ");
@@ -1180,7 +1197,7 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderWerkzeuge() + renderHinweise() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
 for (const [id, feld] of FILTERFELDER) {
   const el = document.getElementById(id);
@@ -1189,6 +1206,10 @@ for (const [id, feld] of FILTERFELDER) {
 }
 document.getElementById("f-teile").checked = F.teile;
 skillsFiltern();
+{
+  const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length;
+  document.getElementById("zahl-werkzeuge").textContent = handeln ? ` (${handeln})` : "";
+}
 if (TOKEN) zeichne(); else renderEmpfInhalt();
 renderMeldung();
 

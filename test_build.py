@@ -410,6 +410,9 @@ class ProjektSkills(unittest.TestCase):
         self.assertEqual((eintraege["mcp:Q/q"]["projekt"], eintraege["mcp:Q/q"]["ziel"]), (str(q), "bun bin/qmcp.ts"))
 
 
+# Feste Grenze für alle Tests der Klasse: Mit der echten Uhr fielen ihre festen Daten nach 14 Tagen aus dem Messfenster,
+# und die Tests schlugen fehl, ohne dass sich am Code etwas geändert hatte. Wer eine andere Grenze braucht, setzt sie selbst.
+@mock.patch.object(build, "zeitgrenze", lambda: "2026-09-06T00:00:00")
 class Hooks(unittest.TestCase):
     def test_eigene_hooks_und_statuszeile(self):
         settings = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash ~/.claude/handoff-hook.sh", "timeout": 10}]}]},
@@ -430,8 +433,6 @@ class Hooks(unittest.TestCase):
         self.assertEqual(e["befehle"], [{"befehl": "pruefen", "matcher": "Edit|Write", "bedingung": None},
                                         {"befehl": "pruefen", "matcher": None, "bedingung": "Bash(git commit:*)"}])
 
-    # feste Grenze: Mit der echten Uhr fielen die Daten unten nach 14 Tagen aus dem Fenster, und der Test schlug fehl
-    @mock.patch.object(build, "zeitgrenze", lambda: "2026-09-06T00:00:00")
     def test_ausgaben_aus_transkripten(self):
         def zeile(zeit, ereignis, befehl, stdout):
             return json.dumps({"type": "attachment", "timestamp": zeit, "attachment": {
@@ -664,6 +665,9 @@ class McpStatus(unittest.TestCase):
             {"serverName": "claude.ai Gmail"}, {"serverUrl": "https://example.org/*"}, "kaputt"]}), {"claude.ai Gmail"})
 
 
+# Feste Grenze für alle Tests der Klasse: Mit der echten Uhr fielen ihre festen Daten nach 14 Tagen aus dem Messfenster,
+# und die Tests schlugen fehl, ohne dass sich am Code etwas geändert hatte. Wer eine andere Grenze braucht, setzt sie selbst.
+@mock.patch.object(build, "zeitgrenze", lambda: "2026-09-06T00:00:00")
 class McpMessungen(unittest.TestCase):
     def transkript(self, *zeilen):
         tmp = Path(tempfile.mkdtemp())
@@ -757,8 +761,10 @@ class HarnessWahl(unittest.TestCase):
         self.daten = self.tmp / "daten"  # eigener Ordner: so fällt auf, wenn etwas wieder ins Werkzeug schreibt
         self.daten.mkdir()
         (self.tmp / "template.html").write_text("<script>__DATEN__</script>")
+        # werkzeuge.pruefen fragte sonst das Netz und startete echte Programme
+        self.werkzeuge = mock.patch.object(build.werkzeuge, "pruefen", return_value=[{"id": "python3", "status": "aktuell"}])
         self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
-                        mock.patch.object(build, "LOGO", self.tmp / "logo.svg")]
+                        mock.patch.object(build, "LOGO", self.tmp / "logo.svg"), self.werkzeuge]
         (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
@@ -854,6 +860,16 @@ class HarnessWahl(unittest.TestCase):
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual(daten["lesefehler"], [{"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"}])
         self.assertEqual((daten["skills"][0]["ungenutzt"], daten["ungenutzt_tage"]), (True, 30))
+
+    def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):
+            build.main(["--harness", "claude-code"])
+        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["werkzeuge"], [{"id": "python3", "status": "aktuell"}])
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.werkzeuge, "pruefen", side_effect=RuntimeError("kaputt")):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["werkzeuge"], daten["lesefehler"]), ([], [{"quelle": "Werkzeuge", "fehler": "RuntimeError: kaputt"}]))
 
     def test_datenordner_nur_fuer_den_benutzer(self):
         """Das Inventar nennt Pfade und MCP-Ziele; andere Benutzer des Rechners sollen es nicht lesen."""

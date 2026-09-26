@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import harness
+import werkzeuge
 
 HOME = Path.home()
 CLAUDE = HOME / ".claude"
@@ -1011,6 +1012,11 @@ def main(argv=None):
     inhalt = fuers_dashboard(inhalt)
     jetzt = datetime.now()
     ungenutzt_markieren(inhalt.get("skills", []), inhalt.get("plugins", []), jetzt)
+    try:
+        inhalt["werkzeuge"] = werkzeuge.pruefen(inhalt, h, DATEN, jetzt.date())
+    except Exception as fehler:
+        lesefehler("Werkzeuge", fehler)
+        inhalt["werkzeuge"] = []
     inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
