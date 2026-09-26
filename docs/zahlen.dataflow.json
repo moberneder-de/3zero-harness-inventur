@@ -45,9 +45,12 @@
           "nutzung",
           "messwerte",
           "kontext",
+          "ungenutzt",
+          "versionen",
           "entfernen",
           "abschalten",
-          "nurmanuell"
+          "nurmanuell",
+          "aktualisieren"
         ],
         "note": "Die Zahl liefert den Beleg; entscheiden musst du."
       }
@@ -55,10 +58,13 @@
   },
   "stages": [
     {
-      "label": "Quelle auf der Platte"
+      "label": "Quelle"
     },
     {
       "label": "Daraus gerechnet"
+    },
+    {
+      "label": "Daraus abgeleitet"
     },
     {
       "label": "Was es begründet"
@@ -71,15 +77,9 @@
       "label": "Nutzungszähler",
       "sublabel": "beide Harnesses",
       "stage": 0,
-      "row": 0
-    },
-    {
-      "id": "transkripte",
-      "type": "external",
-      "label": "Transkripte",
-      "sublabel": "~/.claude/projects",
-      "stage": 0,
-      "row": 1
+      "row": 0,
+      "height": 50,
+      "yOffset": -18
     },
     {
       "id": "skillmd",
@@ -87,7 +87,30 @@
       "label": "SKILL.md",
       "sublabel": "Name, Beschreibung",
       "stage": 0,
-      "row": 2
+      "row": 1,
+      "height": 50,
+      "yOffset": -39
+    },
+    {
+      "id": "transkripte",
+      "type": "external",
+      "label": "Transkripte",
+      "sublabel": "~/.claude/projects",
+      "stage": 0,
+      "row": 2,
+      "height": 50,
+      "yOffset": -60
+    },
+    {
+      "id": "netz",
+      "type": "external",
+      "label": "Netz",
+      "sublabel": "endoflife.date, npm, GitHub",
+      "stage": 0,
+      "row": 3,
+      "width": 136,
+      "height": 50,
+      "yOffset": -81
     },
     {
       "id": "nutzung",
@@ -95,15 +118,9 @@
       "label": "Nutzung",
       "sublabel": "gezählt",
       "stage": 1,
-      "row": 0
-    },
-    {
-      "id": "messwerte",
-      "type": "database",
-      "label": "Messwerte",
-      "sublabel": "Laufzeit, MCP-Aufrufe",
-      "stage": 1,
-      "row": 1
+      "row": 0,
+      "height": 50,
+      "yOffset": -18
     },
     {
       "id": "kontext",
@@ -111,31 +128,81 @@
       "label": "Kontext",
       "sublabel": "geschätzt",
       "stage": 1,
-      "row": 2
+      "row": 1,
+      "height": 50,
+      "yOffset": -39
+    },
+    {
+      "id": "messwerte",
+      "type": "database",
+      "label": "Messwerte",
+      "sublabel": "Laufzeit, MCP-Aufrufe",
+      "stage": 1,
+      "row": 2,
+      "height": 50,
+      "yOffset": -60
+    },
+    {
+      "id": "versionen",
+      "type": "database",
+      "label": "Versionen",
+      "sublabel": "Pflegeende, Meldungen",
+      "stage": 1,
+      "row": 3,
+      "height": 50,
+      "yOffset": -81
+    },
+    {
+      "id": "ungenutzt",
+      "type": "database",
+      "label": "30 Tage ungenutzt",
+      "sublabel": "lädt in jede Sitzung",
+      "stage": 2,
+      "row": 1,
+      "height": 50,
+      "yOffset": -39,
+      "width": 140
     },
     {
       "id": "entfernen",
       "type": "backend",
       "label": "entfernen",
       "sublabel": "ungenutzt, doppelt",
-      "stage": 2,
-      "row": 0
-    },
-    {
-      "id": "abschalten",
-      "type": "backend",
-      "label": "abschalten",
-      "sublabel": "bremst jeden Turn",
-      "stage": 2,
-      "row": 1
+      "stage": 3,
+      "row": 0,
+      "height": 50,
+      "yOffset": -18
     },
     {
       "id": "nurmanuell",
       "type": "backend",
       "label": "nur manuell",
       "sublabel": "teuer, selten",
-      "stage": 2,
-      "row": 2
+      "stage": 3,
+      "row": 1,
+      "height": 50,
+      "yOffset": -39
+    },
+    {
+      "id": "abschalten",
+      "type": "backend",
+      "label": "abschalten",
+      "sublabel": "bremst jeden Turn",
+      "stage": 3,
+      "row": 2,
+      "height": 50,
+      "yOffset": -60
+    },
+    {
+      "id": "aktualisieren",
+      "type": "backend",
+      "label": "aktualisieren",
+      "sublabel": "von Hand",
+      "stage": 3,
+      "row": 3,
+      "height": 50,
+      "yOffset": -81,
+      "width": 120
     }
   ],
   "flows": [
@@ -149,14 +216,12 @@
       "route": "straight"
     },
     {
-      "id": "f-messwerte",
-      "from": "transkripte",
-      "to": "messwerte",
-      "label": "durationMs",
-      "classification": "gezählt",
-      "variant": "emphasis",
-      "route": "straight",
-      "labelDy": -16
+      "id": "f-skillmd",
+      "from": "skillmd",
+      "to": "kontext",
+      "label": "Länge ÷ 4",
+      "classification": "Schätzung",
+      "route": "straight"
     },
     {
       "id": "f-anweisungen",
@@ -168,11 +233,21 @@
       "channelX": 243
     },
     {
-      "id": "f-skillmd",
-      "from": "skillmd",
-      "to": "kontext",
-      "label": "Länge ÷ 4",
-      "classification": "Schätzung",
+      "id": "f-messwerte",
+      "from": "transkripte",
+      "to": "messwerte",
+      "label": "durationMs",
+      "classification": "gezählt",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": 28
+    },
+    {
+      "id": "f-netz",
+      "from": "netz",
+      "to": "versionen",
+      "label": "neueste",
+      "classification": "gegen --version",
       "route": "straight"
     },
     {
@@ -184,11 +259,38 @@
       "route": "straight"
     },
     {
-      "id": "e-messwerte",
-      "from": "messwerte",
-      "to": "abschalten",
-      "label": "zu langsam",
-      "classification": "14 Tage",
+      "id": "a-nutzung",
+      "from": "nutzung",
+      "to": "ungenutzt",
+      "label": "zuletzt genutzt",
+      "classification": "Installationsdatum",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          315,
+          182
+        ],
+        [
+          530,
+          182
+        ]
+      ]
+    },
+    {
+      "id": "a-kontext",
+      "from": "kontext",
+      "to": "ungenutzt",
+      "label": "im Kontext",
+      "classification": "nur Skills",
+      "route": "straight"
+    },
+    {
+      "id": "e-ungenutzt",
+      "from": "ungenutzt",
+      "to": "nurmanuell",
+      "label": "aufräumen",
+      "classification": "Kandidat",
       "route": "straight"
     },
     {
@@ -197,6 +299,33 @@
       "to": "nurmanuell",
       "label": "immer dabei",
       "classification": "je Sitzung",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          315,
+          275
+        ],
+        [
+          745,
+          275
+        ]
+      ]
+    },
+    {
+      "id": "e-messwerte",
+      "from": "messwerte",
+      "to": "abschalten",
+      "label": "zu langsam",
+      "classification": "14 Tage",
+      "route": "straight"
+    },
+    {
+      "id": "e-versionen",
+      "from": "versionen",
+      "to": "aktualisieren",
+      "label": "veraltet, Meldung",
+      "classification": "Befehl kopieren",
       "route": "straight"
     }
   ],

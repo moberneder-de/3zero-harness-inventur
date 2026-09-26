@@ -1068,6 +1068,11 @@ async function nachAktionen(paare) {
 function renderHilfe() {
   const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
   const datenordner = `<li>Dashboard, Inventar und Bewertung liegen in <code>~/.3zero-harness-inventur</code>, nicht im Projektordner: Sie gehören zu deinem Rechner, das Projekt enthält nur das Werkzeug.</li>`;
+  /* für beide Harnesses gleich */
+  const werkzeugeHilfe = `<li>Der Tab „Werkzeuge“ zeigt, was die Inventur und deine MCP-Server und Hooks brauchen: installierte und neueste Version, Pflegeende der Versionslinie und den Befehl zum Aktualisieren. Darunter stehen MCP-Server aus Quellcode (meist ein Git-Klon unter ~): ob upstream Neueres vorliegt, ob das Projekt ruht, und Sicherheitsmeldungen zu ihren npm-Abhängigkeiten. Aktualisieren musst du selbst; nach einem Python-Update den Server neu starten.</li>`;
+  const lesefehlerHilfe = `<li>Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur dieses; ein Banner im Überblick nennt es mit dem Fehler.</li>`;
+  const nachAktionenHilfe = `<li>Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Eine laufende Bewertung hält Aktionen nicht auf.</li>`;
+  const versionenHilfe = `<li>Werkzeuge: installierte Version per <code>--version</code>, neueste und Pflegeende von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Sicherheitsmeldungen aus der GitHub Advisory Database, jeweils zur installierten Version eines Pakets.</li>`;
   const teile = CODEX ? [["Aktualisieren", `<ul>
       <li><code>python3 build.py --harness codex</code> im Projektordner 3zero-Harness-Inventur: liest den Codex-Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Codex. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness claude-code</code> zeigt das Dashboard wieder Claude Code; ohne Angabe gilt der zuletzt genannte.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf und dem Tab „Suche“. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
@@ -1079,9 +1084,11 @@ function renderHilfe() {
       <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>OpenAI/Codex</b> ist in Codex eingebaut.</li>
       <li>Plugin-Status: <b>aktiv</b> und <b>deaktiviert</b> nach <code>enabled</code> in config.toml, <b>im Konto</b> für Plugins aus dem ChatGPT-Konto, <b>wirkungslos</b> für openai-curated-Einträge, die Codex wegen des Online-Katalogs ignoriert, <b>nicht aktiviert</b> für Plugins ohne Eintrag.</li>
-      <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese.</li>
+      <li>In der Skills-Tabelle steht unter dem Namen die Art — <b>Skill</b>, oder <b>Harness</b> für Eingebautes — und, falls zutreffend, „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese. Filter und Sortierung merkt sich die Seite.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
+      ${werkzeugeHilfe}
+      ${lesefehlerHilfe}
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
@@ -1091,10 +1098,11 @@ function renderHilfe() {
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt.</li>
       <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“. Für Plugins hat Codex keinen Update-Befehl.</li>
       <li><b>deinstallieren</b>: <code>codex plugin remove</code>, <code>codex mcp remove</code>, <code>npx skills remove</code> oder Papierkorb. Bei Skills aus <code>~/.agents/skills</code> (npx skills) verschwindet der Skill dabei auch aus Claude Code. Hooks haben unter Codex keine Aktion; der Befehl in den Details nennt die Stelle in der Datei.</li>
-      <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden.</li>
+      <li><b>deaktivieren</b>: <code>enabled = false</code> in ~/.codex/config.toml, bei Skills ein Block <code>[[skills.config]]</code> mit dem Pfad. Bei Skills aus Plugins steht dort der Pfad der aktuellen Plugin-Version; nach einem Plugin-Update muss das Abschalten neu gesetzt werden. Solche alten Blöcke nennt der Hinweis „[[skills.config]] für Pfade, die es nicht gibt“.</li>
       <li><b>nur manuell</b>: <code>agents/openai.yaml</code> im Skill-Ordner mit <code>allow_implicit_invocation: false</code>. Ein Update des Skills überschreibt die Datei.</li>
       <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. <code>enabled = true</code> in ~/.codex/config.toml, bei Skills im <code>[[skills.config]]</code>-Block ihres Pfads, und <code>allow_implicit_invocation: true</code> in <code>agents/openai.yaml</code>. Schaltet config.toml einen Skill nach Namen statt nach Pfad ab, bleibt das Handarbeit.</li>
-      <li>Vor der ersten Änderung legt der Server eine Sicherung <code>config.toml.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf, und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
+      <li>Vor der ersten Änderung legt der Server eine Sicherung <code>config.toml.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf (die letzten 10 bleiben), und prüft nach jedem Schreiben, ob die Datei noch gültig ist; sonst nimmt er die Änderung zurück. Alles wirkt ab der nächsten Codex-Sitzung.</li>
+      ${nachAktionenHilfe}
       <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
@@ -1109,6 +1117,7 @@ function renderHilfe() {
       <li>MCP-Status: aus <code>enabled</code> in ~/.codex/config.toml und den Plugin-Schaltern, ohne Verbindungstest. Umgebungswerte und Tokens der Server übernimmt das Inventar nicht.</li>
       <li>Herkunft: plugin.json im Plugin-Ordner, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills. Klarnamen und belegte Quellen stehen in bewertung-codex.json.</li>
       <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
+      ${versionenHilfe}
       <li>Nicht gemessen: Werkzeuge und Kontext der MCP-Server, Ausgabe und Laufzeit der Hooks. Codex protokolliert sie nicht.</li>
     </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness codex</code> zeigt das Dashboard stattdessen Codex; ohne Angabe gilt der zuletzt genannte.</li>
@@ -1120,9 +1129,11 @@ function renderHilfe() {
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam, und damit, wie er wieder geht: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>Anthropic/Claude Code</b> ist in Claude Code eingebaut. Den Autor nennen die Details.</li>
-      <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese.</li>
+      <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese. Filter und Sortierung merkt sich die Seite.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
+      ${werkzeugeHilfe}
+      ${lesefehlerHilfe}
       <li>Hinweise nennen Funde außerhalb der Tabellen. Einen erzeugt das Dashboard selbst: Overrides in <code>skillOverrides</code> für Skills, die es nicht gibt.</li>
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
@@ -1131,12 +1142,13 @@ function renderHilfe() {
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab „Empfehlungen“ oder alles über „alle … ausführen“ im Kopf, nach einer Bestätigung.</li>
-      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code>. Bei Plugins immer, per <code>claude plugin update</code>: Ob ein Update bereitsteht, sagt erst der Befehl. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
+      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code> in der festen Version aus <code>harness.py</code>. Bei Plugins immer, per <code>claude plugin update</code>: Ob ein Update bereitsteht, sagt erst der Befehl. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb. Eigene Hooks und die Statuszeile nimmt der Server aus ~/.claude/settings.json; einen einzelnen Hook nur abschalten kann Claude Code nicht. Zurück führt die Sicherung.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
       <li><b>einschalten</b> und <b>wieder automatisch</b>: die Gegen-Aktionen. Sie erscheinen bei allem, was das Dashboard abschalten kann und was gerade aus ist: nehmen den Override weg, heben die Sperre in <code>deniedMcpServers</code> auf oder führen <code>claude plugin enable</code> aus. Das geht jederzeit, auch nach einem Neustart.</li>
-      <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf. Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
+      <li>Vor der ersten Änderung an ~/.claude/settings.json legt der Server eine Sicherung <code>settings.json.bak-&lt;Zeitstempel&gt;</code> an, eine je Serverlauf (die letzten 10 bleiben). Alles wirkt ab der nächsten Claude-Code-Sitzung.</li>
+      ${nachAktionenHilfe}
       <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
       <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
@@ -1153,6 +1165,7 @@ function renderHilfe() {
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
       <li>Updates: <code>build.py</code> fragt per <code>gh api</code> den aktuellen Stand des Skill-Ordners auf GitHub ab und vergleicht ihn mit dem Stand bei der Installation (<code>skillFolderHash</code>). Ohne <code>gh</code> oder Netz fehlt nur diese Angabe; fehlt der Ordner upstream, ebenfalls.</li>
+      ${versionenHilfe}
     </ul>`]];
   const reiter = teile.map(([titel], i) => `<button type="button" role="tab" id="hilfe-reiter-${i}" aria-controls="hilfe-teil-${i}" aria-selected="${i === 0}"${i ? ' tabindex="-1"' : ""}>${titel}</button>`).join("");
   const inhalte = teile.map(([, html], i) => `<div role="tabpanel" id="hilfe-teil-${i}" aria-labelledby="hilfe-reiter-${i}"${i ? " hidden" : ""}>${html}</div>`).join("");
