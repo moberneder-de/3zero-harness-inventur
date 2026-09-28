@@ -14,7 +14,9 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import harness
-from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, ziel_text
+import mcp_direkt
+import werkzeuge
+from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -435,13 +437,16 @@ def eigene_hooks(cfg):
     return hooks
 
 
-def mcp_server(cfg, plugin_liste, mcp_tage):
-    """Eigene Server aus config.toml und die der Plugins. Status nur aus der Konfiguration: Codex prüft keine Verbindung."""
+def mcp_server(cfg, plugin_liste, mcp_tage, direkt=None):
+    """Eigene Server aus config.toml und die der Plugins. Status nur aus der Konfiguration: Codex prüft keine Verbindung.
+    `direkt` fragt einen HTTP-Server selbst (mcp_direkt.gemessen)."""
     def eintrag(eid, name, art, quelle, c, status, nutzungsname):
-        # werkzeuge und tokens bleiben None: Codex protokolliert weder die Werkzeugliste noch den Anweisungsblock
-        return {"id": eid, "name": name, "art": art, "quelle": quelle, "ziel": ziel_text(c), "status": status,
-                "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname)),
-                "werkzeuge": None, "tokens": None}
+        # ohne direkte Messung bleiben werkzeuge und tokens None: Codex protokolliert weder die Werkzeugliste noch den Anweisungsblock
+        e = {"id": eid, "name": name, "art": art, "quelle": quelle, "ziel": ziel_text(c), "status": status,
+             "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname)),
+             "werkzeuge": None, "tokens": None}
+        d = direkt(c) if direkt and status == "aktiv" else None
+        return {**e, **mcp_direkt.felder(d, werkzeug_praefix(nutzungsname))} if d else e
 
     mcp_servers = cfg.get("mcp_servers")
     mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
@@ -626,7 +631,9 @@ def inventar():
         if genutzt:
             p["nutzung"] = {"anzahl": sum(n["anzahl"] for n in genutzt), "zuletzt": max(n["zuletzt"] or "" for n in genutzt) or None}
     hooks = eigene_hooks(cfg) + plugin_hooks
-    mcp = mcp_server(cfg, plugin_liste, mcp_tage)
+    speicher = werkzeuge.Zwischenspeicher(harness.DATEN, datetime.now().date())
+    mcp = mcp_server(cfg, plugin_liste, mcp_tage, lambda c: mcp_direkt.gemessen(c, speicher))
+    speicher.sichern()
 
     alle = mcp + plugin_liste + skills + projekt_skills + projekt_mcp + hooks
     bewerte(alle, bewertung, befehl)

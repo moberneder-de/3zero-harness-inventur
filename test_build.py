@@ -693,9 +693,11 @@ class McpMessungen(unittest.TestCase):
             aufruf("mcp__upnote__view", "2026-09-13T08:00:00Z"),
             aufruf("Read", "2026-09-14T08:00:00Z"),
             "kaputte Zeile, aber mcp__ steht drin\n")
+        # tokens: Anweisungsblock plus die Namen, die jede Sitzung in der Liste der Werkzeuge sieht, je mit Zeilenende
         self.assertEqual(build.mcp_messungen(dateien), {
-            "upnote": {"werkzeuge": 2, "tokens": 100, "nutzung": {"anzahl": 2, "zuletzt": "2026-09-13"}},
-            "docs": {"werkzeuge": 1, "tokens": 0, "nutzung": None},
+            "upnote": {"werkzeuge": 2, "tokens": 100 + round((len("mcp__upnote__search\nmcp__upnote__view") + 1) / 4),
+                       "nutzung": {"anzahl": 2, "zuletzt": "2026-09-13"}},
+            "docs": {"werkzeuge": 1, "tokens": round(len("mcp__docs__batch\n") / 4), "nutzung": None},
             "claude_ai_Docs": {"werkzeuge": 0, "tokens": 10, "nutzung": None},
         })
 
@@ -710,7 +712,7 @@ class McpMessungen(unittest.TestCase):
             aufruf("2026-05-28T08:00:00Z"), aufruf("2026-09-12T08:00:00Z"))
         with mock.patch.object(build, "zeitgrenze", return_value="2026-09-06T00:00:00"):
             self.assertEqual(build.mcp_messungen(dateien), {
-                "upnote": {"werkzeuge": 2, "tokens": 0, "nutzung": {"anzahl": 1, "zuletzt": "2026-09-12"}}})
+                "upnote": {"werkzeuge": 2, "tokens": 10, "nutzung": {"anzahl": 1, "zuletzt": "2026-09-12"}}})
 
     def test_anzeigename_wird_zum_werkzeugpraefix(self):
         self.assertEqual(build.werkzeug_praefix("claude.ai Claude Docs"), "claude_ai_Claude_Docs")
@@ -725,6 +727,31 @@ class McpMessungen(unittest.TestCase):
         self.assertEqual([eintraege["upnote"][k] for k in ("werkzeuge", "tokens")], [8, 120])
         self.assertEqual(eintraege["upnote"]["nutzung"], {"anzahl": 3, "zuletzt": "2026-09-13"})
         self.assertEqual([eintraege["still"][k] for k in ("werkzeuge", "tokens", "nutzung")], [None, None, None])
+
+    def test_direkte_messung_vor_der_aus_den_transkripten(self):
+        """Die direkte Messung ist der heutige Stand des Servers; genutzt zählt weiter aus den Transkripten.
+        Gesperrte Server und die eines abgeschalteten Plugins fragt die Inventur nicht: Sie laden in keine Sitzung."""
+        cfg = {"mcpServers": {"arnie": {"type": "http", "url": "https://a.example/mcp"}, "lokal": {"command": "bun"},
+                              "gesperrt": {"type": "http", "url": "https://b.example/mcp"}}}
+        aus = {**plugin("inaktiv"), "name": "p", "mcp": {"web": {"type": "http", "url": "https://c.example/mcp"}}}
+        messungen = {"arnie": {"werkzeuge": 1, "tokens": 7, "nutzung": {"anzahl": 3, "zuletzt": "2026-09-13"}},
+                     "lokal": {"werkzeuge": 4, "tokens": 20, "nutzung": None}}
+        gefragt = []
+
+        def direkt(c):
+            if "url" not in c:
+                return None
+            gefragt.append(c["url"])
+            return {"werkzeuge": 2, "anweisungen": 100, "namen_zeichen": 11, "schemata": 90, "am": "2026-09-28"}
+        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", {"gesperrt"}):
+            eintraege = {e["name"]: e for e in build.mcp_server([aus], None, messungen, direkt)}
+        felder = ("werkzeuge", "tokens", "schemata", "messung", "gemessen_am", "nutzung")
+        self.assertEqual({k: eintraege["arnie"][k] for k in felder}, {
+            "werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__arnie__")) / 4), "schemata": 90, "messung": "direkt",
+            "gemessen_am": "2026-09-28", "nutzung": {"anzahl": 3, "zuletzt": "2026-09-13"}})
+        self.assertEqual([eintraege["lokal"].get(k) for k in felder], [4, 20, None, "Transkript", None, None])
+        self.assertEqual([eintraege["gesperrt"].get(k) for k in ("werkzeuge", "messung")], [None, None])
+        self.assertEqual(gefragt, ["https://a.example/mcp"])
 
 
 class Verlauf(unittest.TestCase):

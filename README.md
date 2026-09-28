@@ -118,14 +118,14 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | Kontextkosten | Länge von Name und Beschreibung ÷ 4 | Schätzung |
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
 | Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
-| MCP-Server | Werkzeuge, Aufrufe und Anweisungsblock (÷ 4) aus denselben Transkripten; Schemata sofort geladener Werkzeuge fehlen dort | gezählt, Kontext zu niedrig |
+| MCP-Server | Aufrufe aus denselben Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | gezählt |
 | Update verfügbar | `gh api` gegen den Stand bei der Installation (`skillFolderHash`) | genau |
 | Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
 | Ungenutzt | Nutzung und Installationsdatum, 30 Tage; unter Codex gilt für Plugins mangels Datum der Stand ihres Ordners | abgeleitet |
 
 Umgebungswerte von MCP-Servern übernimmt das Inventar nie. Was in URL oder Argumenten eines Servers nach Zugangsdaten aussieht (Passwort in der URL, Werte in der Query, `--token …`, `…_KEY=…`, `Bearer …`), ersetzt es durch „…“, bevor das Ziel im Inventar und im Dashboard steht. Das erkennt Muster, keine Bedeutung.
 
-Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nicht gemessen“.
+Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nicht gemessen“, außer bei HTTP-Servern ohne Anmeldung, die die Inventur selbst fragt. Server, die per Befehl starten, fragt sie nie: Das hieße fremde Programme auszuführen.
 
 ## Voraussetzungen
 

@@ -481,7 +481,7 @@ function renderUeberblick() {
     <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server ${je("verbunden", "aktiv")} / eingetragen</div></div>
     <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
     <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
-    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks und MCP-Anweisungen, ohne die eingebauten Skills</div></div>
+    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks, MCP-Anweisungen und Werkzeugnamen, ohne die eingebauten Skills</div></div>
     <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
     <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
     <div class="kpi"><div class="zahl">${ungenutzt.length}<small> · ≈ ${zahl(ungenutzt.reduce((s, e) => s + e.tokens, 0))}</small></div><div class="was">Skills laden in jede Sitzung und wurden seit ${D.ungenutzt_tage} Tagen nicht genutzt (Tokens je Sitzung); im Tab Skills über den Statusfilter „${esc(UNGENUTZT)}“</div></div>
@@ -498,7 +498,7 @@ function renderUeberblick() {
   /* Die Zeitreihe braucht zwei Tage; solange es die nicht gibt, steht der Balken allein und behält seine Überschrift */
   const zeit = verlauf();
   const balken = `<div class="balken${zeit ? " im-reiter" : ""}" id="kontext-herkunft"${zeit ? ' role="tabpanel" aria-labelledby="kontext-reiter-herkunft"' : ""}><h3>Kontextlast nach Herkunft</h3>
-    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, und die Anweisungen der MCP-Server (grob geschätzt: Zeichen ÷ 4). Skills mit „${NUR_MANUELL}“ kosten nichts. Die eingebauten Skills des Harness fehlen hier: ${je("Claude Code legt sie nicht auf der Platte ab", "Codex zeigt sie im Tab „Skills“, gezählt werden sie nicht")}.</p>
+    <p class="klein" style="margin:0 0 10px">Beschreibungen, die ${esc(D.harness_name)} in jede Sitzung lädt, Text, den SessionStart-Hooks einspielen, die Anweisungen der MCP-Server und die Namen ihrer Werkzeuge (grob geschätzt: Zeichen ÷ 4). Die Schemata der Werkzeuge fehlen, weil sie erst bei Bedarf laden. Skills mit „${NUR_MANUELL}“ kosten nichts. Die eingebauten Skills des Harness fehlen hier: ${je("Claude Code legt sie nicht auf der Platte ab", "Codex zeigt sie im Tab „Skills“, gezählt werden sie nicht")}.</p>
     ${reihen.map(([k, v]) => `<div class="zeile" title="${esc(k)}: ${v.anzahl} Einträge, ≈ ${zahl(v.tokens)} Tokens">
       <span class="name">${esc(k)}</span>
       <span class="spur"><span class="fuellung" style="display:block;width:${(v.tokens / max * 100).toFixed(1)}%"></span></span>
@@ -628,6 +628,8 @@ function renderMcp() {
     detailZeile(8 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
+      ["Gemessen", m.messung === "direkt" ? `direkt beim Server, am ${datum(m.gemessen_am)}` : m.messung === "Transkript" ? `aus den Transkripten der letzten ${D.hook_tage} Tage` : ""],
+      ["Schemata", typeof m.schemata === "number" ? `≈ ${zahl(m.schemata)} Tokens, laden erst bei Bedarf und zählen deshalb nicht zum Kontext je Sitzung` : ""],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
       ["Begründung", txt(m.bewertung?.grund || "")],
       ["Entfernen", befehlZeile(m.befehl)],
@@ -635,11 +637,11 @@ function renderMcp() {
   return abschnitt("mcp", "Global eingetragene Server und ihr Status",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th class="zahl">Werkzeuge</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Genutzt</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je(`Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. ` +
-      `„Werkzeuge“ und „Genutzt“ stammen aus den Transkripten der letzten ${D.hook_tage} Tage; Server, die dort nie geladen wurden, stehen als „nicht gemessen“. ` +
-      `„Kontext je Sitzung“ misst den Anweisungsblock des Servers. Die Werkzeugnamen kommen dazu, ihre Schemata nur bei sofort geladenen Werkzeugen — beides steht nicht im Transkript, der echte Wert liegt also höher. ` +
+      `„Genutzt“ stammt aus den Transkripten der letzten ${D.hook_tage} Tage. HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen; alle anderen misst sie in denselben Transkripten, und wer dort nie geladen wurde, steht als „nicht gemessen“. ` +
+      `„Kontext je Sitzung“ zählt den Anweisungsblock und die Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details. ` +
       `„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.`,
       "Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins; was nur in einem Projekt gilt, steht unter Projekte. Status aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest. " +
-      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht. Zeile anklicken für Details."));
+      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht; HTTP-Server ohne Anmeldung fragt die Inventur deshalb einmal am Tag selbst. „Kontext je Sitzung“ zählt dann Anweisungsblock und Werkzeugnamen, die Schemata stehen in den Details. Zeile anklicken für Details."));
 }
 
 function renderPlugins() {
@@ -1118,7 +1120,7 @@ function renderHilfe() {
       <li>Herkunft: plugin.json im Plugin-Ordner, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills. Klarnamen und belegte Quellen stehen in bewertung-codex.json.</li>
       <li>Updates: wie bei Claude Code per <code>gh api</code> gegen den Stand bei der Installation.</li>
       ${versionenHilfe}
-      <li>Nicht gemessen: Werkzeuge und Kontext der MCP-Server, Ausgabe und Laufzeit der Hooks. Codex protokolliert sie nicht.</li>
+      <li>Nicht gemessen: Ausgabe und Laufzeit der Hooks, Werkzeuge und Kontext von MCP-Servern, die per Befehl starten oder eine Anmeldung brauchen. Codex protokolliert sie nicht; HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst.</li>
     </ul>`]] : [["Aktualisieren", `<ul>
       <li><code>python3 build.py</code> im Projektordner 3zero-Harness-Inventur: liest Bestand, Status, Nutzung und verfügbare Updates neu ein, ohne Claude. Neue Einträge erscheinen als „neu · unbewertet“. Mit <code>--harness codex</code> zeigt das Dashboard stattdessen Codex; ohne Angabe gilt der zuletzt genannte.</li>
       <li><code>python3 server.py</code> im selben Ordner: liest ebenfalls neu ein und öffnet das Dashboard auf http://127.0.0.1:8765 mit den Knöpfen im Kopf, der Spalte „Aktion“ und dem Tab „Suche“. Als Datei geöffnet bleibt es nur lesbar. Zum erneuten Öffnen <code>~/.3zero-harness-inventur/start.html</code> nehmen: Die Adresse allein lehnt der Server ab, weil ihr der Schlüssel dieses Laufs fehlt.</li>
@@ -1161,7 +1163,7 @@ function renderHilfe() {
       <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Die Aufrufe der MCP-Server zählt <code>build.py</code> selbst in den Transkripten. Für Agenten und Hooks gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
       <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4. Aus denselben Transkripten kommt ihre Laufzeit: Hooks laufen, während du wartest.</li>
-      <li>MCP-Server: Zahl der Werkzeuge, Anweisungsblock in Tokens und Aufrufe, ebenfalls aus den Transkripten. Die Schemata sofort geladener Werkzeuge stehen dort nicht, der echte Kontextwert liegt also höher. Kam ein Server in dieser Zeit nicht vor, steht „nicht gemessen“.</li>
+      <li>MCP-Server: Aufrufe aus den Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen) fragt die Inventur bei HTTP-Servern ohne Anmeldung einmal am Tag direkt ab, ohne Netz gilt der letzte Stand; bei allen anderen kommen sie aus den Transkripten. Die Schemata laden erst bei Bedarf und zählen nicht. Kam ein Server weder so noch so vor, steht „nicht gemessen“.</li>
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>
       <li>Updates: <code>build.py</code> fragt per <code>gh api</code> den aktuellen Stand des Skill-Ordners auf GitHub ab und vergleicht ihn mit dem Stand bei der Installation (<code>skillFolderHash</code>). Ohne <code>gh</code> oder Netz fehlt nur diese Angabe; fehlt der Ordner upstream, ebenfalls.</li>

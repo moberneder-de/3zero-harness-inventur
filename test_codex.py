@@ -413,6 +413,20 @@ class Mcp(CodexOrdner):
         (server,) = codex.mcp_server({"mcp_servers": {"node_repl": {"command": "n"}}}, [], {})
         self.assertEqual([server["werkzeuge"], server["tokens"]], [None, None])
 
+    def test_http_server_direkt_gemessen(self):
+        """Codex protokolliert nichts davon; HTTP-Server fragt die Inventur deshalb selbst. Abgeschaltete nicht."""
+        cfg = {"mcp_servers": {"arnie": {"url": "https://a.example/mcp"}, "aus": {"url": "https://b.example/mcp", "enabled": False}}}
+        gefragt = []
+
+        def direkt(c):
+            gefragt.append(c["url"])
+            return {"werkzeuge": 2, "anweisungen": 100, "namen_zeichen": 11, "schemata": 90, "am": "2026-09-28"}
+        server = {m["name"]: m for m in codex.mcp_server(cfg, [], {}, direkt)}
+        self.assertEqual({k: server["arnie"][k] for k in ("werkzeuge", "tokens", "schemata", "messung")},
+                         {"werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__arnie__")) / 4), "schemata": 90, "messung": "direkt"})
+        self.assertEqual([server["aus"]["werkzeuge"], server["aus"]["tokens"]], [None, None])
+        self.assertEqual(gefragt, ["https://a.example/mcp"])
+
     def test_kaputte_mcp_servers_bricht_nicht_ab(self):
         self.assertEqual(codex.mcp_server({"mcp_servers": ["x"]}, [], {}), [])
 
