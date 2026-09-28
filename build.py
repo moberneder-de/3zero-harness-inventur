@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import harness
+import mcp_direkt
 import werkzeuge
 
 HOME = Path.home()
@@ -415,8 +416,9 @@ def werkzeug_praefix(name):
 
 
 def mcp_messungen(dateien, praefixe=()):
-    """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Anweisungsblock in Tokens, Aufrufe.
-    Die Schemata sofort geladener Werkzeuge stehen nicht im Transkript; `tokens` misst nur den Anweisungsblock.
+    """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Kontext in Tokens, Aufrufe. `tokens` sind der
+    Anweisungsblock und die Werkzeugnamen, die jede Sitzung in ihrer Liste sieht; die Schemata lädt Claude Code erst
+    bei Bedarf, und sie stehen nicht im Transkript.
     `praefixe` sind die Werkzeugpräfixe der bekannten Server: Ein Servername kann selbst `__` enthalten."""
     laengste = sorted(praefixe, key=len, reverse=True)
 
@@ -452,7 +454,8 @@ def mcp_messungen(dateien, praefixe=()):
                     # Werkzeugliste und Anweisungsblock beschreiben den Server, nicht ein Ereignis, und bleiben
                     if isinstance(name, str) and name.startswith("mcp__") and (d.get("timestamp") or "")[:19] >= grenze:
                         aufrufe.setdefault(server(name), []).append((d.get("timestamp") or "")[:10])
-    return {s: {"werkzeuge": len(werkzeuge.get(s, ())), "tokens": tokens.get(s, 0),
+    return {s: {"werkzeuge": len(werkzeuge.get(s, ())),
+                "tokens": tokens.get(s, 0) + round(sum(len(n) + 1 for n in werkzeuge.get(s, ())) / 4),
                 "nutzung": {"anzahl": len(aufrufe[s]), "zuletzt": max(aufrufe[s])} if s in aufrufe else None}
             for s in set(werkzeuge) | set(tokens) | set(aufrufe)}
 
@@ -631,19 +634,24 @@ def ziel_text(c):
     return verdecken(" ".join([c.get("command") or ""] + [str(a) for a in c.get("args") or []]).strip())
 
 
-def mcp_server(plugin_liste, live, messungen=None):
-    server = {}
+def mcp_server(plugin_liste, live, messungen=None, direkt=None):
+    """`direkt` fragt einen Server anhand seiner Konfiguration selbst (mcp_direkt.gemessen); ihre Werte gehen denen aus
+    den Transkripten vor, weil sie den heutigen Stand zeigen."""
+    server, roh = {}, {}
     for name in CFG.get("claudeAiMcpEverConnected", []):
         server[name] = {"art": "claude.ai-Connector", "quelle": "claude.ai-Konto", "ziel": ""}
     for name, c in (CFG.get("mcpServers") or {}).items():
         server[name] = {"art": "User", "quelle": "~/.claude.json", "ziel": ziel_text(c)}
+        roh[name] = c
     mehrfach = mehrfache_namen(f"{pl['name']}@{pl['marktplatz']}" for pl in plugin_liste)
     for pl in plugin_liste:
         pid = f"{pl['name']}@{pl['marktplatz']}"
         for sname, c in pl["mcp"].items():
             # bei gleichem Namen in zwei Marktplätzen mit Marktplatz, sonst überschriebe der zweite den ersten.
             # Claude Code führt den Server ohne: Live-Status, Sperre und Messung hängen deshalb am `schluessel`.
-            server[f"plugin:{pid if pl['name'] in mehrfach else pl['name']}:{sname}"] = {
+            name = f"plugin:{pid if pl['name'] in mehrfach else pl['name']}:{sname}"
+            roh[name] = c
+            server[name] = {
                 "art": "Plugin",
                 "quelle": pid,
                 "ziel": ziel_text(c),
@@ -668,7 +676,12 @@ def mcp_server(plugin_liste, live, messungen=None):
         if echt in GESPERRT:
             status = "deaktiviert"
         # ohne Messung bleiben die Felder None: nicht gemessen ist etwas anderes als null Werkzeuge
-        gemessen = (messungen or {}).get(werkzeug_praefix(echt), {"werkzeuge": None, "tokens": None, "nutzung": None})
+        gemessen = (messungen or {}).get(werkzeug_praefix(echt))
+        gemessen = {**gemessen, "messung": "Transkript"} if gemessen else {"werkzeuge": None, "tokens": None, "nutzung": None}
+        # gesperrt oder mit dem Plugin aus: lädt in keine Sitzung, die Inventur fragt ihn nicht
+        d = direkt(roh[name]) if direkt and name in roh and status not in ("deaktiviert", "inaktiv (Plugin aus)") else None
+        if d:
+            gemessen = {**gemessen, **mcp_direkt.felder(d, werkzeug_praefix(echt))}
         ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": echt in GESPERRT,
                          "aus_in_projekten": aus_in.get(echt, []), **s, **gemessen})
     return ergebnis
@@ -957,7 +970,9 @@ def claude_inventar():
     live = mcp_live()
     # erst die Server, dann die Messung: Welcher Server ein Werkzeug anbietet, lässt sich nur an ihren Namen ablesen
     praefixe = [werkzeug_praefix(s.get("schluessel", s["name"])) for s in mcp_server(plugin_liste, live)]
-    mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien, praefixe))
+    speicher = werkzeuge.Zwischenspeicher(DATEN, datetime.now().date())
+    mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien, praefixe), lambda c: mcp_direkt.gemessen(c, speicher))
+    speicher.sichern()
     mcp_projekte = projekt_mcp(CFG.get("projects") or {})
     alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
     eindeutige_ids(alle)
