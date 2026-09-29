@@ -1244,5 +1244,128 @@ class BewertungFuersDashboard(unittest.TestCase):
                          {"gruppen": [], "hinweise": [], "bewertung_stand": "2026-09-17"})
 
 
+def datei(inhalt):
+    """Eine Antwort der contents-API von GitHub."""
+    import base64
+    return {"encoding": "base64", "content": base64.b64encode(json.dumps(inhalt).encode()).decode()}
+
+
+class PluginUpdates(unittest.TestCase):
+    """Ob ein Plugin ein Update hat, zeigt `claude plugin list` nicht. Es hängt davon ab, wie der Marktplatz es führt."""
+    R = "anthropics/claude-plugins-official"
+    MKT = f"repos/{R}/contents/.claude-plugin/marketplace.json"
+
+    def markieren(self, plugins, antworten):
+        gefragt = []
+
+        def gh(pfad):
+            gefragt.append(pfad)
+            return antworten.get(pfad)
+        with mock.patch.object(build, "gh_json", side_effect=gh):
+            build.plugin_updates_markieren(plugins)
+        return gefragt
+
+    def pl(self, name, version, commit=None, repo=R):
+        return {"name": name, "marktplatz_repo": repo, "version": version, "commit": commit}
+
+    def test_version_aus_plugin_json_nicht_aus_dem_marktplatz(self):
+        """security-guidance steht im Marktplatz als 2.0.7, installiert und in plugin.json ist 2.0.8."""
+        mkt = {"plugins": [{"name": "sg", "version": "2.0.7", "source": "./plugins/sg"}, {"name": "neu", "source": "./plugins/neu"}]}
+        sg, neu = self.pl("sg", "2.0.8"), self.pl("neu", "1.0.0")
+        gefragt = self.markieren([sg, neu], {
+            self.MKT: datei(mkt),
+            f"repos/{self.R}/contents/plugins/sg/.claude-plugin/plugin.json": datei({"version": "2.0.8"}),
+            f"repos/{self.R}/contents/plugins/neu/.claude-plugin/plugin.json": datei({"version": "1.1.0"})})
+        self.assertEqual((sg["update"], neu["update"]), (False, True))
+        self.assertEqual(gefragt.count(self.MKT), 1)
+
+    def test_ohne_version_zaehlt_nur_eine_aenderung_am_ordner(self):
+        """Die Version ist dann der Stand des ganzen Marktplatzes. Dessen übrige Commits ändern das Plugin nicht:
+        Liegt der letzte Commit am Ordner im installierten Stand, gibt es nichts Neues."""
+        mkt = {"plugins": [{"name": "cc", "source": "./plugins/cc"}, {"name": "alt", "source": "./plugins/alt/"}]}
+        cc, alt = self.pl("cc", "a1a1a1a1a1a1", "a1a1a1a1a1a1ff"), self.pl("alt", "b2b2b2b2b2b2", "b2b2b2b2b2b2ff")
+        self.markieren([cc, alt], {
+            self.MKT: datei(mkt),
+            f"repos/{self.R}/commits?per_page=1&path=plugins/cc": [{"sha": "f1"}],
+            f"repos/{self.R}/compare/a1a1a1a1a1a1ff...f1": {"status": "behind"},
+            f"repos/{self.R}/commits?per_page=1&path=plugins/alt": [{"sha": "f2"}],
+            f"repos/{self.R}/compare/b2b2b2b2b2b2ff...f2": {"status": "ahead"}})
+        self.assertEqual((cc["update"], alt["update"]), (False, True))
+
+    def test_ganzes_repo_als_plugin_zaehlt_nur_seine_bestandteile(self):
+        """document-skills: Quelle `./`, die Skills stehen im Marktplatz-Eintrag, und die Version ist der kurze Commit.
+        Ein neuer Commit am Skill claude-api im selben Repo ist für document-skills kein Update."""
+        s = "anthropics/skills"
+        doc = self.pl("document-skills", "33375500bcea", repo=s)
+        api = self.pl("claude-api", "33375500bcea", repo=s)
+        mkt = {"plugins": [{"name": "document-skills", "source": "./", "skills": ["./skills/xlsx", "./skills/pdf"]},
+                           {"name": "claude-api", "source": "./", "skills": ["./skills/claude-api"]}]}
+        self.markieren([doc, api], {
+            f"repos/{s}/contents/.claude-plugin/marketplace.json": datei(mkt),
+            f"repos/{s}/commits?per_page=1&path=skills/xlsx": [{"sha": "x"}],
+            f"repos/{s}/compare/33375500bcea...x": {"status": "behind"},
+            f"repos/{s}/commits?per_page=1&path=skills/pdf": [{"sha": "p"}],
+            f"repos/{s}/compare/33375500bcea...p": {"status": "identical"},
+            f"repos/{s}/commits?per_page=1&path=skills/claude-api": [{"sha": "c"}],
+            f"repos/{s}/compare/33375500bcea...c": {"status": "ahead"}})
+        self.assertEqual((doc["update"], api["update"]), (False, True))
+
+    def test_ganzes_repo_ohne_liste_zaehlt_jeder_commit(self):
+        s = "o/r"
+        pl = self.pl("r", "abcdef1", repo=s)
+        self.markieren([pl], {
+            f"repos/{s}/contents/.claude-plugin/marketplace.json": datei({"plugins": [{"name": "r", "source": "./"}]}),
+            f"repos/{s}/commits?per_page=1": [{"sha": "h"}],
+            f"repos/{s}/compare/abcdef1...h": {"status": "ahead"}})
+        self.assertIs(pl["update"], True)
+
+    def test_fester_stand_im_marktplatz(self):
+        mkt = {"plugins": [{"name": "sp", "source": {"source": "url", "url": "https://github.com/obra/superpowers.git", "sha": "s2"}}]}
+        alt, aktuell, ohne = self.pl("sp", "6.4.1", "s1"), self.pl("sp", "6.4.1", "s2"), self.pl("sp", "6.4.1")
+        self.markieren([alt, aktuell, ohne], {self.MKT: datei(mkt)})
+        self.assertEqual((alt["update"], aktuell["update"], "update" in ohne), (True, False, False))
+
+    def test_fremdes_repo_ohne_festen_stand(self):
+        mkt = {"plugins": [{"name": "gh", "source": {"source": "github", "repo": "o/p", "ref": "main"}},
+                           {"name": "sub", "source": {"source": "git-subdir", "url": "https://github.com/o/q.git", "path": "plugins/x"}}]}
+        gh, sub = self.pl("gh", "1.0"), self.pl("sub", "3.1")
+        self.markieren([gh, sub], {
+            self.MKT: datei(mkt),
+            "repos/o/p/contents/.claude-plugin/plugin.json?ref=main": datei({"version": "2.0"}),
+            "repos/o/q/contents/plugins/x/.claude-plugin/plugin.json": datei({"version": "3.1"})})
+        self.assertEqual((gh["update"], sub["update"]), (True, False))
+
+    def test_ohne_antwort_fehlt_nur_die_angabe(self):
+        """Ohne gh, ohne Netz, unbekannt im Marktplatz oder ein Marktplatz ohne GitHub-Repo: nichts markieren, nichts fragen."""
+        mkt = {"plugins": [{"name": "da", "source": "./plugins/da"}]}
+        fehlt, stumm, fremd = self.pl("fehlt", "1.0"), self.pl("da", "1.0"), self.pl("x", "1.0", repo=None)
+        gefragt = self.markieren([fehlt, stumm, fremd], {self.MKT: datei(mkt)})
+        self.assertEqual([("update" in p) for p in (fehlt, stumm, fremd)], [False, False, False])
+        self.assertTrue(all(self.R in g for g in gefragt))
+
+    def test_kaputte_antworten(self):
+        self.markieren([self.pl("a", "1")], {self.MKT: {"content": "kein base64!", "encoding": "base64"}})
+        mkt = {"plugins": [{"name": "a", "source": 3}, "x", {"name": "b", "source": "./../../user"},
+                           {"name": "c", "source": {"source": "github", "repo": "-x/y"}}]}
+        a, b_, c = self.pl("a", "1"), self.pl("b", "1", "abc1234"), self.pl("c", "1")
+        gefragt = self.markieren([a, b_, c], {self.MKT: datei(mkt)})
+        self.assertEqual([("update" in p) for p in (a, b_, c)], [False, False, False])
+        # Pfade und Repos kommen aus einer fremden Datei und gehen an gh api: nur in harmloser Form
+        self.assertEqual(gefragt, [self.MKT])
+
+
+class PluginCommit(unittest.TestCase):
+    def test_gespeicherter_commit_kommt_ins_inventar(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "p").mkdir()
+        (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [
+            {"scope": "user", "installPath": str(tmp / "p"), "version": "1.0", "gitCommitSha": "abc"}]}}))
+        with mock.patch.object(build, "PLUGINS", tmp), mock.patch.object(build, "SETTINGS", {}), \
+                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
+            liste, _, _ = build.plugins()
+        self.assertEqual(liste[0]["commit"], "abc")
+
+
 if __name__ == "__main__":
     unittest.main()

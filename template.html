@@ -678,7 +678,7 @@ function renderPlugins() {
       anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
-    return `<tr class="haupt"><td class="name">${aufklapp(p.name)}<div class="klein">${esc(p.marktplatz)}</div></td>
+    return `<tr class="haupt"><td class="name">${aufklapp(p.name)}<div class="klein">${esc(p.marktplatz)}</div>${p.update ? '<span class="tag">Update verfügbar</span>' : ""}</td>
       <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}</td><td class="klein">${teile || "–"}</td>
       <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td>${wahlZelle(p)}</tr>` +
       detailZeile(8 + SP, [
@@ -687,7 +687,7 @@ function renderPlugins() {
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
         ["Apps", namen(p.apps || [])],
         ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")],
-        ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}`],
+        ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}${p.update === true ? " · <strong>Update verfügbar</strong>" : p.update === false ? " · aktuell" : ""}`],
         ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
         ["Homepage", p.homepage ? link(p.homepage) : ""],
         ["Aktivität", p.aktivitaet != null ? `${zahl(p.aktivitaet)} laut ${esc(D.harness_name)} (zählt auch Hook-Läufe und MCP-Aufrufe)` : ""],
@@ -1208,7 +1208,7 @@ function renderHilfe() {
       <li>Wählst du in einer Bestandstabelle eine Aktion für einen Eintrag ohne offene Empfehlung, landet er dort in der Gruppe „selbst gewählt“.</li>
     </ul>`], ["Aktionen ausführen", `<ul>
       <li>Nur mit <code>server.py</code>. In der Spalte „Aktion“ wählst du je Eintrag, was geschehen soll; vorbelegt ist, was die Empfehlung nahelegt. Ausführen lässt sich je Zeile im Tab „Empfehlungen“ oder alles über „alle … ausführen“ im Kopf, nach einer Bestätigung.</li>
-      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code> in der festen Version aus <code>harness.py</code>. Bei Plugins immer, per <code>claude plugin update</code>: Ob ein Update bereitsteht, sagt erst der Befehl. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
+      <li><b>aktualisieren</b>: bei Skills aus <code>npx skills</code> mit der Markierung „Update verfügbar“, per <code>npx skills update &lt;name&gt; -g -y</code> in der festen Version aus <code>harness.py</code>. Bei Plugins immer, per <code>claude plugin update</code>. Ob es etwas Neues bringt, zeigt „Update verfügbar“ am Plugin: verglichen mit dem Marktplatz auf GitHub, bei Plugins ohne eigene Version nur Änderungen an ihrem Ordner. Verlangt ein Marktplatz dabei einen geänderten Installationsbefehl, lehnt der Lauf ab; das Update machst du dann im Terminal, wo du den Befehl siehst.</li>
       <li><b>deinstallieren</b>: entfernt den Eintrag mit dem Befehl, der darunter steht. Eigene Skills und Befehle wandern in den Papierkorb. Eigene Hooks und die Statuszeile nimmt der Server aus ~/.claude/settings.json; einen einzelnen Hook nur abschalten kann Claude Code nicht. Zurück führt die Sicherung.</li>
       <li><b>deaktivieren</b>: bei Skills <code>skillOverrides: off</code>, bei Plugins <code>claude plugin disable</code>, bei MCP-Servern ein Eintrag in <code>deniedMcpServers</code> für alle Projekte.</li>
       <li><b>nur manuell</b>: <code>skillOverrides: user-invocable-only</code>. Der Skill bleibt per / erreichbar, lädt seine Beschreibung aber nicht mehr in jede Sitzung.</li>
