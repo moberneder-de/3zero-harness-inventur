@@ -30,6 +30,15 @@ python3 build.py                 # Bestand einlesen und Dashboard bauen
 python3 server.py                # Dashboard auf http://127.0.0.1:8765 öffnen
 ```
 
+### Jede Woche von selbst
+
+```bash
+python3 wochenlauf.py einrichten   # jeden Montag um 9 Uhr (macOS: launchd, Linux: systemd-Timer)
+python3 wochenlauf.py entfernen
+```
+
+Der Lauf startet nur `build.py` für den zuletzt genannten Harness, ohne Bewertung und ohne Suche, und ändert nichts an der Konfiguration. Eine Mitteilung kommt nur, wenn es seit der letzten Meldung Neues zu tun gibt: ein Eintrag ist neu oder weg, ein Skill ist neu ungenutzt, ein Werkzeug ist veraltet, ohne Pflege oder fehlt, oder es gibt eine Sicherheitsmeldung. Was schon gemeldet war, kommt nicht jede Woche wieder. Ein Klick auf die Mitteilung öffnet unter macOS den Skripteditor, nicht das Dashboard; das öffnest du mit `/3zero-harness-inventur` oder `python3 server.py`. Hat der Rechner zur Uhrzeit geschlafen, läuft er beim Aufwachen.
+
 Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüssel des laufenden Servers in der Adresse: `127.0.0.1` erreicht jeder Benutzer des Rechners. Den Browser öffnet er selbst; zum erneuten Öffnen dient `~/.3zero-harness-inventur/start.html` (nur für dich lesbar) oder die Adresse aus dem Terminal. Ohne ihn lässt sich das erzeugte HTML auch direkt öffnen — dann ist es lesbar, aber ohne Aktionsknöpfe.
 
 ## Was das Dashboard zeigt
@@ -98,6 +107,8 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
   verlauf-codex.json             Kontextlast und Bestand je Tag, erzeugt
   start.html                     Einstieg mit Schlüssel, nur solange server.py läuft
   werkzeuge.json                 Antworten aus dem Netz (Versionen, MCP-Messungen), einmal am Tag
+  wochenlauf.json                was der wöchentliche Lauf schon gemeldet hat
+  wochenlauf.log                 Ausgabe des wöchentlichen Laufs (macOS)
 ```
 
 Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". Das Werkzeug läuft also auch frisch geklont.
