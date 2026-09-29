@@ -828,7 +828,10 @@ class HarnessWahl(unittest.TestCase):
         self.werkzeuge = mock.patch.object(build.werkzeuge, "pruefen", return_value=[{"id": "python3", "status": "aktuell"}])
         self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
                         mock.patch.object(build, "LOGO", self.tmp / "logo.svg"), self.werkzeuge,
-                        mock.patch.object(build.werkzeuge, "quellcode_pruefen", return_value=[{"id": "/h/x", "ruht": True}])]
+                        mock.patch.object(build.werkzeuge, "quellcode_pruefen", return_value=[{"id": "/h/x", "ruht": True}]),
+                        # sonst läsen die Tests die echten Einstellungen des Rechners
+                        mock.patch.object(build.berechtigungen, "claude", return_value=[]),
+                        mock.patch.object(build.berechtigungen, "codex", return_value=[])]
         (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
@@ -928,6 +931,22 @@ class HarnessWahl(unittest.TestCase):
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual(daten["lesefehler"], [{"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"}])
         self.assertEqual((daten["skills"][0]["ungenutzt"], daten["ungenutzt_tage"]), (True, 30))
+
+    def test_berechtigungen_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
+        regel = {"bereich": "global", "quelle": "~/.claude/settings.json", "art": "allow", "regel": "Bash", "marken": ["breit"]}
+        mcp = [{"id": "mcp:plugin:github:github", "name": "plugin:github:github"},
+               {"id": "mcp:sites", "name": "sites", "schluessel": "plugin:sites:web"}]
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(mcp=mcp, projekt_mcp=[{"id": "mcp:P/q", "name": "q"}])), \
+                mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.berechtigungen, "claude", return_value=[regel]) as claude:
+            build.main(["--harness", "claude-code"])
+        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["berechtigungen"], [regel])
+        self.assertEqual(claude.call_args.args[2], {"plugin_github_github", "plugin_sites_web", "q"})
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.berechtigungen, "claude", side_effect=RuntimeError("kaputt")):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["berechtigungen"], daten["lesefehler"]), ([], [{"quelle": "Berechtigungen", "fehler": "RuntimeError: kaputt"}]))
 
     def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):

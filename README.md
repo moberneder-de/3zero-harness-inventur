@@ -34,13 +34,15 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 ## Was das Dashboard zeigt
 
-Zwölf Tabs: **Überblick**, **Empfehlungen**, **Überschneidungen**, **MCP-Server**, **Plugins**, **Skills**, **Hooks**, **Projekte**, **Werkzeuge**, **Hinweise**, **Suche**, **Hilfe**.
+Dreizehn Tabs: **Überblick**, **Empfehlungen**, **Überschneidungen**, **MCP-Server**, **Plugins**, **Skills**, **Hooks**, **Projekte**, **Werkzeuge**, **Berechtigungen**, **Hinweise**, **Suche**, **Hilfe**.
 
 Alle Tabs zeigen Globales, außer **Projekte** — dort steht, was nur in einzelnen Projektordnern gilt. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
 
 Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
 
 **Werkzeuge** zeigt, was die Inventur selbst und deine MCP-Server und Hooks laut ihrem Befehl brauchen (etwa Python, Node, Bun, `gh`, Claude Code oder Codex): installierte und neueste Version, Pflegeende der Versionslinie und, wo die Installationsart am Pfad erkennbar ist, den Befehl zum Aktualisieren (Homebrew, npm, `bun upgrade`, `claude update`). Aktualisiert wird nichts automatisch, auch nicht die feste Version von `skills`. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag. Darunter stehen **MCP-Server aus Quellcode**, meist ein Git-Klon unter `~`: ob upstream Neueres vorliegt (verglichen mit demselben Zweig auf `origin`), ob das Projekt ruht (über 180 Tage ohne Commit) und welche Sicherheitsmeldungen die GitHub Advisory Database für die installierten npm-Abhängigkeiten kennt, mit `git pull` bzw. `bun update …`/`npm update …` zum Kopieren. Ein ruhendes Projekt hebt seine Abhängigkeiten nicht mehr selbst an.
+
+**Berechtigungen** zeigt, was der Harness ohne Rückfrage darf, global und je Projekt: unter Claude Code `allow`, `ask`, `deny`, `defaultMode` und `additionalDirectories` aus den verwalteten Einstellungen, `~/.claude/settings.json` und `.claude/settings*.json` der Projekte; unter Codex `approval_policy` und `sandbox_mode` (auch in Profilen), die Regeln in `~/.codex/rules` und die vertrauten Ordner. Markiert ist, was sehr viel erlaubt (**breit**: ein ganzes Werkzeug, ein ganzer MCP-Server, ein Interpreter wie `Bash(python3:*)`, `bypassPermissions`, `danger-full-access`), was ins Leere zeigt (**verwaist**: Regel für einen Server, der nicht mehr eingetragen ist, oder ein vertrauter Ordner, den es nicht mehr gibt) und was sich **widerspricht**. Nur Anzeige: Die Dateien änderst du selbst.
 
 Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur diese Quelle; ein Banner oben nennt sie mit dem Fehler.
 
