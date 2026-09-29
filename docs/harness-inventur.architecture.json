@@ -51,10 +51,22 @@
           "daten"
         ],
         "note": "Je Quelle eine Abfrage am Tag, gemerkt in werkzeuge.json; ohne Netz gilt der letzte Stand."
+      },
+      {
+        "id": "messen",
+        "label": "Messen und melden",
+        "focus": [
+          "wochenlauf",
+          "build",
+          "berechtigungen",
+          "mcpdirekt",
+          "mcpnetz"
+        ],
+        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest, was ohne Rückfrage erlaubt ist."
       }
     ],
     "viewBox": [
-      1360,
+      1240,
       560
     ]
   },
@@ -65,7 +77,7 @@
       "label": "Claude Code",
       "sublabel": "~/.claude, ~/.claude.json",
       "pos": [
-        60,
+        40,
         70
       ],
       "size": [
@@ -79,7 +91,7 @@
       "label": "Gemeinsame Skills",
       "sublabel": "~/.agents",
       "pos": [
-        60,
+        40,
         216
       ],
       "size": [
@@ -94,7 +106,7 @@
       "label": "Codex",
       "sublabel": "~/.codex",
       "pos": [
-        60,
+        40,
         362
       ],
       "size": [
@@ -108,7 +120,7 @@
       "label": "Klone unter ~",
       "sublabel": "MCP-Server aus Quellcode",
       "pos": [
-        230,
+        200,
         470
       ],
       "size": [
@@ -122,7 +134,7 @@
       "label": "build.py",
       "sublabel": "liest den Bestand",
       "pos": [
-        430,
+        390,
         120
       ],
       "size": [
@@ -136,7 +148,7 @@
       "label": "codex.py",
       "sublabel": "derselbe Bestand aus Codex",
       "pos": [
-        430,
+        390,
         332
       ],
       "size": [
@@ -150,7 +162,7 @@
       "label": "werkzeuge.py",
       "sublabel": "Laufzeiten, MCP-Quellcode",
       "pos": [
-        600,
+        550,
         470
       ],
       "size": [
@@ -164,7 +176,7 @@
       "label": "~/.3zero-harness-inventur",
       "sublabel": "Bewertung, Inventar, Verlauf",
       "pos": [
-        800,
+        730,
         216
       ],
       "size": [
@@ -179,8 +191,8 @@
       "label": "Dashboard",
       "sublabel": "127.0.0.1:8765, mit Schlüssel",
       "pos": [
-        1150,
-        50
+        1030,
+        106
       ],
       "size": [
         170,
@@ -193,7 +205,7 @@
       "label": "server.py",
       "sublabel": "Ausliefern und Aktionen",
       "pos": [
-        1150,
+        1030,
         216
       ],
       "size": [
@@ -207,7 +219,7 @@
       "label": "Hintergrundlauf",
       "sublabel": "claude -p bzw. codex exec",
       "pos": [
-        1150,
+        1030,
         382
       ],
       "size": [
@@ -222,7 +234,7 @@
       "label": "Netz",
       "sublabel": "endoflife.date, npm, GitHub",
       "pos": [
-        960,
+        870,
         470
       ],
       "size": [
@@ -230,6 +242,62 @@
         66
       ],
       "tag": "1× am Tag"
+    },
+    {
+      "id": "wochenlauf",
+      "type": "backend",
+      "label": "wochenlauf.py",
+      "sublabel": "montags, meldet nur Neues",
+      "pos": [
+        390,
+        0
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "berechtigungen",
+      "type": "security",
+      "label": "berechtigungen.py",
+      "sublabel": "was ohne Rückfrage geht",
+      "pos": [
+        590,
+        0
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "mcpdirekt",
+      "type": "backend",
+      "label": "mcp_direkt.py",
+      "sublabel": "initialize, tools/list",
+      "pos": [
+        790,
+        0
+      ],
+      "size": [
+        150,
+        66
+      ]
+    },
+    {
+      "id": "mcpnetz",
+      "type": "external",
+      "label": "MCP im Netz",
+      "sublabel": "nur HTTP, ohne Zugang",
+      "pos": [
+        1030,
+        0
+      ],
+      "size": [
+        170,
+        50
+      ]
     }
   ],
   "connections": [
@@ -273,7 +341,7 @@
       "label": "schreibt Inventar und Dashboard",
       "variant": "emphasis",
       "labelAt": [
-        680,
+        646,
         138
       ]
     },
@@ -335,6 +403,30 @@
       "to": "daten",
       "label": "geprüfte Bewertung",
       "variant": "security"
+    },
+    {
+      "id": "wochenlauf-build",
+      "from": "wochenlauf",
+      "to": "build",
+      "label": "startet"
+    },
+    {
+      "id": "build-berechtigungen",
+      "from": "build",
+      "to": "berechtigungen",
+      "label": "Tab Berechtigungen"
+    },
+    {
+      "id": "build-mcpdirekt",
+      "from": "build",
+      "to": "mcpdirekt",
+      "label": "MCP-Server"
+    },
+    {
+      "id": "mcpdirekt-netz",
+      "from": "mcpdirekt",
+      "to": "mcpnetz",
+      "label": "1× am Tag"
     }
   ],
   "cards": [
@@ -342,10 +434,10 @@
       "dot": "cyan",
       "title": "Werkzeug im Repo",
       "items": [
-        "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex",
-        "werkzeuge.py prüft Laufzeiten und MCP-Server aus Quellcode, nur zur Anzeige",
-        "server.py liefert aus und führt die gewählten Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
-        "template.html ist die Oberfläche, Farben nur aus dem 3zero-Brand-Kit"
+        "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex; mcp_direkt.py fragt HTTP-MCP-Server selbst",
+        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist; beides nur zur Anzeige",
+        "server.py liefert aus und führt Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
+        "wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt"
       ]
     },
     {
@@ -353,7 +445,7 @@
       "title": "Datenordner",
       "items": [
         "Bewertung: Handarbeit, teuer neu zu erzeugen",
-        "Inventar, Dashboard, Verlauf und werkzeuge.json: erzeugt, jederzeit neu baubar",
+        "Inventar, Dashboard, Verlauf, werkzeuge.json und wochenlauf.json: erzeugt, jederzeit neu baubar",
         "harness.json merkt den zuletzt gestarteten Harness",
         "start.html gibt es nur, solange der Server läuft: Sie trägt den Schlüssel und ist nur für dich lesbar"
       ]
