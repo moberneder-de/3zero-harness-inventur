@@ -2,7 +2,7 @@
 name: 3zero-harness-inventur
 description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen). Mit „suche <Bedarf>“ sucht er neue Skills, Plugins und MCP-Server, gleicht sie mit dem Bestand ab und installiert nach Bestätigung.
 disable-model-invocation: true
-argument-hint: "[suche <Bedarf>]"
+argument-hint: "[suche <Bedarf> | wochenlauf einrichten | wochenlauf entfernen]"
 ---
 
 Das Dashboard hat zwei Schichten. `build.py` liest den Bestand ohne Urteil aus der Konfiguration: was installiert ist, ob es aktiv ist, woher es stammt, wie oft es genutzt wurde. Die Bewertungsdatei (siehe Harness) enthält, was Urteil braucht: deutsche Kurzbeschreibung, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise. Dieser Skill bringt die zweite Schicht auf den Stand der ersten.
@@ -31,6 +31,8 @@ Setze in allen Befehlen unten `<harness>` ein und arbeite mit den Dateien aus de
 Verlangt der Benutzer eine **komplette Neubewertung**, gehst du in Schritt 2 alle Einträge durch, nicht nur die neuen.
 
 Beginnt die Anfrage mit **suche** (etwa `/3zero-harness-inventur suche Mermaid-Diagramme`), folgst du stattdessen dem Abschnitt „Suchen und installieren“ am Ende.
+
+Lautet sie **wochenlauf einrichten** oder **wochenlauf entfernen**, sag in einem Satz, was passiert (einrichten: jeden Montag um 9 Uhr liest `build.py` den Bestand neu ein und meldet sich nur bei Neuem; unter macOS per launchd, unter Linux per systemd-Timer), hol die Bestätigung ein und führe dann `python3 <Projektordner>/wochenlauf.py einrichten` bzw. `… entfernen` aus. Mehr nicht: keine Bewertung, kein Dashboard. Fertig, wenn der Befehl ohne Fehler endet und du seine Ausgabe weitergegeben hast.
 
 ## 1. Bestand einlesen
 
