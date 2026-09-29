@@ -16,7 +16,7 @@ from urllib.parse import unquote, urlparse
 import harness
 import mcp_direkt
 import werkzeuge
-from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text
+from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
@@ -446,7 +446,8 @@ def mcp_server(cfg, plugin_liste, mcp_tage, direkt=None):
              "gesperrt": False, "aus_in_projekten": [], "nutzung": nutzung(mcp_tage.get(nutzungsname)),
              "werkzeuge": None, "tokens": None}
         d = direkt(c) if direkt and status == "aktiv" else None
-        return {**e, **mcp_direkt.felder(d, werkzeug_praefix(nutzungsname))} if d else e
+        e = {**e, **mcp_direkt.felder(d, werkzeug_praefix(nutzungsname))} if d else e
+        return {**e, "netz": netz(art, c, status, e.get("messung"), (d or {}).get("anmeldung"))}
 
     mcp_servers = cfg.get("mcp_servers")
     mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}

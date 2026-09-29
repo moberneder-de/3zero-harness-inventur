@@ -74,8 +74,10 @@ def senden(url, nachricht, sitzung, version, zeitgrenze, methode="POST"):
 
 
 def fragen(url, zeitgrenze=5):
-    """Anweisungen und Schemata in Tokens (Zeichen ÷ 4, wie bei den Transkripten), die Zahl der Werkzeuge und die Länge
-    ihrer Namen in Zeichen. None, wenn der Server nicht, mit einem Fehler oder unerwartet antwortet."""
+    """Anweisungen und Schemata in Tokens (Zeichen ÷ 4, wie bei den Transkripten), die Zahl der Werkzeuge, wie viele davon
+    der Server als nur lesend auszeichnet (readOnlyHint, eine Angabe des Servers, keine Prüfung) und die Länge ihrer Namen
+    in Zeichen. Verlangt er eine Anmeldung, nur {"anmeldung": …}: OAuth, wenn er auf seinen Anbieter verweist
+    (resource_metadata). None, wenn er nicht, mit einem anderen Fehler oder unerwartet antwortet."""
     sitzung = version = None
     try:
         sitzung, init = senden(url, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
@@ -98,7 +100,12 @@ def fragen(url, zeitgrenze=5):
         schemata = sum(len(json.dumps({k: w.get(k) for k in ("name", "description", "inputSchema")}, ensure_ascii=False))
                        for w in werkzeuge)
         return {"werkzeuge": len(werkzeuge), "anweisungen": round(len(anweisungen) / 4),
-                "namen_zeichen": sum(len(w["name"]) + 1 for w in werkzeuge), "schemata": round(schemata / 4)}
+                "namen_zeichen": sum(len(w["name"]) + 1 for w in werkzeuge), "schemata": round(schemata / 4),
+                "lesend": sum(1 for w in werkzeuge if isinstance(w.get("annotations"), dict) and w["annotations"].get("readOnlyHint") is True)}
+    except urllib.error.HTTPError as fehler:
+        if fehler.code != 401 or sitzung:  # nur die Antwort auf initialize sagt etwas über die Anmeldung
+            return None
+        return {"anmeldung": "OAuth" if "resource_metadata" in (fehler.headers.get("WWW-Authenticate") or "") else "nötig"}
     except Exception:  # Netz, Zeitgrenze, HTTP-Fehler, kein JSON, unerwarteter Aufbau: dann fehlt nur diese Angabe
         return None
     finally:
@@ -122,7 +129,10 @@ def gemessen(c, speicher):
 
 def felder(d, praefix):
     """Die Felder fürs Inventar. Kontext je Sitzung sind Anweisungen und Werkzeugnamen, wie sie in der Liste stehen
-    (`mcp__<Server>__<Name>`); die Schemata lädt der Harness erst bei Bedarf, sie stehen daneben."""
+    (`mcp__<Server>__<Name>`); die Schemata lädt der Harness erst bei Bedarf, sie stehen daneben. Nach einer Antwort,
+    die nur eine Anmeldung verlangt, gibt es nichts zu übernehmen: Die Werte aus den Transkripten bleiben."""
+    if "werkzeuge" not in d:
+        return {}
     namen = round((d["namen_zeichen"] + d["werkzeuge"] * len(f"mcp__{praefix}__")) / 4)
     return {"werkzeuge": d["werkzeuge"], "tokens": d["anweisungen"] + namen, "schemata": d["schemata"],
-            "messung": "direkt", "gemessen_am": d["am"]}
+            "anweisungen": d["anweisungen"], "lesend": d.get("lesend"), "messung": "direkt", "gemessen_am": d["am"]}

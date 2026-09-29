@@ -646,13 +646,22 @@ function renderMcp() {
   const ausIn = n => n ? ` <span class="klein">· aus in ${n} ${n === 1 ? "Projekt" : "Projekten"}</span>` : "";
   const werkzeuge = m => typeof m.werkzeuge === "number" ? zahl(m.werkzeuge) : ungemessen;
   const kontext = m => typeof m.tokens === "number" ? (m.tokens ? "≈ " + zahl(m.tokens) : '<span class="leer">–</span>') : ungemessen;
-  const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}</td>
+  /* Server im Netz: Die Domain kommt aus der Konfiguration, vom Server stammen nur Zahlen */
+  const imNetz = m => m.netz ? `<div class="klein" title="Server im Netz">↗ ${esc(m.netz.domain)} · Anmeldung: ${esc(m.netz.anmeldung)}</div>` : "";
+  const netzDetails = m => m.netz ? [
+    `Domain <code>${esc(m.netz.domain)}</code> · Anmeldung: ${esc(m.netz.anmeldung)}`,
+    typeof m.anweisungen === "number" ? (m.anweisungen ? `Anweisungen: ≈ ${zahl(m.anweisungen)} Tokens fremder Text in jeder Sitzung, der das Modell lenken kann` : "keine Anweisungen") : "",
+    typeof m.lesend === "number" && m.werkzeuge ? (m.lesend === m.werkzeuge ? `alle ${zahl(m.werkzeuge)} Werkzeuge nur lesend (laut Server)`
+      : `${zahl(m.werkzeuge - m.lesend)} von ${zahl(m.werkzeuge)} Werkzeugen nicht als nur lesend ausgezeichnet (laut Server)`) : "",
+  ].filter(Boolean).join("<br>") : "";
+  const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}${imNetz(m)}</td>
       <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td>
       <td class="zahl">${werkzeuge(m)}</td><td class="zahl">${kontext(m)}</td><td class="zahl">${nutzungText(m)}</td>
       <td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
     detailZeile(8 + SP, [
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
+      ["Im Netz", netzDetails(m)],
       ["Gemessen", m.messung === "direkt" ? `direkt beim Server, am ${datum(m.gemessen_am)}` : m.messung === "Transkript" ? `aus den Transkripten der letzten ${D.hook_tage} Tage` : ""],
       ["Schemata", typeof m.schemata === "number" ? `≈ ${zahl(m.schemata)} Tokens, laden erst bei Bedarf und zählen deshalb nicht zum Kontext je Sitzung` : ""],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
@@ -664,9 +673,10 @@ function renderMcp() {
     je(`Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. ` +
       `„Genutzt“ stammt aus den Transkripten der letzten ${D.hook_tage} Tage. HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen; alle anderen misst sie in denselben Transkripten, und wer dort nie geladen wurde, steht als „nicht gemessen“. ` +
       `„Kontext je Sitzung“ zählt den Anweisungsblock und die Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details. ` +
+      `↗ markiert Server im Netz, mit der Domain aus der Konfiguration und der Art der Anmeldung; ihr Anweisungsblock ist fremder Text in jeder Sitzung. „nur lesend“ ist eine Angabe des Servers, keine Prüfung. ` +
       `„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.`,
       "Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins; was nur in einem Projekt gilt, steht unter Projekte. Status aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest. " +
-      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht; HTTP-Server ohne Anmeldung fragt die Inventur deshalb einmal am Tag selbst. „Kontext je Sitzung“ zählt dann Anweisungsblock und Werkzeugnamen, die Schemata stehen in den Details. Zeile anklicken für Details."));
+      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht; HTTP-Server ohne Anmeldung fragt die Inventur deshalb einmal am Tag selbst. „Kontext je Sitzung“ zählt dann Anweisungsblock und Werkzeugnamen, die Schemata stehen in den Details. ↗ markiert Server im Netz, mit Domain und Anmeldung. Zeile anklicken für Details."));
 }
 
 function renderPlugins() {

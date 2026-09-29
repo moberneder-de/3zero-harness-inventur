@@ -426,6 +426,8 @@ class Mcp(CodexOrdner):
                          {"werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__arnie__")) / 4), "schemata": 90, "messung": "direkt"})
         self.assertEqual([server["aus"]["werkzeuge"], server["aus"]["tokens"]], [None, None])
         self.assertEqual(gefragt, ["https://a.example/mcp"])
+        self.assertEqual((server["arnie"]["netz"], server["aus"]["netz"]),
+                         ({"domain": "a.example", "anmeldung": "keine"}, {"domain": "b.example", "anmeldung": "unbekannt"}))
 
     def test_kaputte_mcp_servers_bricht_nicht_ab(self):
         self.assertEqual(codex.mcp_server({"mcp_servers": ["x"]}, [], {}), [])

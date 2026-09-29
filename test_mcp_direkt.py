@@ -13,7 +13,7 @@ import werkzeuge
 
 WERKZEUGE = [
     {"name": "suche", "description": "Sucht.", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}},
-    {"name": "lies", "description": "Liest.", "inputSchema": {"type": "object"}},
+    {"name": "lies", "description": "Liest.", "inputSchema": {"type": "object"}, "annotations": {"readOnlyHint": True}},
 ]
 
 
@@ -96,10 +96,12 @@ class Direkt(unittest.TestCase):
         return [n["method"] if n else art for art, n, _ in self.anfragen]
 
     def test_anweisungen_werkzeuge_und_schemata(self):
-        schemata = sum(len(json.dumps(w, ensure_ascii=False)) for w in WERKZEUGE)
+        """`lesend` zählt Werkzeuge, die der Server selbst als nur lesend auszeichnet (readOnlyHint); die Annotationen
+        gehören nicht zum Schema, das der Harness lädt."""
+        schemata = sum(len(json.dumps({k: w[k] for k in ("name", "description", "inputSchema")}, ensure_ascii=False)) for w in WERKZEUGE)
         self.assertEqual(mcp_direkt.fragen(self.url), {
             "werkzeuge": 2, "anweisungen": 100, "namen_zeichen": len("suche") + 1 + len("lies") + 1,
-            "schemata": round(schemata / 4)})
+            "schemata": round(schemata / 4), "lesend": 1})
 
     def test_sse_und_sitzung(self):
         """Die Antwort kommt als Event-Stream; ab initialize trägt jede Anfrage die Sitzung, am Ende wird sie beendet."""
@@ -115,11 +117,16 @@ class Direkt(unittest.TestCase):
     def test_ohne_werkzeuge_und_ohne_anweisungen(self):
         """Ohne `tools` in den Fähigkeiten fragt die Inventur nicht nach Werkzeugen: Das wäre ein Fehler, keine Null."""
         self.faehigkeiten, self.anweisungen = {}, None
-        self.assertEqual(mcp_direkt.fragen(self.url), {"werkzeuge": 0, "anweisungen": 0, "namen_zeichen": 0, "schemata": 0})
+        self.assertEqual(mcp_direkt.fragen(self.url), {"werkzeuge": 0, "anweisungen": 0, "namen_zeichen": 0, "schemata": 0, "lesend": 0})
         self.assertNotIn("tools/list", self.methoden())
 
     def test_anmeldung_noetig(self):
+        """Mit resource_metadata verweist der Server auf seinen OAuth-Anbieter (MCP-Autorisierung)."""
         self.status, self.status_kopf = 401, {"WWW-Authenticate": 'Bearer resource_metadata="x"'}
+        self.assertEqual(mcp_direkt.fragen(self.url), {"anmeldung": "OAuth"})
+        self.status, self.status_kopf = 401, {}
+        self.assertEqual(mcp_direkt.fragen(self.url), {"anmeldung": "nötig"})
+        self.status = 403
         self.assertIsNone(mcp_direkt.fragen(self.url))
 
     def test_umleitung_wird_nicht_verfolgt(self):
@@ -180,10 +187,13 @@ class Gemessen(unittest.TestCase):
     def test_felder_fuers_inventar(self):
         """Kontext je Sitzung: Anweisungen plus die Namen, wie sie in der Liste der Werkzeuge stehen (`mcp__<Server>__<Name>`).
         Die Schemata lädt der Harness erst bei Bedarf; sie stehen daneben und zählen nicht."""
-        d = {"werkzeuge": 2, "anweisungen": 100, "namen_zeichen": 11, "schemata": 90, "am": "2026-09-28"}
+        d = {"werkzeuge": 2, "anweisungen": 100, "namen_zeichen": 11, "schemata": 90, "lesend": 1, "am": "2026-09-28"}
         self.assertEqual(mcp_direkt.felder(d, "srv"), {
-            "werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__srv__")) / 4), "schemata": 90,
-            "messung": "direkt", "gemessen_am": "2026-09-28"})
+            "werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__srv__")) / 4), "schemata": 90, "anweisungen": 100,
+            "lesend": 1, "messung": "direkt", "gemessen_am": "2026-09-28"})
+        # gemerkt vor `lesend`: dann ist es unbekannt, nicht null
+        self.assertIsNone(mcp_direkt.felder({k: v for k, v in d.items() if k != "lesend"}, "srv")["lesend"])
+        self.assertEqual(mcp_direkt.felder({"anmeldung": "OAuth", "am": "2026-09-28"}, "srv"), {})
 
 
 if __name__ == "__main__":
