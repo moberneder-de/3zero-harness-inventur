@@ -781,6 +781,42 @@ class Verlauf(unittest.TestCase):
         pfad.write_text("kein json", encoding="utf-8")
         self.assertEqual(build.verlauf_fortschreiben(pfad, {"datum": "2026-09-18"}), [{"datum": "2026-09-18"}])
 
+    def pfad(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        return tmp / "verlauf.json"
+
+    def test_ids_nur_fuer_heute_und_den_letzten_lauf_davor(self):
+        """Mehr braucht der Vergleich nicht; der Verlauf wächst jeden Tag und steckt ganz im Dashboard."""
+        pfad = self.pfad()
+        for tag in ("2026-09-26", "2026-09-27", "2026-09-28"):
+            reihe = build.verlauf_fortschreiben(pfad, {"datum": tag, "kontextlast": 1, "ids": {"mcp": [f"mcp:{tag}"]}})
+        self.assertEqual([("ids" in e) for e in reihe], [False, True, True])
+        self.assertEqual(json.loads(pfad.read_text(encoding="utf-8")), reihe)
+
+    def test_neu_und_entfernt_seit_dem_letzten_lauf_vor_heute(self):
+        """Mehrere Läufe am selben Tag überschreiben sich; verglichen wird deshalb mit dem Tag davor, sonst wäre nach dem
+        zweiten Lauf alles „unverändert“. Ein Status zählt nicht, nur ob die ID da ist."""
+        pfad = self.pfad()
+        build.verlauf_fortschreiben(pfad, {"datum": "2026-09-27", "ids": {"mcp": ["mcp:a"], "skills": ["skill:x", "skill:y"]}})
+        build.verlauf_fortschreiben(pfad, {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a", "mcp:neu"], "skills": ["skill:x", "skill:y"]}})
+        reihe = build.verlauf_fortschreiben(pfad, {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a", "mcp:neu"], "skills": ["skill:x"]}})
+        self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {"mcp": ["mcp:neu"]}, "entfernt": {"skills": ["skill:y"]}})
+
+    def test_nichts_geaendert(self):
+        reihe = [{"datum": "2026-09-27", "ids": {"mcp": ["mcp:a"]}}, {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a"]}}]
+        self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {}, "entfernt": {}})
+
+    def test_ohne_vergleich_keine_aenderungen(self):
+        """Erster Lauf, oder der Tag davor stammt aus einem Verlauf ohne IDs: Sonst stünde alles als „neu“ da."""
+        self.assertIsNone(build.aenderungen([{"datum": "2026-09-28", "ids": {"mcp": ["mcp:a"]}}]))
+        self.assertIsNone(build.aenderungen([{"datum": "2026-09-27", "kontextlast": 5}, {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a"]}}]))
+
+    def test_art_ohne_alten_stand_zaehlt_nicht(self):
+        reihe = [{"datum": "2026-09-27", "ids": {"mcp": ["mcp:a"]}},
+                 {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a"], "projekt_mcp": ["mcp:P/q"]}}]
+        self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {}, "entfernt": {}})
+
 
 class HarnessWahl(unittest.TestCase):
     def setUp(self):
@@ -848,12 +884,16 @@ class HarnessWahl(unittest.TestCase):
         self.assertTrue((self.daten / "dashboard.html").exists())
 
     def test_verlauf_liegt_je_harness_getrennt_und_kommt_ins_inventar(self):
-        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(skills=[{"tokens": 40}])), \
+        """Die IDs bleiben in der Verlaufsdatei; ins Inventar und damit ins Dashboard kommt nur, was sich geändert hat."""
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(skills=[{"id": "skill:x", "tokens": 40}])), \
                 mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
         reihe = json.loads((self.daten / "verlauf-claude-code.json").read_text())
         self.assertEqual([r["kontextlast"] for r in reihe], [40])
-        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["verlauf"], reihe)
+        self.assertEqual(reihe[0]["ids"]["skills"], ["skill:x"])
+        inventar = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual(inventar["verlauf"], [{k: v for k, v in r.items() if k != "ids"} for r in reihe])
+        self.assertIsNone(inventar["aenderungen"])
         self.assertFalse((self.daten / "verlauf-codex.json").exists())
 
     def test_bewertung_traegt_die_uhrzeit_der_datei(self):
@@ -881,7 +921,7 @@ class HarnessWahl(unittest.TestCase):
     def test_lesefehler_und_ungenutzte_kommen_ins_inventar(self):
         def inventar():
             build.LESEFEHLER.append({"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"})
-            return self.leeres_inventar(skills=[{"name": "s", "im_kontext": True, "tokens": 5, "nutzung": None}])
+            return self.leeres_inventar(skills=[{"id": "skill:s", "name": "s", "im_kontext": True, "tokens": 5, "nutzung": None}])
         build.LESEFEHLER.append({"quelle": "vom letzten Lauf", "fehler": "…"})
         with mock.patch.object(build, "claude_inventar", side_effect=inventar), mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])

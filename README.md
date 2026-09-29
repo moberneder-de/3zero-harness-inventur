@@ -92,10 +92,10 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
   dashboard.html                 Oberfläche, erzeugt
   dashboard-codex.html           Oberfläche, erzeugt
   harness.json                   welcher Harness zuletzt lief
-  verlauf-claude-code.json       Kontextlast je Tag, erzeugt
-  verlauf-codex.json             Kontextlast je Tag, erzeugt
+  verlauf-claude-code.json       Kontextlast und Bestand je Tag, erzeugt
+  verlauf-codex.json             Kontextlast und Bestand je Tag, erzeugt
   start.html                     Einstieg mit Schlüssel, nur solange server.py läuft
-  werkzeuge.json                 neueste Versionen der Werkzeuge, einmal am Tag abgefragt
+  werkzeuge.json                 Antworten aus dem Netz (Versionen, MCP-Messungen), einmal am Tag
 ```
 
 Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". Das Werkzeug läuft also auch frisch geklont.
