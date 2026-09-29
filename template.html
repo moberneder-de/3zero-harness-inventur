@@ -460,6 +460,23 @@ function abschnitt(id, titel, inhalt, intro) {
   return `<section id="${id}"><div class="wrap"><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
 }
 
+/* Was seit dem letzten Lauf vor heute dazukam oder wegfiel, aus build.py (aenderungen). Ein Status zählt nicht,
+   nur ob der Eintrag da ist. Neues verlinkt auf seinen Tab; Entferntes gibt es dort nicht mehr. */
+const ARTEN = { mcp: ["MCP-Server", "mcp"], plugins: ["Plugins", "plugins"], skills: ["Skills", "skills"], hooks: ["Hooks", "hooks"],
+  projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"] };
+function renderAenderungen() {
+  const a = D.aenderungen;
+  if (!a || (!Object.keys(a.neu).length && !Object.keys(a.entfernt).length)) return "";
+  const kurz = id => esc(id.slice(id.indexOf(":") + 1));
+  /* eine Zeile je Art; nach einem ganz neuen Bestand wären das Dutzende Namen, die klappen ein */
+  const zeilen = (wie, teil, link) => Object.entries(teil).filter(([art]) => ARTEN[art]).map(([art, ids]) => {
+    const namen = ids.map(id => link ? `<a href="#${ARTEN[art][1]}">${kurz(id)}</a>` : kurz(id)).join(", ");
+    const titel = `<strong>${wie}, ${ARTEN[art][0]}:</strong>`;
+    return ids.length <= 8 ? `<div>${titel} ${namen}</div>` : `<details><summary>${titel} ${ids.length}</summary><div class="klein">${namen}</div></details>`;
+  }).join("");
+  return `<div class="banner"><strong>Seit dem Lauf vom ${datum(a.seit)}</strong>${zeilen("Neu", a.neu, true)}${zeilen("Entfernt", a.entfernt, false)}</div>`;
+}
+
 function renderUeberblick() {
   const mcpAn = D.mcp.filter(m => m.status === je("verbunden", "aktiv")).length;
   const plAn = D.plugins.filter(p => p.status === "aktiv").length;
@@ -511,7 +528,7 @@ function renderUeberblick() {
          <button type="button" role="tab" id="kontext-reiter-zeit" aria-controls="kontext-zeit" aria-selected="false" tabindex="-1">über die Zeit</button>
        </div>${balken}${zeit}`
     : balken;
-  return abschnitt("ueberblick", "Was installiert ist und was es kostet", bannerHtml + kpis + kontext);
+  return abschnitt("ueberblick", "Was installiert ist und was es kostet", renderAenderungen() + bannerHtml + kpis + kontext);
 }
 
 /* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
@@ -1073,6 +1090,7 @@ function renderHilfe() {
   /* für beide Harnesses gleich */
   const werkzeugeHilfe = `<li>Der Tab „Werkzeuge“ zeigt, was die Inventur und deine MCP-Server und Hooks brauchen: installierte und neueste Version, Pflegeende der Versionslinie und den Befehl zum Aktualisieren. Darunter stehen MCP-Server aus Quellcode (meist ein Git-Klon unter ~): ob upstream Neueres vorliegt, ob das Projekt ruht, und Sicherheitsmeldungen zu ihren npm-Abhängigkeiten. Aktualisieren musst du selbst; nach einem Python-Update den Server neu starten.</li>`;
   const lesefehlerHilfe = `<li>Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur dieses; ein Banner im Überblick nennt es mit dem Fehler.</li>`;
+  const aenderungenHilfe = `<li>Kam seit dem letzten Lauf an einem früheren Tag etwas dazu oder fiel weg, nennt es eine Karte oben im Überblick, etwa einen MCP-Server, den ein anderes Werkzeug still eingetragen hat. Mehrere Läufe am selben Tag zählen als einer; ein geänderter Status zählt nicht.</li>`;
   const nachAktionenHilfe = `<li>Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Eine laufende Bewertung hält Aktionen nicht auf.</li>`;
   const versionenHilfe = `<li>Werkzeuge: installierte Version per <code>--version</code>, neueste und Pflegeende von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Sicherheitsmeldungen aus der GitHub Advisory Database, jeweils zur installierten Version eines Pakets.</li>`;
   const teile = CODEX ? [["Aktualisieren", `<ul>
@@ -1091,6 +1109,7 @@ function renderHilfe() {
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
       ${lesefehlerHilfe}
+      ${aenderungenHilfe}
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>
       <li>„prüfen“ hängt an einer Entscheidung, die nur du treffen kannst; die Begründung nennt sie. „· Plugin“ heißt: Der Eintrag übernimmt die Empfehlung seines Plugins.</li>
@@ -1136,6 +1155,7 @@ function renderHilfe() {
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
       ${lesefehlerHilfe}
+      ${aenderungenHilfe}
       <li>Hinweise nennen Funde außerhalb der Tabellen. Einen erzeugt das Dashboard selbst: Overrides in <code>skillOverrides</code> für Skills, die es nicht gibt.</li>
     </ul>`], ["Empfehlungen lesen", `<ul>
       <li>${badge("behalten")} ${badge("prüfen")} ${badge("entfernen")} ${badge("abschalten")} ${badge("nur manuell")}</li>

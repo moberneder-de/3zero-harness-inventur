@@ -899,7 +899,8 @@ def kontextlast(inhalt):
 
 
 def verlauf_fortschreiben(pfad, eintrag):
-    """Eine Zeile je Tag: Mehrere Läufe am selben Tag überschreiben sich, sonst wüchse die Datei bei jedem Öffnen."""
+    """Eine Zeile je Tag: Mehrere Läufe am selben Tag überschreiben sich, sonst wüchse die Datei bei jedem Öffnen.
+    Die IDs (`ids`) bleiben nur heute und beim letzten Lauf davor: Mehr braucht aenderungen() nicht."""
     try:
         reihe = json.loads(Path(pfad).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -908,8 +909,32 @@ def verlauf_fortschreiben(pfad, eintrag):
         reihe = []
     reihe = [e for e in reihe if isinstance(e, dict) and isinstance(e.get("datum"), str) and e["datum"] != eintrag["datum"]] + [eintrag]
     reihe.sort(key=lambda e: e["datum"])
+    behalten = {eintrag["datum"], max((e["datum"] for e in reihe if e["datum"] < eintrag["datum"]), default=None)}
+    reihe = [e if e["datum"] in behalten else {k: v for k, v in e.items() if k != "ids"} for e in reihe]
     harness.schreiben(pfad, json.dumps(reihe, ensure_ascii=False, indent=1))
     return reihe
+
+
+ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "projekt_skills", "projekt_mcp")
+
+
+def aenderungen(reihe):
+    """Was seit dem letzten Lauf vor heute neu oder weg ist, je Art. Verglichen wird mit dem Tag davor, weil sich
+    Läufe am selben Tag überschreiben. None ohne Vergleich (erster Lauf, alter Verlauf ohne IDs); eine Art, die der
+    alte Stand nicht kennt, zählt nicht, sonst stünde sie ganz als „neu“ da."""
+    if len(reihe) < 2 or not isinstance(reihe[-2].get("ids"), dict) or not isinstance(reihe[-1].get("ids"), dict):
+        return None
+    vorher, jetzt = reihe[-2]["ids"], reihe[-1]["ids"]
+    neu, weg = {}, {}
+    for art, ids in jetzt.items():
+        if not isinstance(vorher.get(art), list):
+            continue
+        alt = {i for i in vorher[art] if isinstance(i, str)}  # die Datei ist von Hand änderbar
+        if dazu := sorted(set(ids) - alt):
+            neu[art] = dazu
+        if fort := sorted(alt - set(ids)):
+            weg[art] = fort
+    return {"seit": reihe[-2]["datum"], "neu": neu, "entfernt": weg}
 
 
 def ungenutzt_markieren(skills, plugins, heute):
@@ -1041,9 +1066,12 @@ def main(argv=None):
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
         "datum": jetzt.strftime("%Y-%m-%d"), "kontextlast": last,
-        **{art: len(inhalt.get(art, [])) for art in ("mcp", "plugins", "skills", "hooks")}})
+        **{art: len(inhalt.get(art, [])) for art in ("mcp", "plugins", "skills", "hooks")},
+        "ids": {art: sorted(e["id"] for e in inhalt.get(art, [])) for art in ID_ARTEN}})
+    # ins Dashboard nur, was sich geändert hat: Die IDs zweier Tage wären dort ein paar Kilobyte ohne Nutzen
     daten = {"erstellt": jetzt.strftime("%Y-%m-%d %H:%M"), "harness": h, "harness_name": angaben["name"],
-             "version": version(angaben["cli"]), "kontextlast": last, "verlauf": verlauf,
+             "version": version(angaben["cli"]), "kontextlast": last,
+             "verlauf": [{k: v for k, v in e.items() if k != "ids"} for e in verlauf], "aenderungen": aenderungen(verlauf),
              "bewertung_erstellt": datei_stand(DATEN / angaben["bewertung"]), **inhalt}
     harness.schreiben(DATEN / angaben["inventar"], json.dumps(daten, ensure_ascii=False, indent=1))
 
