@@ -24,6 +24,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import berechtigungen
 import harness
@@ -548,7 +549,7 @@ def mcp_messungen(dateien, praefixe=()):
                     if isinstance(name, str) and name.startswith("mcp__") and (d.get("timestamp") or "")[:19] >= grenze:
                         aufrufe.setdefault(server(name), []).append((d.get("timestamp") or "")[:10])
     return {s: {"werkzeuge": len(werkzeuge.get(s, ())),
-                "tokens": tokens.get(s, 0) + round(sum(len(n) + 1 for n in werkzeuge.get(s, ())) / 4),
+                "tokens": tokens.get(s, 0) + round(sum(len(n) + 1 for n in werkzeuge.get(s, ())) / 4), "anweisungen": tokens.get(s, 0),
                 "nutzung": {"anzahl": len(aufrufe[s]), "zuletzt": max(aufrufe[s])} if s in aufrufe else None}
             for s in set(werkzeuge) | set(tokens) | set(aufrufe)}
 
@@ -728,6 +729,37 @@ def ziel_text(c):
     return verdecken(" ".join([c.get("command") or ""] + [str(a) for a in c.get("args") or []]).strip())
 
 
+LOKAL = {"localhost", "127.0.0.1", "::1"}
+
+
+def netz(art, c, status, messung, anmeldung):
+    """Betreiber und Anmeldung eines MCP-Servers im Netz; None für Server, die per Befehl oder auf diesem Rechner laufen.
+    Die Domain stammt aus der Konfiguration, nie aus einer Antwort des Servers. `anmeldung` ist die Antwort auf die
+    direkte Frage (mcp_direkt): verlangt der Server eine, weiß das nur er."""
+    if art == "claude.ai-Connector":
+        return {"domain": "claude.ai", "anmeldung": "über dein claude.ai-Konto"}
+    url = (c or {}).get("url")
+    try:
+        host = urlparse(url).hostname if isinstance(url, str) else None
+    except ValueError:
+        host = None
+    if not host or host in LOKAL:
+        return None
+    if "oauth" in c:
+        weg = "OAuth"
+    elif any(k in c for k in mcp_direkt.ZUGANG):
+        weg = "Header oder Token"
+    elif anmeldung:
+        weg = anmeldung
+    elif messung == "direkt":
+        weg = "keine"
+    elif status == "Anmeldung nötig":
+        weg = "nötig, nicht angemeldet"
+    else:
+        weg = "unbekannt"
+    return {"domain": host, "anmeldung": weg}
+
+
 def mcp_server(plugin_liste, live, messungen=None, direkt=None):
     """`direkt` fragt einen Server anhand seiner Konfiguration selbst (mcp_direkt.gemessen); ihre Werte gehen denen aus
     den Transkripten vor, weil sie den heutigen Stand zeigen."""
@@ -777,7 +809,8 @@ def mcp_server(plugin_liste, live, messungen=None, direkt=None):
         if d:
             gemessen = {**gemessen, **mcp_direkt.felder(d, werkzeug_praefix(echt))}
         ergebnis.append({"id": f"mcp:{name}", "name": name, "status": status, "gesperrt": echt in GESPERRT,
-                         "aus_in_projekten": aus_in.get(echt, []), **s, **gemessen})
+                         "aus_in_projekten": aus_in.get(echt, []), **s, **gemessen,
+                         "netz": netz(s["art"], roh.get(name), status, gemessen.get("messung"), (d or {}).get("anmeldung"))})
     return ergebnis
 
 

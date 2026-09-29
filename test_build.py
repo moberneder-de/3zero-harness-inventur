@@ -696,9 +696,9 @@ class McpMessungen(unittest.TestCase):
         # tokens: Anweisungsblock plus die Namen, die jede Sitzung in der Liste der Werkzeuge sieht, je mit Zeilenende
         self.assertEqual(build.mcp_messungen(dateien), {
             "upnote": {"werkzeuge": 2, "tokens": 100 + round((len("mcp__upnote__search\nmcp__upnote__view") + 1) / 4),
-                       "nutzung": {"anzahl": 2, "zuletzt": "2026-09-13"}},
-            "docs": {"werkzeuge": 1, "tokens": round(len("mcp__docs__batch\n") / 4), "nutzung": None},
-            "claude_ai_Docs": {"werkzeuge": 0, "tokens": 10, "nutzung": None},
+                       "anweisungen": 100, "nutzung": {"anzahl": 2, "zuletzt": "2026-09-13"}},
+            "docs": {"werkzeuge": 1, "tokens": round(len("mcp__docs__batch\n") / 4), "anweisungen": 0, "nutzung": None},
+            "claude_ai_Docs": {"werkzeuge": 0, "tokens": 10, "anweisungen": 10, "nutzung": None},
         })
 
     def test_aufrufe_vor_der_grenze_zaehlen_nicht(self):
@@ -712,7 +712,7 @@ class McpMessungen(unittest.TestCase):
             aufruf("2026-05-28T08:00:00Z"), aufruf("2026-09-12T08:00:00Z"))
         with mock.patch.object(build, "zeitgrenze", return_value="2026-09-06T00:00:00"):
             self.assertEqual(build.mcp_messungen(dateien), {
-                "upnote": {"werkzeuge": 2, "tokens": 10, "nutzung": {"anzahl": 1, "zuletzt": "2026-09-12"}}})
+                "upnote": {"werkzeuge": 2, "tokens": 10, "anweisungen": 0, "nutzung": {"anzahl": 1, "zuletzt": "2026-09-12"}}})
 
     def test_anzeigename_wird_zum_werkzeugpraefix(self):
         self.assertEqual(build.werkzeug_praefix("claude.ai Claude Docs"), "claude_ai_Claude_Docs")
@@ -752,6 +752,35 @@ class McpMessungen(unittest.TestCase):
         self.assertEqual([eintraege["lokal"].get(k) for k in felder], [4, 20, None, "Transkript", None, None])
         self.assertEqual([eintraege["gesperrt"].get(k) for k in ("werkzeuge", "messung")], [None, None])
         self.assertEqual(gefragt, ["https://a.example/mcp"])
+        self.assertEqual((eintraege["arnie"]["netz"], eintraege["lokal"]["netz"]), ({"domain": "a.example", "anmeldung": "keine"}, None))
+
+    def test_verlangt_der_server_eine_anmeldung_bleiben_die_transkripte(self):
+        cfg = {"mcpServers": {"raindrop": {"type": "http", "url": "https://api.raindrop.example/mcp"}}}
+        messungen = {"raindrop": {"werkzeuge": 24, "tokens": 197, "nutzung": None}}
+        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
+            (e,) = build.mcp_server([], None, messungen, lambda c: {"anmeldung": "OAuth", "am": "2026-09-29"})
+        self.assertEqual((e["werkzeuge"], e["tokens"], e["messung"], e["netz"]),
+                         (24, 197, "Transkript", {"domain": "api.raindrop.example", "anmeldung": "OAuth"}))
+        self.assertNotIn("anmeldung", e)
+
+
+class McpImNetz(unittest.TestCase):
+    def test_betreiber_und_anmeldung(self):
+        """Die Domain stammt aus der Konfiguration, nie aus einer Antwort des Servers."""
+        http = {"type": "http", "url": "https://mcp.a.example/mcp?key=geheim"}
+        self.assertEqual(build.netz("User", http, "verbunden", "direkt", None), {"domain": "mcp.a.example", "anmeldung": "keine"})
+        self.assertEqual(build.netz("User", http, "verbunden", "Transkript", "OAuth")["anmeldung"], "OAuth")
+        self.assertEqual(build.netz("User", {**http, "headers": {"A": "b"}}, "verbunden", None, None)["anmeldung"], "Header oder Token")
+        self.assertEqual(build.netz("Plugin", {**http, "oauth": {"clientId": "x"}}, "verbunden", None, None)["anmeldung"], "OAuth")
+        self.assertEqual(build.netz("User", http, "Anmeldung nötig", None, None)["anmeldung"], "nötig, nicht angemeldet")
+        self.assertEqual(build.netz("User", http, "verbunden", "Transkript", None)["anmeldung"], "unbekannt")
+        self.assertEqual(build.netz("claude.ai-Connector", None, "verbunden", None, None),
+                         {"domain": "claude.ai", "anmeldung": "über dein claude.ai-Konto"})
+
+    def test_lokal_ist_nicht_im_netz(self):
+        for c in ({"command": "npx"}, {"type": "http", "url": "http://127.0.0.1:9/mcp"}, {"url": "http://localhost/mcp"},
+                  {"type": "http", "url": "http://[::1]:9/mcp"}, {"type": "http", "url": "kaputt"}, None):
+            self.assertIsNone(build.netz("User", c, "verbunden", None, None), c)
 
 
 class Verlauf(unittest.TestCase):
