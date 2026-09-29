@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import berechtigungen
 import harness
 import mcp_direkt
 import werkzeuge
@@ -898,6 +899,15 @@ def kontextlast(inhalt):
     return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, []))
 
 
+def rechte(h, inhalt):
+    """Der Tab „Berechtigungen“ des jeweiligen Harness. Verwaist ist eine MCP-Regel, deren Server nicht mehr eingetragen ist."""
+    if h == "codex":
+        import codex
+        return berechtigungen.codex(codex.lies_toml(codex.CODEX / "config.toml"), codex.CODEX / "rules", HOME)
+    praefixe = {werkzeug_praefix(e.get("schluessel", e["name"])) for e in inhalt.get("mcp", []) + inhalt.get("projekt_mcp", [])}
+    return berechtigungen.claude(HOME, (CFG.get("projects") or {}).keys(), praefixe)
+
+
 def verlauf_fortschreiben(pfad, eintrag):
     """Eine Zeile je Tag: Mehrere Läufe am selben Tag überschreiben sich, sonst wüchse die Datei bei jedem Öffnen.
     Die IDs (`ids`) bleiben nur heute und beim letzten Lauf davor: Mehr braucht aenderungen() nicht."""
@@ -1062,6 +1072,11 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("MCP-Server aus Quellcode", fehler)
         inhalt["quellcode"] = []
+    try:
+        inhalt["berechtigungen"] = rechte(h, inhalt)
+    except Exception as fehler:
+        lesefehler("Berechtigungen", fehler)
+        inhalt["berechtigungen"] = []
     inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE, ruhend_tage=werkzeuge.RUHEND_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {

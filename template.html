@@ -81,6 +81,12 @@ h3 { font-size: 16px; font-weight: 600; }
 .banner strong { color: var(--text-dark); }
 .banner details { margin: 4px 0; }
 .banner summary { cursor: pointer; }
+.rechte { margin-top: 18px; }
+.rechte > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; list-style: none; }
+.rechte > summary::-webkit-details-marker { display: none; }
+.rechte > summary::before { content: "▸"; color: var(--cyan); }
+.rechte[open] > summary::before { content: "▾"; }
+.rechte .tabelle { margin-top: 8px; }
 .banner details div { margin-top: 4px; }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 10px; }
@@ -263,6 +269,7 @@ try {
   <a href="#hooks">Hooks</a>
   <a href="#projekte">Projekte</a>
   <a href="#werkzeuge">Werkzeuge<span id="zahl-werkzeuge"></span></a>
+  <a href="#berechtigungen">Berechtigungen<span id="zahl-berechtigungen"></span></a>
   <a href="#hinweise">Hinweise</a>
   <a href="#suche">Suche<span id="such-stand"></span></a>
   <a href="#hilfe">Hilfe</a>
@@ -340,6 +347,7 @@ const STATUS = {
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
+  "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"],
   "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
@@ -886,6 +894,39 @@ function renderQuellcode() {
     <div class="tabelle"><table><thead><tr><th>Ordner</th><th>Upstream</th><th>Abhängigkeiten</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>`;
 }
 
+/* Was der Harness ohne Rückfrage darf. Nur Anzeige: Die Regeln stehen in Dateien, die der Benutzer selbst pflegt.
+   Bereiche mit einer Markierung stehen offen, alle anderen klappen ein; ein Projekt sammelt schnell Dutzende Regeln. */
+const RECHT_ART = { allow: "erlaubt", ask: "fragt", prompt: "fragt", deny: "verboten", forbidden: "verboten",
+  Modus: "Modus", Ordner: "Ordner", Vertrauen: "vertraut", unlesbar: "unlesbar" };
+function renderBerechtigungen() {
+  const liste = D.berechtigungen || [];
+  const markiert = z => z.marken.length > 0;
+  const tabelle = zeilen => `<div class="tabelle"><table><thead><tr><th>Regel</th><th>Art</th><th>Quelle</th><th>Hinweis</th></tr></thead><tbody>${
+    [...zeilen].sort((a, b) => markiert(b) - markiert(a)).map(z => `<tr><td><code>${esc(z.regel)}</code></td>
+      <td class="nowrap">${esc(RECHT_ART[z.art] || z.art)}${z.verwaltet ? '<div class="klein">verwaltet</div>' : ""}</td>
+      <td class="klein">${esc(z.bereich === "global" || z.art === "Vertrauen" ? z.quelle : z.quelle.replace(/^.*\/(\.claude\/[^/]+)$/, "$1"))}</td><td>${z.marken.map(statusBadge).join("<br>") || '<span class="leer">–</span>'}</td></tr>`).join("")}</tbody></table></div>`;
+  const zusammen = zeilen => {
+    const teile = ["breit", "verwaist", "widerspricht"].map(m => [m, zeilen.filter(z => z.marken.includes(m)).length]).filter(([, n]) => n);
+    return teile.length ? " · " + teile.map(([m, n]) => `${n} ${m}`).join(", ") : "";
+  };
+  const gruppe = (titel, zeilen) => `<details class="rechte"${zeilen.some(markiert) ? " open" : ""}><summary><strong>${esc(titel)}</strong>
+    <span class="klein">${zeilen.length} ${zeilen.length === 1 ? "Eintrag" : "Einträge"}${zusammen(zeilen)}</span></summary>${tabelle(zeilen)}</details>`;
+  const vertrauen = liste.filter(z => z.art === "Vertrauen");
+  const regeln = liste.filter(z => z.art !== "Vertrauen");
+  const global = regeln.filter(z => z.bereich === "global");
+  const projekte = [...new Set(regeln.filter(z => z.bereich !== "global").map(z => z.bereich))].sort();
+  const vertrauensTabelle = vertrauen.length ? gruppe("Vertraute Ordner", vertrauen.map(z => ({ ...z, regel: z.bereich, art: z.regel }))) : "";
+  const inhalt = liste.length
+    ? (global.length ? gruppe("Global", global) : "") + projekte.map(p => gruppe(p, regeln.filter(z => z.bereich === p))).join("") + vertrauensTabelle
+    : '<p class="leer">Keine Regeln gefunden: Es gelten die Standards des Harness.</p>';
+  return abschnitt("berechtigungen", "Was ohne Rückfrage erlaubt ist", inhalt,
+    je(`Aus den verwalteten Einstellungen, <code>~/.claude/settings.json</code> und je Projekt aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code>. ` +
+      `„breit“ heißt: ein ganzes Werkzeug (etwa <code>Bash</code> ohne Klammer), ein ganzer MCP-Server, ein Interpreter mit beliebigen Argumenten wie <code>Bash(python3:*)</code>, dazu <code>defaultMode: bypassPermissions</code> und Ordner wie <code>~</code>. ` +
+      `„verwaist“: eine Regel für einen MCP-Server, der nicht mehr eingetragen ist. „widerspricht“: dieselbe Regel steht auch als ask oder deny; es gilt die strengere. Nur Anzeige: Ändern von Hand in der genannten Datei.`,
+      `Aus <code>~/.codex/config.toml</code> (<code>approval_policy</code>, <code>sandbox_mode</code>, auch in Profilen, und die vertrauten Ordner) und den Regeln in <code>~/.codex/rules</code>. ` +
+      `„breit“ heißt: <code>approval_policy: never</code>, <code>sandbox_mode: danger-full-access</code> oder eine Regel für ein ganzes Programm oder eine Shell mit <code>-c</code>. „verwaist“: ein vertrauter Ordner, den es nicht mehr gibt. Nur Anzeige: Ändern von Hand in der genannten Datei.`));
+}
+
 function renderHinweise() {
   const hinweise = [...D.hinweise];
   const verwaist = D.overrides_verwaist.map(n => `\`${n}\``).join(", ");
@@ -1090,6 +1131,7 @@ function renderHilfe() {
   /* für beide Harnesses gleich */
   const werkzeugeHilfe = `<li>Der Tab „Werkzeuge“ zeigt, was die Inventur und deine MCP-Server und Hooks brauchen: installierte und neueste Version, Pflegeende der Versionslinie und den Befehl zum Aktualisieren. Darunter stehen MCP-Server aus Quellcode (meist ein Git-Klon unter ~): ob upstream Neueres vorliegt, ob das Projekt ruht, und Sicherheitsmeldungen zu ihren npm-Abhängigkeiten. Aktualisieren musst du selbst; nach einem Python-Update den Server neu starten.</li>`;
   const lesefehlerHilfe = `<li>Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur dieses; ein Banner im Überblick nennt es mit dem Fehler.</li>`;
+  const berechtigungenHilfe = `<li>Der Tab „Berechtigungen“ zeigt, was ${je("Claude Code", "Codex")} ohne Rückfrage darf, global und je ${je("Projekt", "vertrautem Ordner")}, und markiert, was sehr viel erlaubt („breit“), ins Leere zeigt („verwaist“) oder sich widerspricht. Die Zahl im Tab zählt die breiten Regeln. Ändern musst du die Dateien selbst.</li>`;
   const aenderungenHilfe = `<li>Kam seit dem letzten Lauf an einem früheren Tag etwas dazu oder fiel weg, nennt es eine Karte oben im Überblick, etwa einen MCP-Server, den ein anderes Werkzeug still eingetragen hat. Mehrere Läufe am selben Tag zählen als einer; ein geänderter Status zählt nicht.</li>`;
   const nachAktionenHilfe = `<li>Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Eine laufende Bewertung hält Aktionen nicht auf.</li>`;
   const versionenHilfe = `<li>Werkzeuge: installierte Version per <code>--version</code>, neueste und Pflegeende von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Sicherheitsmeldungen aus der GitHub Advisory Database, jeweils zur installierten Version eines Pakets.</li>`;
@@ -1108,6 +1150,7 @@ function renderHilfe() {
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
+      ${berechtigungenHilfe}
       ${lesefehlerHilfe}
       ${aenderungenHilfe}
     </ul>`], ["Empfehlungen lesen", `<ul>
@@ -1154,6 +1197,7 @@ function renderHilfe() {
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
+      ${berechtigungenHilfe}
       ${lesefehlerHilfe}
       ${aenderungenHilfe}
       <li>Hinweise nennen Funde außerhalb der Tabellen. Einen erzeugt das Dashboard selbst: Overrides in <code>skillOverrides</code> für Skills, die es nicht gibt.</li>
@@ -1258,7 +1302,7 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderWerkzeuge() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderHinweise() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
 for (const [id, feld] of FILTERFELDER) {
   const el = document.getElementById(id);
@@ -1271,6 +1315,8 @@ skillsFiltern();
   const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length
     + (D.quellcode || []).filter(q => q.befehl || q.upstream.befehl).length;
   document.getElementById("zahl-werkzeuge").textContent = handeln ? ` (${handeln})` : "";
+  const breit = (D.berechtigungen || []).filter(z => z.marken.includes("breit")).length;
+  document.getElementById("zahl-berechtigungen").textContent = breit ? ` (${breit})` : "";
 }
 if (TOKEN) zeichne(); else renderEmpfInhalt();
 renderMeldung();
