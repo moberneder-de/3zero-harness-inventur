@@ -197,6 +197,98 @@ def github_baum(repo):
         return None
 
 
+def gh_json(pfad):
+    """GET gegen die GitHub-API per gh. None ohne gh, ohne Netz oder bei einem Fehler: Dann fehlt nur die Angabe."""
+    try:
+        r = subprocess.run(["gh", "api", pfad], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    try:
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except ValueError:
+        return None
+
+
+# Repos, Pfade und Stände kommen aus fremden Marktplatz-Dateien und gehen an gh api: nur in harmloser Form
+GH_REPO = re.compile(r"[\w][\w.-]*/[\w.-]+")
+GH_PFAD = re.compile(r"[\w.-]+(?:/[\w.-]+)*|")
+GH_REF = re.compile(r"[\w][\w./-]*")
+GITHUB_URL = re.compile(r"https://github\.com/([\w][\w.-]*/[\w.-]+?)(?:\.git)?/?")
+
+
+def gh_datei(repo, pfad, ref=None):
+    """Eine JSON-Datei aus einem GitHub-Repo über die contents-API; None, wenn sie fehlt oder nicht parst."""
+    antwort = gh_json(f"repos/{repo}/contents/{pfad}" + (f"?ref={ref}" if ref else ""))
+    try:
+        inhalt = json.loads(base64.b64decode(antwort["content"]))
+    except (TypeError, KeyError, ValueError):
+        return None
+    return inhalt if isinstance(inhalt, dict) else None
+
+
+def ordner_geaendert(repo, ordner, stand, ref):
+    """Liegt der letzte Commit am Ordner nicht im installierten Stand, gibt es Neues. None ohne Antwort."""
+    letzte = gh_json(f"repos/{repo}/commits?per_page=1" + (f"&path={ordner}" if ordner else "") + (f"&sha={ref}" if ref else ""))
+    try:
+        sha = letzte[0]["sha"]
+    except (TypeError, IndexError, KeyError):
+        return None
+    vergleich = gh_json(f"repos/{repo}/compare/{stand}...{sha}")
+    return {"ahead": True, "diverged": True, "behind": False, "identical": False}.get(
+        vergleich.get("status") if isinstance(vergleich, dict) else None)
+
+
+def plugin_update(pl, eintrag):
+    """So, wie Claude Code die Version festhält: die aus plugin.json; ohne sie der Git-Stand der Quelle, bei einem Ordner
+    im Marktplatz also der des ganzen Marktplatzes. Dessen übrige Commits ändern das Plugin nicht, deshalb zählt dort
+    nur ein Commit am Ordner, oder an den Bestandteilen, die der Eintrag selbst aufzählt (document-skills teilt sich ein
+    Repo mit anderen Plugins). Legt der Marktplatz einen Stand fest (`sha`), gilt der."""
+    quelle = eintrag.get("source")
+    stand = pl.get("commit") or (pl.get("version") if re.fullmatch(r"[0-9a-f]{7,40}", pl.get("version") or "") else None)
+    if isinstance(quelle, str):
+        repo, ordner, ref = pl["marktplatz_repo"], quelle.strip().removeprefix("./").strip("/"), None
+    elif isinstance(quelle, dict):
+        if isinstance(quelle.get("sha"), str):
+            return quelle["sha"] != pl["commit"] if pl.get("commit") else None
+        url = GITHUB_URL.fullmatch(quelle.get("url") or "") if isinstance(quelle.get("url"), str) else None
+        repo = quelle.get("repo") if quelle.get("source") == "github" else url and url.group(1)
+        ordner = str(quelle.get("path") or "").strip("/")
+        ref = quelle.get("ref")
+        if ref is not None and not (isinstance(ref, str) and GH_REF.fullmatch(ref)):
+            return None
+    else:
+        return None
+    teile = [x for k in ("skills", "commands", "agents") if isinstance(eintrag.get(k), list) for x in eintrag[k] if isinstance(x, str)]
+    pfade = [f"{ordner}/{x.strip().removeprefix('./').strip('/')}".strip("/") for x in teile] or [ordner]
+    harmlos = lambda pfad: GH_PFAD.fullmatch(pfad) and ".." not in pfad.split("/")
+    if not (isinstance(repo, str) and GH_REPO.fullmatch(repo) and harmlos(ordner) and all(map(harmlos, pfade))):
+        return None
+    manifest = gh_datei(repo, f"{ordner}/.claude-plugin/plugin.json".lstrip("/"), ref)
+    if isinstance((manifest or {}).get("version"), str):
+        return manifest["version"] != pl.get("version")
+    if not (stand and GH_REF.fullmatch(stand)):
+        return None
+    geaendert = [ordner_geaendert(repo, pfad, stand, ref) for pfad in pfade]
+    return True if True in geaendert else False if all(g is False for g in geaendert) else None
+
+
+def plugin_updates_markieren(plugins):
+    """Setzt `update` bei Plugins aus einem Marktplatz auf GitHub; `claude plugin list` zeigt das nicht. Die Marktplatz-Datei
+    einmal je Marktplatz. Ohne gh, ohne Netz oder bei einer unerwarteten Antwort bleibt das Feld weg."""
+    repos = sorted({p["marktplatz_repo"] for p in plugins if isinstance(p.get("marktplatz_repo"), str) and GH_REPO.fullmatch(p["marktplatz_repo"])})
+    with ThreadPoolExecutor() as pool:
+        marktplaetze = dict(zip(repos, pool.map(lambda r: gh_datei(r, ".claude-plugin/marketplace.json"), repos)))
+
+    def eins(pl):
+        eintraege = (marktplaetze.get(pl.get("marktplatz_repo")) or {}).get("plugins")
+        eintrag = next((e for e in eintraege if isinstance(e, dict) and e.get("name") == pl["name"]), None) if isinstance(eintraege, list) else None
+        return plugin_update(pl, eintrag) if eintrag else None
+    with ThreadPoolExecutor() as pool:
+        for pl, update in zip(plugins, pool.map(eins, plugins)):
+            if update is not None:
+                pl["update"] = update
+
+
 def updates_markieren(skills, lock):
     """Setzt `update` bei per npx skills installierten Skills: True, wenn ihr Ordner auf GitHub einen anderen Stand hat
     als bei der Installation (skillFolderHash ist die Git-SHA des Ordners). Ohne Antwort von GitHub bleibt das Feld weg."""
@@ -558,6 +650,7 @@ def plugins():
                 "autor": autor,
                 "homepage": manifest.get("homepage") or manifest.get("repository") or mkt_eintrag.get("homepage"),
                 "version": inst.get("version"),
+                "commit": inst.get("gitCommitSha"),
                 "installiert": (inst.get("installedAt") or "")[:10] or None,
                 "aktualisiert": (inst.get("lastUpdated") or "")[:10] or None,
                 "status": status,
@@ -994,6 +1087,7 @@ def fuers_dashboard(inhalt):
 
 def claude_inventar():
     plugin_liste, plugin_teile, plugin_hooks = plugins()
+    plugin_updates_markieren(plugin_liste)
     skills = persoenliche_skills() + plugin_teile
     updates_markieren(skills, LOCK)
     projekte = projekt_skills((CFG.get("projects") or {}).keys())
@@ -1109,7 +1203,7 @@ def main(argv=None):
         print(f"Noch nicht bewertet ({len(daten['unbewertet'])}): " + ", ".join(daten["unbewertet"]))
     if daten["entfallen"]:
         print(f"Bewertet, aber nicht mehr installiert ({len(daten['entfallen'])}): " + ", ".join(daten["entfallen"]))
-    updates = [e["name"] for e in daten["skills"] if e.get("update")]
+    updates = [e["name"] for e in daten["plugins"] + daten["skills"] if e.get("update")]
     if updates:
         print(f"Update verfügbar ({len(updates)}): " + ", ".join(updates))
 

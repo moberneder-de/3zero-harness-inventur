@@ -121,7 +121,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
 | Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
 | MCP-Server | Aufrufe aus denselben Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | gezählt |
-| Update verfügbar | `gh api` gegen den Stand bei der Installation (`skillFolderHash`) | genau |
+| Update verfügbar | Skills: `gh api` gegen den Stand bei der Installation (`skillFolderHash`). Plugins (Claude Code): Version aus `plugin.json`, fester `sha` im Marktplatz oder, ohne beides, ob sich ihr Ordner seit dem installierten Stand geändert hat | genau |
 | Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
 | Ungenutzt | Nutzung und Installationsdatum, 30 Tage; unter Codex gilt für Plugins mangels Datum der Stand ihres Ordners | abgeleitet |
 
