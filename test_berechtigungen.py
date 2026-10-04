@@ -35,6 +35,25 @@ class Claude(unittest.TestCase):
     def regeln(self, zeilen):
         return {(z["bereich"], z["art"], z["regel"]): z["marken"] for z in zeilen}
 
+    def test_jede_zeile_nennt_ihre_datei_fuer_die_aktion(self):
+        projekt = self.home / "P"
+        self.schreibe(projekt / ".claude/settings.local.json", {"permissions": {"allow": ["Bash(ls)"], "defaultMode": "auto"}})
+        zeilen = b.claude(self.home, [str(projekt)], set())
+        self.assertEqual({z["datei"] for z in zeilen}, {str(projekt / ".claude/settings.local.json")})
+
+    def test_doppelt_ist_eine_projektregel_die_schon_global_gilt(self):
+        projekt = self.home / "P"
+        self.schreibe(self.home / ".claude/settings.json", {"permissions": {"allow": ["WebSearch", "Bash(ls)"], "deny": ["Read(x)"]}})
+        self.schreibe(projekt / ".claude/settings.json", {"permissions": {"allow": ["WebSearch", "Bash(pwd)"], "ask": ["Bash(ls)"]}})
+        self.schreibe(projekt / ".claude/settings.local.json", {"permissions": {"allow": ["Bash(pwd)"], "deny": ["Read(x)"]}})
+        marken = self.regeln(b.claude(self.home, [str(projekt)], set()))
+        p = str(projekt)
+        self.assertEqual(marken[(p, "allow", "WebSearch")], ["doppelt"])
+        self.assertEqual(marken[(p, "deny", "Read(x)")], ["doppelt"])
+        self.assertEqual(marken[("global", "allow", "WebSearch")], [])  # die globale bleibt, die im Projekt ist überflüssig
+        self.assertEqual(marken[(p, "ask", "Bash(ls)")], ["widerspricht"])  # andere Art: kein Doppel
+        self.assertEqual(marken[(p, "allow", "Bash(pwd)")], [])  # zweimal im selben Projekt, in zwei Dateien: nicht global
+
     def test_global_und_projekt_mit_marken(self):
         projekt = self.home / "P"
         self.schreibe(self.home / ".claude/settings.json", {"permissions": {

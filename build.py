@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 import berechtigungen
 import harness
 import mcp_direkt
+import modelle
 import werkzeuge
 
 HOME = Path.home()
@@ -1029,9 +1030,39 @@ def rechte(h, inhalt):
     """Der Tab „Berechtigungen“ des jeweiligen Harness. Verwaist ist eine MCP-Regel, deren Server nicht mehr eingetragen ist."""
     if h == "codex":
         import codex
-        return berechtigungen.codex(codex.lies_toml(codex.CODEX / "config.toml"), codex.CODEX / "rules", HOME)
+        return rechte_aktionen(berechtigungen.codex(codex.lies_toml(codex.CODEX / "config.toml"), codex.CODEX / "rules", HOME))
     praefixe = {werkzeug_praefix(e.get("schluessel", e["name"])) for e in inhalt.get("mcp", []) + inhalt.get("projekt_mcp", [])}
-    return berechtigungen.claude(HOME, (CFG.get("projects") or {}).keys(), praefixe)
+    return rechte_aktionen(berechtigungen.claude(HOME, (CFG.get("projects") or {}).keys(), praefixe))
+
+
+def rechte_aktionen(zeilen):
+    """Was markiert ist, lässt sich im Dashboard entfernen: die Regel aus ihrer Datei, unter Codex der verwaiste
+    vertraute Ordner aus config.toml. Nur Regeln aus allow, ask und deny: Ein Modus oder Ordner steht nicht in einer
+    Liste, verwaltete Einstellungen gehören dem Administrator, und die Regeln in ~/.codex/rules schreibt Codex selbst.
+    Die ID nennt die Stelle selbst, keine Nummer: Nach einem neuen Lauf träfe ein Klick sonst die Nachbarzeile."""
+    for z in zeilen:
+        if not z["marken"] or z.get("verwaltet"):
+            continue
+        if z["art"] == "Vertrauen":
+            z.update(id=f"recht:Vertrauen:{z['bereich']}", aktionen={"entfernen": {"toml_tabelle_entfernen": ["projects", z["bereich"]]}})
+        elif z.get("datei") and z["art"] in ("allow", "ask", "deny"):
+            z.update(id=f"recht:{z['datei']}:{z['art']}:{z['regel']}",
+                     aktionen={"entfernen": {"regel_entfernen": {"datei": z["datei"], "art": z["art"], "regel": z["regel"]}}})
+    return zeilen
+
+
+def modelle_lesen(h, inhalt):
+    """Der Tab „Modelle“ des jeweiligen Harness: was eingestellt ist und was lief, im selben Zeitfenster wie die Hooks."""
+    if h == "codex":
+        import codex
+        grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
+        frisch = [d for d in codex.sitzungen() if d.is_file() and d.stat().st_mtime >= grenze]
+        ergebnis = modelle.codex(codex.lies_toml(codex.CODEX / "config.toml"), frisch, zeitgrenze(), HOME)
+    else:
+        dateien = [{"bereich": e.get("projekt") or "global", "eintrag": f"{e.get('typ', 'Skill')} {e['name']}", "pfad": e["pfad"],
+                    "kopf": frontmatter(e["pfad"])} for e in inhalt.get("skills", []) + inhalt.get("projekt_skills", []) if e.get("pfad")]
+        ergebnis = modelle.claude(HOME, (CFG.get("projects") or {}).keys(), dateien, transkripte(), zeitgrenze())
+    return {**ergebnis, "tage": HOOK_TAGE}
 
 
 def verlauf_fortschreiben(pfad, eintrag):
@@ -1204,6 +1235,11 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("Berechtigungen", fehler)
         inhalt["berechtigungen"] = []
+    try:
+        inhalt["modelle"] = modelle_lesen(h, inhalt)
+    except Exception as fehler:
+        lesefehler("Modelle", fehler)
+        inhalt["modelle"] = {"eingestellt": [], "gemessen": [], "tage": HOOK_TAGE}
     inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE, ruhend_tage=werkzeuge.RUHEND_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {

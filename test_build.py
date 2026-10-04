@@ -860,7 +860,9 @@ class HarnessWahl(unittest.TestCase):
                         mock.patch.object(build.werkzeuge, "quellcode_pruefen", return_value=[{"id": "/h/x", "ruht": True}]),
                         # sonst läsen die Tests die echten Einstellungen des Rechners
                         mock.patch.object(build.berechtigungen, "claude", return_value=[]),
-                        mock.patch.object(build.berechtigungen, "codex", return_value=[])]
+                        mock.patch.object(build.berechtigungen, "codex", return_value=[]),
+                        mock.patch.object(build.modelle, "claude", return_value={"eingestellt": [], "gemessen": []}),
+                        mock.patch.object(build.modelle, "codex", return_value={"eingestellt": [], "gemessen": []})]
         (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
@@ -976,6 +978,76 @@ class HarnessWahl(unittest.TestCase):
             build.main(["--harness", "claude-code"])
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual((daten["berechtigungen"], daten["lesefehler"]), ([], [{"quelle": "Berechtigungen", "fehler": "RuntimeError: kaputt"}]))
+
+    def test_verwaiste_regeln_bieten_entfernen_an(self):
+        import codex
+        datei = "/x/P/.claude/settings.local.json"
+        zeilen = [{"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "mcp__weg__lesen", "marken": ["verwaist"]},
+                  {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "Bash", "marken": ["breit"]},
+                  {"bereich": "global", "quelle": "/etc/managed-settings.json", "datei": "/etc/managed-settings.json", "art": "allow", "regel": "mcp__weg__lesen",
+                   "marken": ["verwaist"], "verwaltet": True},
+                  {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "Modus", "regel": "defaultMode: bypassPermissions", "marken": ["breit"]},
+                  {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "Bash(ls)", "marken": []},
+                  {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "WebSearch", "marken": ["doppelt"]},
+                  {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "deny", "regel": "Read(x)", "marken": ["widerspricht"]}]
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.berechtigungen, "claude", return_value=zeilen):
+            build.main(["--harness", "claude-code"])
+        rechte = json.loads((self.daten / "inventar.json").read_text())["berechtigungen"]
+        self.assertEqual((rechte[0]["id"], rechte[0]["aktionen"]), (f"recht:{datei}:allow:mcp__weg__lesen", {"entfernen": {
+            "regel_entfernen": {"datei": datei, "art": "allow", "regel": "mcp__weg__lesen"}}}))
+        self.assertEqual(rechte[1]["aktionen"], {"entfernen": {"regel_entfernen": {"datei": datei, "art": "allow", "regel": "Bash"}}})
+        self.assertNotIn("aktionen", rechte[2])  # verwaltete Einstellungen gehören dem Administrator
+        self.assertNotIn("aktionen", rechte[3])  # ein Modus ist keine Regel in einer Liste
+        self.assertNotIn("aktionen", rechte[4])  # ohne Marke gibt es nichts aufzuräumen
+        self.assertEqual([("aktionen" in z) for z in rechte[5:]], [True, True])  # doppelt, widerspricht
+        ordner = [{"bereich": "/weg", "quelle": "~/.codex/config.toml", "art": "Vertrauen", "regel": "trusted", "marken": ["verwaist"]},
+                  {"bereich": "/da", "quelle": "~/.codex/config.toml", "art": "Vertrauen", "regel": "trusted", "marken": []}]
+        with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.berechtigungen, "codex", return_value=ordner):
+            build.main(["--harness", "codex"])
+        rechte = json.loads((self.daten / "inventar-codex.json").read_text())["berechtigungen"]
+        self.assertEqual((rechte[0]["id"], rechte[0]["aktionen"]), ("recht:Vertrauen:/weg", {"entfernen": {"toml_tabelle_entfernen": ["projects", "/weg"]}}))
+        self.assertNotIn("aktionen", rechte[1])
+
+    def test_modelle_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
+        agent = self.tmp / "pruefer.md"
+        agent.write_text("---\nname: pruefer\nmodel: haiku\n---\n")
+        skill = self.tmp / "SKILL.md"
+        skill.write_text("---\nname: bauen\neffort: low\n---\n")
+        ergebnis = {"eingestellt": [{"bereich": "global", "quelle": "~/.claude/settings.json", "name": "model", "wert": "opus", "marken": []}],
+                    "gemessen": [{"projekt": "~/P", "modell": "claude-opus-5-5", "subagent": False, "antworten": 1, "tokens": 2, "aufwand": []}]}
+        inventar = self.leeres_inventar(skills=[{"id": "agent:pruefer", "name": "pruefer", "typ": "Agent", "pfad": str(agent)}],
+                                        projekt_skills=[{"id": "skill:P/bauen", "name": "bauen", "typ": "Skill", "pfad": str(skill), "projekt": "/x/P"}])
+        with mock.patch.object(build, "claude_inventar", return_value=inventar), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build, "transkripte", return_value=["t.jsonl"]), \
+                mock.patch.object(build.modelle, "claude", return_value=ergebnis) as claude:
+            build.main(["--harness", "claude-code"])
+        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["modelle"], {**ergebnis, "tage": build.HOOK_TAGE})
+        self.assertEqual(claude.call_args.args[2], [
+            {"bereich": "global", "eintrag": "Agent pruefer", "pfad": str(agent), "kopf": {"name": "pruefer", "model": "haiku"}},
+            {"bereich": "/x/P", "eintrag": "Skill bauen", "pfad": str(skill), "kopf": {"name": "bauen", "effort": "low"}}])
+        self.assertEqual(claude.call_args.args[3], ["t.jsonl"])
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.modelle, "claude", side_effect=RuntimeError("kaputt")):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["modelle"], daten["lesefehler"]),
+                         ({"eingestellt": [], "gemessen": [], "tage": build.HOOK_TAGE}, [{"quelle": "Modelle", "fehler": "RuntimeError: kaputt"}]))
+
+    def test_modelle_unter_codex_lesen_nur_frische_sitzungen(self):
+        import codex
+        frisch, alt = self.tmp / "frisch.jsonl", self.tmp / "alt.jsonl"
+        for d in (frisch, alt):
+            d.write_text("")
+        os.utime(alt, (0, 0))
+        with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(codex, "sitzungen", return_value=[alt, frisch, self.tmp / "fehlt.jsonl"]), \
+                mock.patch.object(codex, "lies_toml", return_value={"model": "gpt-6"}), \
+                mock.patch.object(build.modelle, "codex", return_value={"eingestellt": [], "gemessen": []}) as lesen:
+            build.main(["--harness", "codex"])
+        self.assertEqual(lesen.call_args.args[:2], ({"model": "gpt-6"}, [frisch]))
+        self.assertEqual(json.loads((self.daten / "inventar-codex.json").read_text())["modelle"]["tage"], build.HOOK_TAGE)
 
     def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):

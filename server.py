@@ -270,6 +270,23 @@ def toml_text_setzen(text, tabelle, schluessel, wert):
     return nl.join(zeilen) + nl
 
 
+def toml_tabelle_entfernen_text(text, pfad):
+    """Nimmt die Tabelle mit diesem Kopf samt ihren Zeilen heraus; liefert (neuer Text, ob es sie gab). Kommentare
+    direkt vor dem nächsten Kopf gehören zu dem und bleiben stehen."""
+    zeilen, nl, koepfe, im_string = toml_zeilen(text)
+    start = next((i for i, kopf in koepfe.items() if kopf == (pfad, False)), None)
+    if start is None:
+        return text, False
+    ende = next((i for i in koepfe if i > start), len(zeilen))
+    letzte = ende == len(zeilen)
+    while ende - 1 > start and ende - 1 not in im_string and zeilen[ende - 1].lstrip().startswith("#"):
+        ende -= 1
+    del zeilen[start:ende]
+    while letzte and zeilen and not zeilen[-1].strip():  # die Leerzeile vor einer letzten Tabelle bliebe sonst am Ende stehen
+        zeilen.pop()
+    return (nl.join(zeilen) + nl if zeilen else ""), True
+
+
 def skills_config_setzen(text, ziel, wert):
     """Setzt `enabled = wert` in jedem [[skills.config]]-Block, dessen path auf `ziel` zeigt; fehlt die Zeile, kommt sie
     unter den Kopf. Liefert (neuer Text, ob es einen solchen Block gab)."""
@@ -522,6 +539,9 @@ class Inventarserver(ThreadingHTTPServer):
             if e["id"] == eid and aktion in e.get("aktionen", {}):
                 # schluessel: der Name, unter dem Claude Code den Eintrag führt (bei gleichnamigen Plugins ohne Marktplatz)
                 return e.get("schluessel", e["name"]), e["aktionen"][aktion]
+        for e in inventar.get("berechtigungen", []):  # Regeln haben keinen Namen, nur ihren Text
+            if e.get("id") == eid and aktion in e.get("aktionen", {}):
+                return e["regel"], e["aktionen"][aktion]
         return None
 
     def sichern(self, datei):
@@ -735,8 +755,48 @@ class Inventarserver(ThreadingHTTPServer):
         self.settings_aendern(aendern)
         return {"ok": True, "ausgabe": f"{self.settings} → {schluessel} entfernt"}
 
+    def regel_entfernen(self, datei, art, regel):
+        """Nimmt eine Regel aus `permissions` einer Einstellungsdatei, auch in einem Projektordner; zurück führt die
+        Sicherung. Nur Einstellungsdateien von Claude Code: Der Pfad kommt aus dem Inventar, einer Datei, die auch
+        andere schreiben können."""
+        datei = Path(datei)
+        if datei.parent.name != ".claude" or datei.name not in ("settings.json", "settings.local.json"):
+            return {"ok": False, "ausgabe": f"{datei} ist keine Einstellungsdatei von Claude Code"}
+        daten = json.loads(datei.read_text(encoding="utf-8"))
+        rechte = daten.get("permissions") if isinstance(daten, dict) else None
+        regeln = rechte.get(art) if isinstance(rechte, dict) else None
+        if not isinstance(regeln, list) or regel not in regeln:
+            return {"ok": False, "ausgabe": f"{json.dumps(regel, ensure_ascii=False)} steht nicht in {datei} ({art})"}  # ohne die Datei anzufassen
+        self.sichern(datei)
+        rechte[art] = [r for r in regeln if r != regel]
+        if not rechte[art]:
+            del rechte[art]
+        if not rechte:
+            del daten["permissions"]
+        self.schreiben(datei, json.dumps(daten, indent=2, ensure_ascii=False) + "\n")
+        return {"ok": True, "ausgabe": f"{datei} → {art}: {json.dumps(regel, ensure_ascii=False)} entfernt"}
+
+    def toml_tabelle_entfernen(self, pfad):
+        """Nimmt einen vertrauten Ordner ([projects."<Pfad>"]) aus config.toml."""
+        if not (isinstance(pfad, list) and len(pfad) == 2 and pfad[0] == "projects" and isinstance(pfad[1], str)):
+            return {"ok": False, "ausgabe": "Diese Tabelle entfernt der Server nicht."}
+        if not self.codex_config.is_file():
+            return {"ok": False, "ausgabe": "~/.codex/config.toml gibt es nicht"}
+        vorhanden = lambda daten: isinstance(daten.get(pfad[0]), dict) and pfad[1] in daten[pfad[0]]
+        alt = self.config_lesen()
+        was = f'{pfad[0]}."{pfad[1]}"'
+        neu, gefunden = toml_tabelle_entfernen_text(alt, pfad)
+        if not gefunden:
+            return self.von_hand(was) if vorhanden(tomllib.loads(alt)) else {"ok": False, "ausgabe": f"{was} steht nicht in {self.codex_config}"}
+        fehler = self.config_aendern(neu, lambda daten: not vorhanden(daten), was)
+        return fehler or {"ok": True, "ausgabe": f"{self.codex_config} → [{was}] entfernt"}
+
     def ausfuehren(self, name, schritt):
         with self.sperre:
+            if "regel_entfernen" in schritt:
+                return self.regel_entfernen(**schritt["regel_entfernen"])
+            if "toml_tabelle_entfernen" in schritt:
+                return self.toml_tabelle_entfernen(schritt["toml_tabelle_entfernen"])
             if "override" in schritt:
                 return self.override_setzen(name, schritt["override"])
             if "sperren" in schritt:

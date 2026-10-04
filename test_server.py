@@ -411,6 +411,30 @@ class Server(unittest.TestCase):
         self.assertEqual(json.loads(self.settings.read_text()), {"env": {"A": "1"}})  # ein leeres "hooks" bleibt nicht stehen
         self.assertEqual(json.loads(self.sicherung(self.settings).read_text()), vorher)
 
+    def test_regel_entfernen_nimmt_nur_diese_regel_aus_der_projektdatei(self):
+        datei = self.tmp / "P" / ".claude" / "settings.local.json"
+        datei.parent.mkdir(parents=True)
+        vorher = {"permissions": {"allow": ["Bash(git push *)", "mcp__weg__lesen"], "deny": ["mcp__weg__lesen"]}, "env": {"A": "1"}}
+        datei.write_text(json.dumps(vorher, indent=2) + "\n")
+        fremd = self.tmp / "P" / "package.json"
+        fremd.write_text(json.dumps({"permissions": {"allow": ["x"]}}))
+        schritt = lambda d, regel: {"entfernen": {"regel_entfernen": {"datei": str(d), "art": "allow", "regel": regel}}}
+        rechte = [{"id": "recht:1", "regel": "mcp__weg__lesen", "aktionen": schritt(datei, "mcp__weg__lesen")},
+                  {"id": "recht:2", "regel": "Bash(git push *)", "aktionen": schritt(datei, "Bash(git push *)")},
+                  {"id": "recht:3", "regel": "x", "aktionen": schritt(fremd, "x")},
+                  {"id": "recht:4", "regel": "ohne Aktion"}]
+        (self.tmp / "inventar.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "berechtigungen": rechte}))
+        self.assertTrue(self.ausfuehren("recht:1", "entfernen")[1]["ok"])
+        self.assertEqual(json.loads(datei.read_text()), {"permissions": {"allow": ["Bash(git push *)"], "deny": ["mcp__weg__lesen"]}, "env": {"A": "1"}})
+        self.assertEqual(json.loads(self.sicherung(datei).read_text()), vorher)
+        self.assertFalse(self.ausfuehren("recht:1", "entfernen")[1]["ok"])  # steht nicht mehr da
+        self.assertTrue(self.ausfuehren("recht:2", "entfernen")[1]["ok"])
+        self.assertEqual(json.loads(datei.read_text()), {"permissions": {"deny": ["mcp__weg__lesen"]}, "env": {"A": "1"}})  # eine leere Liste bleibt nicht stehen
+        # nur Einstellungsdateien von Claude Code: Das Inventar ist eine Datei, die auch andere schreiben können
+        self.assertFalse(self.ausfuehren("recht:3", "entfernen")[1]["ok"])
+        self.assertEqual(json.loads(fremd.read_text()), {"permissions": {"allow": ["x"]}})
+        self.assertEqual(self.ausfuehren("recht:4", "entfernen")[0], 400)
+
     def test_override_ohne_bisherige_overrides(self):
         self.settings.write_text("{}\n")
         self.schreibe_inventar([], skills=[
@@ -1185,6 +1209,33 @@ enabled = true
         self.assertIn('[mcp_servers.node_repl]\nenabled = false\ncommand', text)
         text = server.toml_text_setzen(self.CONFIG, 'mcp_servers."neu"', "enabled", "false")
         self.assertTrue(text.rstrip().endswith('[mcp_servers."neu"]\nenabled = false'))
+
+    def test_toml_tabelle_entfernen_nimmt_nur_diesen_ordner(self):
+        config = self.mit_config()
+        config.write_text(self.CONFIG + '\n[projects."/weg/ordner"]\ntrust_level = "trusted"\n\n[projects."/da"]\ntrust_level = "trusted"\n')
+        rechte = [{"id": "recht:weg", "regel": "trusted", "aktionen": {"entfernen": {"toml_tabelle_entfernen": ["projects", "/weg/ordner"]}}}]
+        (self.tmp / "inventar-codex.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "berechtigungen": rechte}))
+        self.assertTrue(self.ausfuehren("recht:weg", "entfernen")[1]["ok"])
+        self.assertEqual(config.read_text(), self.CONFIG + '\n[projects."/da"]\ntrust_level = "trusted"\n')
+        self.assertFalse(self.ausfuehren("recht:weg", "entfernen")[1]["ok"])  # gibt es nicht mehr
+
+    def test_toml_tabelle_entfernen_laesst_andere_schreibweisen_stehen(self):
+        """Als Inline-Tabelle hat der Ordner keinen eigenen Kopf: nichts schreiben, „bitte von Hand“ melden."""
+        config = self.mit_config()
+        text = 'projects = { "/weg/ordner" = { trust_level = "trusted" } }\n'
+        config.write_text(text)
+        rechte = [{"id": "recht:weg", "regel": "trusted", "aktionen": {"entfernen": {"toml_tabelle_entfernen": ["projects", "/weg/ordner"]}}}]
+        (self.tmp / "inventar-codex.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "berechtigungen": rechte}))
+        ergebnis = self.ausfuehren("recht:weg", "entfernen")[1]
+        self.assertFalse(ergebnis["ok"])
+        self.assertIn("von Hand", ergebnis["ausgabe"])
+        self.assertEqual(config.read_text(), text)
+
+    def test_toml_tabelle_entfernen_text(self):
+        text = '[a]\nx = 1\n\n[projects."/weg"]\ntrust_level = "trusted"\nnotiz = """\n[projects."/da"]\n"""\n\n# bleibt\n[projects."/da"]\ny = 2\n'
+        self.assertEqual(server.toml_tabelle_entfernen_text(text, ["projects", "/weg"]), ('[a]\nx = 1\n\n# bleibt\n[projects."/da"]\ny = 2\n', True))
+        self.assertEqual(server.toml_tabelle_entfernen_text(text, ["projects", "/fehlt"]), (text, False))
+        self.assertEqual(server.toml_tabelle_entfernen_text('[projects."/weg"]\r\nx = 1\r\n', ["projects", "/weg"]), ("", True))
 
     def test_toml_text_setzen_findet_den_kopf_trotz_kommentar(self):
         """Sonst hängte es die Tabelle ein zweites Mal an; die Datei parste nicht mehr und die Aktion schlug fehl."""

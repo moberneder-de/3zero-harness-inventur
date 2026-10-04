@@ -88,6 +88,15 @@ h3 { font-size: 16px; font-weight: 600; }
 .rechte[open] > summary::before { content: "▾"; }
 .rechte .tabelle { margin-top: 8px; }
 .banner details div { margin-top: 4px; }
+.regeln { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.regeln > span { min-width: 0; }
+.legende { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13.5px; }
+.legende li { display: grid; grid-template-columns: 118px 1fr; gap: 10px; align-items: baseline; padding: 2px 0; }
+.anteil { display: inline-block; width: 90px; height: 8px; background: var(--bg-gray); border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.anteil > span { display: block; height: 8px; background: var(--cyan); border-radius: 2px; }
+td details.rechte > summary { padding: 0; }
+tr.projektzeile > td { border-bottom: 0; padding-bottom: 2px; }
+tr.modellzeile > td { padding-top: 0; }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 10px; }
 .kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 18px 18px 16px; }
@@ -270,6 +279,7 @@ try {
   <a href="#projekte">Projekte</a>
   <a href="#werkzeuge">Werkzeuge<span id="zahl-werkzeuge"></span></a>
   <a href="#berechtigungen">Berechtigungen<span id="zahl-berechtigungen"></span></a>
+  <a href="#modelle">Modelle</a>
   <a href="#hinweise">Hinweise</a>
   <a href="#suche">Suche<span id="such-stand"></span></a>
   <a href="#hilfe">Hilfe</a>
@@ -347,7 +357,7 @@ const STATUS = {
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
-  "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"],
+  "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
   "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
@@ -904,37 +914,121 @@ function renderQuellcode() {
     <div class="tabelle"><table><thead><tr><th>Ordner</th><th>Upstream</th><th>Abhängigkeiten</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>`;
 }
 
-/* Was der Harness ohne Rückfrage darf. Nur Anzeige: Die Regeln stehen in Dateien, die der Benutzer selbst pflegt.
-   Bereiche mit einer Markierung stehen offen, alle anderen klappen ein; ein Projekt sammelt schnell Dutzende Regeln. */
+/* Was der Harness ohne Rückfrage darf. Der erste Reiter zeigt nur, was markiert ist, mit dem Knopf zum Entfernen
+   (nur über den Server); der zweite je Projekt eine Zeile, aufgeklappt nach Werkzeug gebündelt.
+   Ein Projekt sammelt schnell Dutzende Regeln, die sich nur im Befehl unterscheiden. */
 const RECHT_ART = { allow: "erlaubt", ask: "fragt", prompt: "fragt", deny: "verboten", forbidden: "verboten",
   Modus: "Modus", Ordner: "Ordner", Vertrauen: "vertraut", unlesbar: "unlesbar" };
+const kurzPfad = pfad => pfad.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~");
+/* Unter-Reiter in einem Tab; das Umschalten erledigt waehleReiter() für alle role="tab" */
+function reiter(id, teile) {
+  const knoepfe = teile.map(([titel], i) => `<button type="button" role="tab" id="${id}-reiter-${i}" aria-controls="${id}-teil-${i}" aria-selected="${i === 0}"${i ? ' tabindex="-1"' : ""}>${titel}</button>`).join("");
+  return `<div class="unterreiter" role="tablist">${knoepfe}</div>` +
+    teile.map(([, html], i) => `<div role="tabpanel" id="${id}-teil-${i}" aria-labelledby="${id}-reiter-${i}"${i ? " hidden" : ""}>${html}</div>`).join("");
+}
+const ordnerName = pfad => pfad === "global" ? je("Global (alle Projekte)", "Global") : pfad.replace(/\/+$/, "").split("/").pop() || pfad;
 function renderBerechtigungen() {
   const liste = D.berechtigungen || [];
-  const markiert = z => z.marken.length > 0;
-  const tabelle = zeilen => `<div class="tabelle"><table><thead><tr><th>Regel</th><th>Art</th><th>Quelle</th><th>Hinweis</th></tr></thead><tbody>${
-    [...zeilen].sort((a, b) => markiert(b) - markiert(a)).map(z => `<tr><td><code>${esc(z.regel)}</code></td>
-      <td class="nowrap">${esc(RECHT_ART[z.art] || z.art)}${z.verwaltet ? '<div class="klein">verwaltet</div>' : ""}</td>
-      <td class="klein">${esc(z.bereich === "global" || z.art === "Vertrauen" ? z.quelle : z.quelle.replace(/^.*\/(\.claude\/[^/]+)$/, "$1"))}</td><td>${z.marken.map(statusBadge).join("<br>") || '<span class="leer">–</span>'}</td></tr>`).join("")}</tbody></table></div>`;
-  const zusammen = zeilen => {
-    const teile = ["breit", "verwaist", "widerspricht"].map(m => [m, zeilen.filter(z => z.marken.includes(m)).length]).filter(([, n]) => n);
-    return teile.length ? " · " + teile.map(([m, n]) => `${n} ${m}`).join(", ") : "";
+  const strich = '<span class="leer">–</span>';
+  const marken = z => z.marken.map(statusBadge).join(" ");
+  const zusammen = zeilen => ["breit", "verwaist", "widerspricht", "doppelt"].map(m => [m, zeilen.filter(z => z.marken.includes(m)).length])
+    .filter(([, n]) => n).map(([m, n]) => `${n} ${m}`).join(", ");
+  const datei = z => z.bereich === "global" || z.art === "Vertrauen" ? z.quelle : z.quelle.replace(/^.*\/(\.claude\/[^/]+)$/, "$1");
+  const regelArt = z => ["allow", "ask", "deny", "prompt", "forbidden"].includes(z.art);
+  // Bash(git push *) steht in der Zeile „Bash“ nur noch als „git push *“; unter Codex ist das Werkzeug das Programm, auch mit Pfad davor
+  const werkzeug = z => !regelArt(z) ? RECHT_ART[z.art] || z.art : z.regel.startsWith("mcp__") ? "MCP" : z.regel.split(/[\s(]/)[0].split("/").pop() || z.regel.split(/\s/)[0];
+  const kurz = z => { const m = regelArt(z) && z.regel.match(/^[\w-]+\((.*)\)$/s); return m ? m[1] : z.regel; };
+  const auffaellig = liste.filter(z => z.marken.length);
+  const knopf = z => z.aktionen?.entfernen ? `<button type="button" class="zeilenknopf" data-recht="${esc(z.id)}">entfernen</button>` : '<span class="leer">von Hand</span>';
+  const oben = auffaellig.length
+    ? `<div class="tabelle"><table><thead><tr><th>Regel</th><th>${je("Projekt", "Bereich")}</th><th>Quelle</th><th>Hinweis</th>${TOKEN ? "<th>Aufräumen</th>" : ""}</tr></thead><tbody>${
+      auffaellig.map(z => `<tr><td><code>${esc(z.art === "Vertrauen" ? kurzPfad(z.bereich) : z.regel)}</code></td><td class="nowrap">${esc(z.art === "Vertrauen" ? "Vertraute Ordner" : ordnerName(z.bereich))}</td>
+        <td class="klein">${esc(datei(z))}</td><td class="nowrap">${marken(z)}</td>${TOKEN ? `<td class="nowrap">${knopf(z)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
+    : '<p class="leer">Nichts Auffälliges: keine breite, verwaiste, widersprüchliche oder doppelte Regel.</p>';
+  const gebuendelt = zeilen => {
+    const gruppen = new Map();
+    for (const z of zeilen) {
+      const k = [werkzeug(z), z.art, z.quelle, !!z.verwaltet].join("\n");
+      if (!gruppen.has(k)) gruppen.set(k, []);
+      gruppen.get(k).push(z);
+    }
+    return `<div class="tabelle"><table><thead><tr><th>Werkzeug</th><th>Art</th><th>Quelle</th><th>Regeln</th></tr></thead><tbody>${
+      [...gruppen.values()].sort((x, y) => y.length - x.length).map(g => `<tr><td class="nowrap"><strong>${esc(werkzeug(g[0]))}</strong> <span class="klein">${g.length}</span></td>
+        <td class="nowrap">${regelArt(g[0]) ? esc(RECHT_ART[g[0].art]) : strich}${g[0].verwaltet ? '<div class="klein">verwaltet</div>' : ""}</td><td class="klein">${esc(datei(g[0]))}</td>
+        <td><div class="regeln">${[...g].sort((x, y) => y.marken.length - x.marken.length).map(z => `<span><code>${esc(kurz(z))}</code>${z.marken.length ? " " + marken(z) : ""}</span>`).join("")}</div></td></tr>`).join("")}</tbody></table></div>`;
   };
-  const gruppe = (titel, zeilen) => `<details class="rechte"${zeilen.some(markiert) ? " open" : ""}><summary><strong>${esc(titel)}</strong>
-    <span class="klein">${zeilen.length} ${zeilen.length === 1 ? "Eintrag" : "Einträge"}${zusammen(zeilen)}</span></summary>${tabelle(zeilen)}</details>`;
+  const gruppe = (titel, pfad, zeilen, inhalt) => `<details class="rechte"><summary><strong>${esc(titel)}</strong>
+    <span class="klein">${pfad ? esc(pfad) + " · " : ""}${zeilen.length} ${zeilen.length === 1 ? "Eintrag" : "Einträge"}${zusammen(zeilen) ? " · " + zusammen(zeilen) : ""}</span></summary>${inhalt}</details>`;
   const vertrauen = liste.filter(z => z.art === "Vertrauen");
   const regeln = liste.filter(z => z.art !== "Vertrauen");
-  const global = regeln.filter(z => z.bereich === "global");
-  const projekte = [...new Set(regeln.filter(z => z.bereich !== "global").map(z => z.bereich))].sort();
-  const vertrauensTabelle = vertrauen.length ? gruppe("Vertraute Ordner", vertrauen.map(z => ({ ...z, regel: z.bereich, art: z.regel }))) : "";
+  const bereiche = [...new Set(regeln.map(z => z.bereich))].sort((x, y) => (y === "global") - (x === "global") || ordnerName(x).localeCompare(ordnerName(y)));
+  const vertrauensTabelle = vertrauen.length ? gruppe("Vertraute Ordner", "", vertrauen, `<div class="tabelle"><table><thead><tr><th>Ordner</th><th>Vertrauen</th><th>Hinweis</th></tr></thead><tbody>${
+    vertrauen.map(z => `<tr><td><code>${esc(kurzPfad(z.bereich))}</code></td><td>${esc(z.regel)}</td><td>${marken(z) || strich}</td></tr>`).join("")}</tbody></table></div>`) : "";
   const inhalt = liste.length
-    ? (global.length ? gruppe("Global", global) : "") + projekte.map(p => gruppe(p, regeln.filter(z => z.bereich === p))).join("") + vertrauensTabelle
+    ? reiter("rechte", [[`Auffällig${auffaellig.length ? ` (${auffaellig.length})` : ""}`, oben],
+      [`Alle Regeln je ${je("Projekt", "Bereich")}`, bereiche.map(b => { const z = regeln.filter(r => r.bereich === b); return gruppe(ordnerName(b), b === "global" ? "" : kurzPfad(b), z, gebuendelt(z)); }).join("") + vertrauensTabelle]])
     : '<p class="leer">Keine Regeln gefunden: Es gelten die Standards des Harness.</p>';
+  const legende = eintraege => `<ul class="legende">${eintraege.map(([m, text]) => `<li>${statusBadge(m)} <span>${text}</span></li>`).join("")}</ul>`;
   return abschnitt("berechtigungen", "Was ohne Rückfrage erlaubt ist", inhalt,
-    je(`Aus den verwalteten Einstellungen, <code>~/.claude/settings.json</code> und je Projekt aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code>. ` +
-      `„breit“ heißt: ein ganzes Werkzeug (etwa <code>Bash</code> ohne Klammer), ein ganzer MCP-Server, ein Interpreter mit beliebigen Argumenten wie <code>Bash(python3:*)</code>, dazu <code>defaultMode: bypassPermissions</code> und Ordner wie <code>~</code>. ` +
-      `„verwaist“: eine Regel für einen MCP-Server, der nicht mehr eingetragen ist. „widerspricht“: dieselbe Regel steht auch als ask oder deny; es gilt die strengere. Nur Anzeige: Ändern von Hand in der genannten Datei.`,
-      `Aus <code>~/.codex/config.toml</code> (<code>approval_policy</code>, <code>sandbox_mode</code>, auch in Profilen, und die vertrauten Ordner) und den Regeln in <code>~/.codex/rules</code>. ` +
-      `„breit“ heißt: <code>approval_policy: never</code>, <code>sandbox_mode: danger-full-access</code> oder eine Regel für ein ganzes Programm oder eine Shell mit <code>-c</code>. „verwaist“: ein vertrauter Ordner, den es nicht mehr gibt. Nur Anzeige: Ändern von Hand in der genannten Datei.`));
+    je(`Aus den verwalteten Einstellungen, <code>~/.claude/settings.json</code> und je Projekt aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code>. ${TOKEN ? "Markierte Regeln nimmt „entfernen“ aus ihrer Datei, mit Sicherung daneben; alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."}` +
+      legende([["breit", `ein ganzes Werkzeug (etwa <code>Bash</code> ohne Klammer), ein ganzer MCP-Server, ein Interpreter mit beliebigen Argumenten wie <code>Bash(python3:*)</code>, <code>defaultMode: bypassPermissions</code>, Ordner wie <code>~</code>`],
+        ["verwaist", "eine Regel für einen MCP-Server, der nicht mehr eingetragen ist"], ["widerspricht", "dieselbe Regel steht auch als ask oder deny; es gilt die strengere"],
+        ["doppelt", "die Regel steht im Projekt und gilt schon global"]]),
+      `Aus <code>~/.codex/config.toml</code> (<code>approval_policy</code>, <code>sandbox_mode</code>, auch in Profilen, und die vertrauten Ordner) und den Regeln in <code>~/.codex/rules</code>. ${TOKEN ? "Einen verwaisten Ordner nimmt „entfernen“ aus <code>config.toml</code>, mit Sicherung daneben; alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."}` +
+      legende([["breit", `<code>approval_policy: never</code>, <code>sandbox_mode: danger-full-access</code> oder eine Regel für ein ganzes Programm oder eine Shell mit <code>-c</code>`],
+        ["verwaist", "ein vertrauter Ordner, den es nicht mehr gibt"]])));
+}
+
+/* Welches Modell eingestellt ist und welches lief. Nur Anzeige. Was am Ende gilt, rechnet build.py nicht aus:
+   Ein Subagent bekommt sein Modell oft erst beim Aufruf, das steht in keiner Datei. Das zeigt die Messung. */
+function renderModelle() {
+  const M = D.modelle || { eingestellt: [], gemessen: [] };
+  const strich = '<span class="leer">–</span>';
+  const summe = (zeilen, feld = "tokens") => zeilen.reduce((n, z) => n + (z[feld] || 0), 0);
+  const prozent = (teil, ganz) => ganz ? Math.round(100 * teil / ganz) : 0;
+  const anteil = (teil, ganz) => `<span class="anteil"><span style="width:${prozent(teil, ganz)}%"></span></span> ${prozent(teil, ganz)} %`;
+  const aufwand = zeilen => esc([...new Set(zeilen.flatMap(z => z.aufwand))].sort().join(", ")) || strich;
+  const alles = summe(M.gemessen);
+  const sub = zeilen => summe(zeilen.filter(z => z.subagent));
+  const tokenKoepfe = '<th class="zahl">Eingabe</th><th class="zahl">Cache geschrieben</th><th class="zahl">Cache gelesen</th><th class="zahl">Ausgabe</th>';
+  const tokenZellen = zeilen => ["eingabe", "cache_schreiben", "cache_lesen", "tokens"].map(f => `<td class="zahl">${zahl(summe(zeilen, f))}</td>`).join("");
+  // je Modell eine Zeile
+  const jeModell = zeilen => [...new Set(zeilen.map(z => z.modell))].map(m => ({ modell: m, zeilen: zeilen.filter(x => x.modell === m) }))
+    .sort((a, b) => summe(b.zeilen) - summe(a.zeilen));
+  const messung = zeilen => { const ganz = summe(zeilen);
+    return `<div class="tabelle"><table><thead><tr><th>Modell</th>${tokenKoepfe}<th>Anteil Ausgabe</th>${je('<th class="zahl">aus Subagenten</th>', "")}<th class="zahl">${je("Antworten", "Turns")}</th><th>Aufwand</th></tr></thead><tbody>${
+      jeModell(zeilen).map(m => `<tr><td class="nowrap"><code>${esc(m.modell)}</code></td>${tokenZellen(m.zeilen)}<td class="nowrap">${anteil(summe(m.zeilen), ganz)}</td>
+        ${je(`<td class="zahl">${prozent(sub(m.zeilen), summe(m.zeilen))} %</td>`, "")}<td class="zahl">${zahl(summe(m.zeilen, "antworten"))}</td><td>${aufwand(m.zeilen)}</td></tr>`).join("")}</tbody></table></div>`; };
+  const global = name => (M.eingestellt.find(z => z.bereich === "global" && z.name === name && !z.eintrag) || {}).wert;
+  const vorn = jeModell(M.gemessen)[0];
+  const kpi = (wert, was) => `<div class="kpi"><div class="zahl">${wert}</div><div class="was">${was}</div></div>`;
+  const kacheln = `<div class="kpis">${kpi(`<small>${esc(global("model") || "Standard")}</small>`, `eingestelltes Modell${global(je("effortLevel", "model_reasoning_effort")) ? ` · Aufwand ${esc(global(je("effortLevel", "model_reasoning_effort")))}` : ""}`)}${
+    vorn ? kpi(`${prozent(summe(vorn.zeilen), alles)} <small>%</small>`, `der Ausgabe-Tokens schrieb <code>${esc(vorn.modell)}</code>`)
+      + je(kpi(`${prozent(sub(M.gemessen), alles)} <small>%</small>`, "der Ausgabe-Tokens kamen aus Subagenten"), "")
+      + kpi(zahl(new Set(M.gemessen.map(z => z.modell)).size), `Modelle liefen in ${esc(M.tage)} Tagen`) : ""}</div>`;
+  const eingestellt = M.eingestellt.length
+    ? `<div class="tabelle"><table><thead><tr><th>Einstellung</th><th>Wert</th><th>Gilt für</th><th>Quelle</th><th>Hinweis</th></tr></thead><tbody>${
+      M.eingestellt.map(z => `<tr><td><code>${esc(z.name)}</code></td><td><code>${esc(z.wert)}</code></td>
+        <td>${esc(z.eintrag || (z.bereich === "global" ? "alles" : "Projekt"))}${z.bereich !== "global" ? `<div class="klein">${esc(z.bereich)}</div>` : ""}${z.verwaltet ? '<div class="klein">verwaltet</div>' : ""}</td>
+        <td class="klein">${esc(z.quelle)}</td><td>${z.marken.map(statusBadge).join("<br>") || strich}</td></tr>`).join("")}</tbody></table></div>`
+    : `<p class="leer">Nichts eingestellt: Es gilt der Standard von ${esc(D.harness_name)}.</p>`;
+  // je Projekt eine Zeile; die Modelle klappen zur selben Tabelle wie im Reiter „Gemessen“ auf
+  const projekte = [...new Set(M.gemessen.map(z => z.projekt))].map(p => [p, M.gemessen.filter(z => z.projekt === p)]).sort((a, b) => summe(b[1]) - summe(a[1]));
+  const jeProjekt = `<div class="tabelle"><table><thead><tr><th>${je("Projekt", "Ordner")}</th>${tokenKoepfe}<th>Anteil Ausgabe</th>${je('<th class="zahl">aus Subagenten</th>', "")}</tr></thead><tbody>${
+    projekte.map(([p, zeilen]) => `<tr class="projektzeile"><td class="name"><strong>${esc(ordnerName(p))}</strong>${p === ordnerName(p) ? "" : ` <span class="klein">${esc(p)}</span>`}</td>
+      ${tokenZellen(zeilen)}<td class="nowrap">${anteil(summe(zeilen), alles)}</td>${je(`<td class="zahl">${prozent(sub(zeilen), summe(zeilen))} %</td>`, "")}</tr>
+      <tr class="modellzeile"><td colspan="${je(7, 6)}"><details class="rechte" style="margin:0"><summary>${jeModell(zeilen).map(m => `<code>${esc(m.modell)}</code>`).join(" ")}</summary>${messung(zeilen)}</details></td></tr>`).join("")}</tbody></table></div>`;
+  const leer = `<p class="leer">Keine ${je("Antworten", "Turns")} in den letzten ${esc(M.tage)} Tagen.</p>`;
+  return abschnitt("modelle", "Welches Modell eingestellt ist und welches lief",
+    kacheln + reiter("modelle", [["Eingestellt", eingestellt], [`Gemessen, ${esc(M.tage)} Tage`, M.gemessen.length ? messung(M.gemessen) : leer],
+      [`Je ${je("Projekt", "Ordner")}`, M.gemessen.length ? jeProjekt : leer]]),
+    je(`Eingestellt ist, was in den Einstellungen und im Kopf von Agenten, Skills und Befehlen steht. Gemessen ist, welches Modell laut Transkripten wirklich lief, in Tokens: ` +
+      `Eingabe ist neu gelesener Text, Ausgabe das Geschriebene. Was sich wiederholt, liegt im Cache: einmal geschrieben, danach nur gelesen. ` +
+      `Ein Subagent bekommt sein Modell oft erst beim Aufruf: Das steht in keiner Datei, nur in der Messung. Seine Arbeitsordner zählen zum Projekt. Nur Anzeige: Ändern von Hand in der genannten Datei oder mit <code>/model</code>.` +
+      `<ul class="legende"><li>${statusBadge("überschreibt")} <span>der Wert weicht vom globalen ab</span></li></ul>`,
+      `Eingestellt sind die Modell-Schlüssel aus <code>~/.codex/config.toml</code>, auch in Profilen. Gemessen ist, welches Modell laut <code>~/.codex/sessions</code> je Turn lief, in Tokens: ` +
+      `Eingabe ist neu gelesener Text, Ausgabe das Geschriebene; was sich wiederholt, kommt aus dem Cache. Nur Anzeige: Ändern von Hand in der genannten Datei.` +
+      `<ul class="legende"><li>${statusBadge("überschreibt")} <span>das Profil weicht vom globalen Wert ab</span></li></ul>`));
 }
 
 function renderHinweise() {
@@ -1049,7 +1143,7 @@ function zeichne() {
   renderEmpfInhalt();
   renderSuchInhalt();
   /* Die Bestandstabellen entstehen nicht neu: Ihre Auswahl bleibt gesperrt, solange etwas läuft */
-  document.querySelectorAll("select.wahl").forEach(s => { s.disabled = beschaeftigt; });
+  document.querySelectorAll("select.wahl, [data-recht]").forEach(s => { s.disabled = beschaeftigt; });
 }
 /* Bestätigung im 3zero-Stil statt confirm(); Esc und „Abbrechen“ zählen als Nein */
 function frage(titel, text, ja, liste = []) {
@@ -1141,7 +1235,8 @@ function renderHilfe() {
   /* für beide Harnesses gleich */
   const werkzeugeHilfe = `<li>Der Tab „Werkzeuge“ zeigt, was die Inventur und deine MCP-Server und Hooks brauchen: installierte und neueste Version, Pflegeende der Versionslinie und den Befehl zum Aktualisieren. Darunter stehen MCP-Server aus Quellcode (meist ein Git-Klon unter ~): ob upstream Neueres vorliegt, ob das Projekt ruht, und Sicherheitsmeldungen zu ihren npm-Abhängigkeiten. Aktualisieren musst du selbst; nach einem Python-Update den Server neu starten.</li>`;
   const lesefehlerHilfe = `<li>Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur dieses; ein Banner im Überblick nennt es mit dem Fehler.</li>`;
-  const berechtigungenHilfe = `<li>Der Tab „Berechtigungen“ zeigt, was ${je("Claude Code", "Codex")} ohne Rückfrage darf, global und je ${je("Projekt", "vertrautem Ordner")}, und markiert, was sehr viel erlaubt („breit“), ins Leere zeigt („verwaist“) oder sich widerspricht. Die Zahl im Tab zählt die breiten Regeln. Ändern musst du die Dateien selbst.</li>`;
+  const berechtigungenHilfe = `<li>Der Tab „Berechtigungen“ zeigt, was ${je("Claude Code", "Codex")} ohne Rückfrage darf, global und je ${je("Projekt", "vertrautem Ordner")}, und markiert, was sehr viel erlaubt („breit“), ins Leere zeigt („verwaist“), sich widerspricht oder ${je("im Projekt steht, obwohl es schon global gilt („doppelt“)", "nicht mehr existiert")}. Die Zahl im Tab zählt die breiten Regeln. Über den Server nimmt „entfernen“ ${je("eine markierte Regel aus ihrer Datei", "einen verwaisten Ordner aus <code>config.toml</code>")}, mit Sicherung daneben; alles andere änderst du selbst.</li>`;
+  const modelleHilfe = `<li>Der Tab „Modelle“ zeigt, welches Modell und welcher Aufwand eingestellt sind, global und je ${je("Projekt, Agent und Skill", "Profil")}, und welches Modell in den letzten ${esc((D.modelle || {}).tage)} Tagen wirklich lief, je ${je("Projekt, getrennt nach Hauptsitzung und Subagent", "Ordner")}. Ändern musst du die Dateien selbst.</li>`;
   const aenderungenHilfe = `<li>Kam seit dem letzten Lauf an einem früheren Tag etwas dazu oder fiel weg, nennt es eine Karte oben im Überblick, etwa einen MCP-Server, den ein anderes Werkzeug still eingetragen hat. Mehrere Läufe am selben Tag zählen als einer; ein geänderter Status zählt nicht.</li>`;
   const nachAktionenHilfe = `<li>Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Eine laufende Bewertung hält Aktionen nicht auf.</li>`;
   const versionenHilfe = `<li>Werkzeuge: installierte Version per <code>--version</code>, neueste und Pflegeende von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Sicherheitsmeldungen aus der GitHub Advisory Database, jeweils zur installierten Version eines Pakets.</li>`;
@@ -1161,6 +1256,7 @@ function renderHilfe() {
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
       ${berechtigungenHilfe}
+      ${modelleHilfe}
       ${lesefehlerHilfe}
       ${aenderungenHilfe}
     </ul>`], ["Empfehlungen lesen", `<ul>
@@ -1208,6 +1304,7 @@ function renderHilfe() {
       <li>Der Tab „Projekte“ zeigt, was nur in einzelnen Projekten gilt; alle anderen Tabs zeigen, was global gilt.</li>
       ${werkzeugeHilfe}
       ${berechtigungenHilfe}
+      ${modelleHilfe}
       ${lesefehlerHilfe}
       ${aenderungenHilfe}
       <li>Hinweise nennen Funde außerhalb der Tabellen. Einen erzeugt das Dashboard selbst: Overrides in <code>skillOverrides</code> für Skills, die es nicht gibt.</li>
@@ -1312,7 +1409,7 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
 for (const [id, feld] of FILTERFELDER) {
   const el = document.getElementById(id);
@@ -1396,7 +1493,7 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", async ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #meldung-neu-laden, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #meldung-neu-laden, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen], [data-recht]");
     if (!knopf) return;
     if (knopf.dataset.abbrechen) {
       /* Nur anstoßen: Das Ende meldet die laufende Abfrage des Standes, auch wenn der Lauf gerade von selbst fertig wurde */
@@ -1442,6 +1539,21 @@ if (TOKEN) {
         const neu = await api("/api/neu");
         if (!neu.ok) return setMeldung("Neu einlesen fehlgeschlagen:\n\n" + neu.ausgabe, "Fehler");
         location.reload(); /* der Tab holt sich die Suche danach vom Server zurück, mit „installiert“ am Kandidaten */
+      });
+    } else if (knopf.dataset.recht !== undefined) {
+      const z = (D.berechtigungen || []).find(r => r.id === knopf.dataset.recht);
+      if (!z) return;
+      const ordner = z.art === "Vertrauen";
+      const text = ordner
+        ? `Der vertraute Ordner ${kurzPfad(z.bereich)} wird aus ~/.codex/config.toml genommen. Es gibt ihn nicht mehr.`
+        : `Die Regel ${z.regel} (${RECHT_ART[z.art] || z.art}) wird aus ${z.quelle} genommen.` +
+          (z.marken.includes("breit") ? `\n\nDanach fragt ${D.harness_name} bei solchen Befehlen wieder nach.` : "");
+      if (!await frage(ordner ? "Vertrauten Ordner entfernen?" : "Regel entfernen?", text + "\n\nVorher legt der Server eine Sicherung neben die Datei (.bak-<Zeitstempel>).", "entfernen")) return;
+      mitSperre(async () => {
+        const r = await api("/api/ausfuehren", { id: z.id, aktion: "entfernen" });
+        if (r.harnessWechsel) return harnessGewechselt(r);
+        if (!r.ok) return setMeldung("Entfernen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
+        await neuEinlesen();
       });
     } else {
       const e = INDEX.get(knopf.dataset.ausfuehren), a = gewaehlt(e);

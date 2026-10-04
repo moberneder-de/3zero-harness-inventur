@@ -4,8 +4,8 @@ Claude Code: `permissions` (allow, ask, deny, defaultMode, additionalDirectories
 ~/.claude/settings.json und je Projekt aus .claude/settings.json und .claude/settings.local.json. Codex:
 approval_policy und sandbox_mode, auch in Profilen, die vertrauten Ordner und die Regeln in ~/.codex/rules.
 
-Markiert wird, was mehr erlaubt, als man beim Eintragen meist meint („breit“), was ins Leere zeigt („verwaist“) und
-was sich widerspricht. Die Dateien sind von Hand änderbar: Werte mit falschem Typ fallen still weg.
+Markiert wird, was mehr erlaubt, als man beim Eintragen meist meint („breit“), was ins Leere zeigt („verwaist“),
+was sich widerspricht und was im Projekt steht, obwohl es schon global gilt („doppelt“). Die Dateien sind von Hand änderbar: Werte mit falschem Typ fallen still weg.
 """
 
 import json
@@ -61,6 +61,9 @@ def widersprueche(zeilen):
         sichtbar = [a for a in regeln if a["bereich"] in ("global", z["bereich"])]
         if any(a["regel"] == z["regel"] and a["art"] != z["art"] for a in sichtbar):
             z["marken"].append("widerspricht")
+        # dieselbe Regel mit derselben Art steht schon global: Im Projekt ist sie überflüssig
+        if z["bereich"] != "global" and any(a["bereich"] == "global" and a["regel"] == z["regel"] and a["art"] == z["art"] for a in regeln):
+            z["marken"].append("doppelt")
 
 
 def claude(home, projekte, praefixe):
@@ -94,8 +97,9 @@ def claude(home, projekte, praefixe):
             if isinstance(d, str):
                 ziel = Path(str(home) + d[1:]) if d.startswith("~") else Path(d)
                 neu.append(zeile(bereich, quelle, "Ordner", d, ["breit"] if ziel in (home, Path("/")) else []))
-        if verwaltet:
-            for z in neu:
+        for z in neu:
+            z["datei"] = str(datei)  # für die Aktion „entfernen“; quelle ist nur der Anzeigename
+            if verwaltet:
                 z["verwaltet"] = True
         zeilen += neu
     widersprueche(zeilen)
