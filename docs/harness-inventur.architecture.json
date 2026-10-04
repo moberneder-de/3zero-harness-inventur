@@ -42,7 +42,7 @@
       },
       {
         "id": "werkzeuge",
-        "label": "Werkzeuge prüfen",
+        "label": "Versionen prüfen",
         "focus": [
           "build",
           "werkzeuge",
@@ -349,7 +349,7 @@
       "id": "build-werkzeuge",
       "from": "build",
       "to": "werkzeuge",
-      "label": "Tab Werkzeuge",
+      "label": "Tab Versionen",
       "fromSide": "right",
       "toSide": "top"
     },
