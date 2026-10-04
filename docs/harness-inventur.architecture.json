@@ -62,7 +62,7 @@
           "mcpdirekt",
           "mcpnetz"
         ],
-        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest, was ohne Rückfrage erlaubt ist."
+        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest, was ohne Rückfrage erlaubt ist und welches Modell lief."
       }
     ],
     "viewBox": [
@@ -261,13 +261,13 @@
       "id": "berechtigungen",
       "type": "security",
       "label": "berechtigungen.py",
-      "sublabel": "was ohne Rückfrage geht",
+      "sublabel": "und modelle.py, nur Anzeige",
       "pos": [
-        590,
+        580,
         0
       ],
       "size": [
-        170,
+        190,
         66
       ]
     },
@@ -414,7 +414,7 @@
       "id": "build-berechtigungen",
       "from": "build",
       "to": "berechtigungen",
-      "label": "Tab Berechtigungen"
+      "label": "Rechte, Modelle"
     },
     {
       "id": "build-mcpdirekt",
@@ -435,7 +435,7 @@
       "title": "Werkzeug im Repo",
       "items": [
         "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex; mcp_direkt.py fragt HTTP-MCP-Server selbst",
-        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist; beides nur zur Anzeige",
+        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief; alle nur zur Anzeige",
         "server.py liefert aus und führt Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
         "wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt"
       ]
