@@ -23,7 +23,7 @@ import harness
 HIER = Path(__file__).resolve().parent
 KENNUNG = "de.3zero.harness-inventur.wochenlauf"  # launchd
 DIENST = "3zero-harness-inventur-wochenlauf"  # systemd
-ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status im Tab „Werkzeuge“, bei denen etwas zu tun ist
+ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status im Tab „Versionen“, bei denen etwas zu tun ist
 
 
 def bauen():
