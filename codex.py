@@ -353,8 +353,25 @@ def plugin_status(pid, marktplatz, cfg, remote):
     return "aktiv" if eintrag.get("enabled", True) is not False else "deaktiviert"
 
 
+def remote_installationsregeln():
+    """Nur die Installationsregel aus dem neuesten lokalen Kontokatalog übernehmen."""
+    dateien = list((CODEX / "cache/remote_plugin_catalog").glob("*.json"))
+    if not dateien:
+        return {}
+    katalog = lies_json(max(dateien, key=lambda p: p.stat().st_mtime))
+    if not isinstance(katalog, dict):
+        return {}
+    return {p["id"]: p.get("installation_policy") for p in katalog.get("plugins", [])
+            if isinstance(p, dict) and isinstance(p.get("id"), str)}
+
+
+def entfernen_gesperrt(e):
+    return (e.get("remote_plugin") or e.get("status") == "im Konto") and e.get("installation_policy") != "AVAILABLE"
+
+
 def plugins(cfg, aus, autoren):
     liste, bestandteile, hooks = [], [], []
+    regeln = remote_installationsregeln()
     cache = CODEX / "plugins" / "cache"
     ordner = [o for o in sorted(cache.glob("*/*")) if o.is_dir()] if cache.is_dir() else []
     mehrfach = mehrfache_namen(f"{o.name}@{o.parent.name}" for o in ordner)
@@ -367,7 +384,11 @@ def plugins(cfg, aus, autoren):
         try:
             praefix = pid if name in mehrfach else name  # bei gleichem Namen in zwei Marktplätzen mit Marktplatz
             m = manifest(wurzel)
-            status = plugin_status(pid, mkt, cfg, (plugin_ordner / ".codex-remote-plugin-install.json").is_file())
+            remote_datei = plugin_ordner / ".codex-remote-plugin-install.json"
+            remote = remote_datei.is_file()
+            installation = lies_json(remote_datei) if remote else {}
+            policy = regeln.get(installation.get("remote_plugin_id")) if isinstance(installation, dict) else None
+            status = plugin_status(pid, mkt, cfg, remote)
             aktiv = status in LAEDT
             autor = m.get("author")
             autor = autor.get("name") if isinstance(autor, dict) else (autor or "unbekannt")
@@ -378,7 +399,7 @@ def plugins(cfg, aus, autoren):
             teile, plugin_hooks = [], []
             for d in sorted(skills_ordner.glob("*/SKILL.md")):
                 t = skill_eintrag(f"{praefix}:{d.parent.name}", d, aus, aktiv)
-                t.update(plugin=pid, quelle=dict(quelle))
+                t.update(plugin=pid, quelle=dict(quelle), remote_plugin=remote, installation_policy=policy)
                 teile.append(t)
 
             mcp_roh = teil(wurzel, m, "mcpServers", ".mcp.json")
@@ -388,10 +409,12 @@ def plugins(cfg, aus, autoren):
             apps = teil(wurzel, m, "apps", ".app.json").get("apps")
             hooks_roh = lesbare_hooks(teil(wurzel, m, "hooks", "hooks/hooks.json").get("hooks"))
             for h in hook_eintraege(hooks_roh, pid, quelle, wurzel, "aktiv" if aktiv else "aus"):
-                plugin_hooks.append({**h, "plugin": pid})
+                plugin_hooks.append({**h, "plugin": pid, "remote_plugin": remote, "installation_policy": policy})
 
             eintrag = {
                 "id": f"plugin:{pid}",
+                "remote_plugin": remote,
+                "installation_policy": policy,
                 "name": name,
                 "marktplatz": mkt,
                 "marktplatz_repo": None,
@@ -525,6 +548,8 @@ def befehl(e, empfehlung):
     """Wie sich eine Empfehlung in Codex umsetzen ließe, als Text zum Kopieren. Für vieles bietet `aktionen()`
     zusätzlich einen Knopf im Dashboard."""
     eid = e["id"]
+    if entfernen_gesperrt(e) and empfehlung not in ("abschalten", "nur manuell"):
+        return "Kontoplugin → Deinstallation gesperrt oder nicht bestätigt; einzelne Skills lassen sich lokal abschalten"
     if eid.startswith("hook:"):
         return f"codex plugin remove {shellwort(e['plugin'])}" if e.get("plugin") else f'{e["pfad"]} → "{e["ereignis"]}" entfernen'
     if eid.startswith("plugin:"):
@@ -558,7 +583,7 @@ def aktionen(e):
         return {}
     if eid.startswith("plugin:"):
         pid = f"{e['name']}@{e['marktplatz']}"
-        a = {"deinstallieren": {"argv": ["codex", "plugin", "remove", pid]}}
+        a = {} if entfernen_gesperrt(e) else {"deinstallieren": {"argv": ["codex", "plugin", "remove", pid]}}
         schalter = {"tabelle": f"plugins.{toml_schluessel(pid)}", "schluessel": "enabled"}
         if e["status"] == "aktiv":
             # „im Konto“ steht im Konto, nicht in config.toml; „wirkungslos“ und „nicht aktiviert“ laden ohnehin nicht
