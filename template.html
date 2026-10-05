@@ -386,7 +386,7 @@ const STATUS = {
   "aus": ["○", "aus"], "deaktiviert": ["○", "aus"], "nicht aktiviert": ["○", "aus"], "inaktiv (Plugin aus)": ["○", "aus"],
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
-  "wirkungslos": ["○", "aus"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
+  "wirkungslos": ["○", "aus"], "nur eine Sitzung": ["◐", "teil"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
   "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
   "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
@@ -784,7 +784,7 @@ function renderPlugins() {
     const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
     const teile = [
       anzahl(p.skills.length, "Skill", "Skills"), anzahl(p.befehle.length, "Befehl", "Befehle"),
-      anzahl(p.agenten.length, "Agent", "Agenten"), Object.keys(p.mcp).length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"),
+      anzahl(p.agenten.length, "Agent", "Agenten"), Object.keys(p.mcp).length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"), (p.mods || []).length && "Mod",
       anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
@@ -796,7 +796,7 @@ function renderPlugins() {
         ["Begründung", txt(p.bewertung?.grund || "")],
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
         ["Apps", namen(p.apps || [])],
-        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")],
+        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")], ["Mod greift ein in", (p.mods || []).map(esc).join(", ")],
         ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}${p.update === true ? " · <strong>Update verfügbar</strong>" : p.update === false ? " · aktuell" : ""}`],
         ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
         ["Homepage", p.homepage ? link(p.homepage) : ""],
@@ -969,11 +969,11 @@ function renderHooks() {
   const dauer = h => h.dauer ? `${zahl(h.dauer.median)} ms <span class="klein">· ${zahl(h.dauer.messungen)}×</span>` : ungemessen;
   const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
   const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name">${aufklapp(h.name)}</td>
-      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="klein">${h.befehle.length === 1 ? "1 Befehl" : `${h.befehle.length} Befehle`}</td>
+      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="nowrap">${h.mod ? "Mod" : "Befehl"} <span class="klein">· ${h.befehle.length}</span></td>
       <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
       <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
     detailZeile(9 + SP, [
-      ["Befehle", befehle(h)],
+      [h.mod ? "Greift ein in" : "Befehle", befehle(h)],
       ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
       ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.hook_tage} Tagen` : ""],
       ["Begründung", txt(h.bewertung?.grund || "")],
@@ -981,8 +981,8 @@ function renderHooks() {
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
+    `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th data-filter="jede Art">Art</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json. Die Art „Mod“ ist kein Befehl, sondern Code, der in der Sitzung mitläuft (ein Modul unter <code>modules</code> in <code>hooks/hooks.json</code>): Er kann Werkzeug-Aufrufe sperren oder umschreiben und Prompt und System-Prompt ändern. Das Ereignis ist am Text des Moduls abgelesen, nicht gemessen; was in importierten Dateien steht, fehlt. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code>, <code>CLAUDE_CODE_PLUGIN_DIRS</code> und <code>~/.claude/dev-mods</code> (nur in der Sitzung, in der sie entstanden).`,
       "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
 

@@ -1485,5 +1485,126 @@ class PluginCommit(unittest.TestCase):
         self.assertEqual(liste[0]["commit"], "abc")
 
 
+class Mods(unittest.TestCase):
+    """Ein Mod ist ein Hook-Modul, das hooks/hooks.json unter `modules` nennt. Er läuft in jeder Sitzung mit und stand
+    bisher nicht im Inventar: Gelesen wurde nur der Block `hooks` daneben."""
+
+    MODUL = """export const register: Register = (on, options) => {
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => next(e))
+  on("ui.render", { component: 'Pane' }, ($, e, next) => next(e))
+  on('ui.render', ($, e, next) => next(e))
+}
+"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        build.LESEFEHLER.clear()
+        self.addCleanup(build.LESEFEHLER.clear)
+
+    def ordner(self, pfad, module=("./register.ts",), text=MODUL, hooks=None, manifest=True):
+        wurzel = self.tmp / pfad
+        (wurzel / "hooks").mkdir(parents=True)
+        if manifest:
+            (wurzel / ".claude-plugin").mkdir()
+            (wurzel / ".claude-plugin/plugin.json").write_text(json.dumps({"name": wurzel.name}))
+        (wurzel / "hooks/hooks.json").write_text(json.dumps({"hooks": hooks or {}, "modules": module}))
+        (wurzel / "hooks/register.ts").write_text(text)
+        return wurzel
+
+    def test_ein_eintrag_je_ereignis(self):
+        wurzel = self.ordner("p")
+        werkzeug, zeichnen = build.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {"art": "Plugin"}, "aus")
+        self.assertEqual((werkzeug["id"], werkzeug["name"], werkzeug["status"], werkzeug["mod"], werkzeug["typ"]),
+                         ("hook:p@m:mod:tool.call", "tool.call", "aus", True, "Hook"))
+        self.assertEqual(werkzeug["befehle"], [{"befehl": "register.ts", "matcher": "{ tool: 'Bash' }", "bedingung": None}])
+        self.assertEqual(werkzeug["pfad"], str(wurzel / "hooks/register.ts"))
+        self.assertEqual((zeichnen["id"], [b["matcher"] for b in zeichnen["befehle"]]),
+                         ("hook:p@m:mod:ui.render", ["{ component: 'Pane' }", None]))
+
+    def test_ohne_fund_bleibt_eine_zeile(self):
+        """Steht `on(` nur in einer importierten Datei, wäre das Modul sonst unsichtbar."""
+        wurzel = self.ordner("p", text="import { alles } from './rest'\nexport const register = alles\n")
+        (e,) = build.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {})
+        self.assertEqual((e["id"], e["name"], e["ereignis"]), ("hook:p@m:mod:unbekannt", "Mod", "unbekannt"))
+
+    def test_fremde_form_und_pfad_nach_aussen(self):
+        """Der Pfad kommt aus einer fremden Datei: Was aus dem Plugin herausführt, wird nicht gelesen."""
+        (self.tmp / "aussen.ts").write_text(self.MODUL)
+        for module in (["../../aussen.ts", str(self.tmp / "aussen.ts"), 3, None, "fehlt.ts", "."], "./register.ts", {"a": 1}, None):
+            with self.subTest(module=module):
+                wurzel = self.ordner(f"p{len(list(self.tmp.iterdir()))}", module=module)
+                self.assertEqual(build.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {}), [])
+
+    def test_modul_in_anderer_kodierung(self):
+        wurzel = self.ordner("p")
+        (wurzel / "hooks/register.ts").write_bytes("// Prüfung\non('turn.start', f)\n".encode("latin-1"))
+        (e,) = build.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {})
+        self.assertEqual(e["ereignis"], "turn.start")
+
+    def test_plugin_bringt_mod_mit(self):
+        wurzel = self.ordner("p", hooks={"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]})
+        (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
+        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "SETTINGS", {"enabledPlugins": {"p@m": True}}), \
+                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
+            liste, _, hooks = build.plugins()
+        self.assertEqual((liste[0]["hooks"], liste[0]["mods"]), (["Stop"], ["tool.call", "ui.render"]))
+        self.assertEqual([(h["id"], h["plugin"], h["status"]) for h in hooks], [
+            ("hook:p@m:Stop", "p@m", "aktiv"), ("hook:p@m:mod:tool.call", "p@m", "aktiv"), ("hook:p@m:mod:ui.render", "p@m", "aktiv")])
+        self.assertEqual(build.aktionen(hooks[1]), {})
+
+    def test_plugins_aus_ordnern(self):
+        """Ohne Installation laden: Skill-Ordner mit eigener plugin.json, CLAUDE_CODE_PLUGIN_DIRS (Umgebung und env in
+        settings.json) und die Mods einer Sitzung. Dort zählen auch die Befehle unter `hooks`, die bisher fehlten."""
+        claude = self.tmp / ".claude"
+        skill = self.ordner(".claude/skills/mit", hooks={"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]})
+        self.ordner(".claude/skills/ohne", manifest=False)
+        (claude / "skills/datei.md").write_text("kein Ordner")
+        sitzung = self.ordner(".claude/dev-mods/abc/zaehler")
+        umgebung, einstellung = self.ordner("u"), self.ordner("e")
+        dirs = os.pathsep.join([str(umgebung), str(skill), str(self.tmp / "fehlt")])
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": dirs}), \
+                mock.patch.object(build, "SETTINGS", {"env": {"CLAUDE_CODE_PLUGIN_DIRS": str(einstellung)}}):
+            hooks = build.ordner_plugins()
+        self.assertEqual(build.LESEFEHLER, [])
+        je_ordner = {}
+        for h in hooks:
+            je_ordner.setdefault(h["ordner"], []).append(h)
+        self.assertEqual(sorted(je_ordner), sorted(str(o) for o in (skill, sitzung, umgebung, einstellung)))  # skill nur einmal
+        self.assertEqual([h["id"] for h in je_ordner[str(skill)]],
+                         [f"hook:{skill}:Stop", f"hook:{skill}:mod:tool.call", f"hook:{skill}:mod:ui.render"])
+        self.assertEqual({o.name: (je_ordner[str(o)][0]["quelle"], je_ordner[str(o)][0]["status"]) for o in (skill, sitzung, umgebung)}, {
+            "mit": ({"art": "Skill-Ordner", "autor": "Skill-Ordner mit"}, "aktiv"),
+            "zaehler": ({"art": "Mod-Ordner", "autor": "Mod-Ordner zaehler"}, "nur eine Sitzung"),
+            "u": ({"art": "Plugin-Ordner", "autor": "Plugin-Ordner u"}, "aktiv")})
+        self.assertTrue(all("plugin" not in h for h in hooks))
+
+    def test_ordner_ohne_aktion_mit_eigenem_befehl(self):
+        """Ohne `ordner` böte das Dashboard „deinstallieren“ an und suchte den Block in settings.json."""
+        def hook(art, ordner):
+            return {"id": f"hook:{ordner}:Stop", "typ": "Hook", "ereignis": "Stop", "ordner": ordner, "quelle": {"art": art}}
+        self.assertEqual(build.aktionen(hook("Skill-Ordner", "/x/skills/a")), {})
+        with mock.patch.object(build.sys, "platform", "darwin"):
+            self.assertEqual(build.befehl(hook("Skill-Ordner", "/x/skills/a"), "entfernen"), "mv /x/skills/a/hooks ~/.Trash/")
+            self.assertEqual(build.befehl(hook("Mod-Ordner", "/x/dev-mods/s/a b"), "entfernen"), "mv '/x/dev-mods/s/a b' ~/.Trash/")
+        self.assertEqual(build.befehl(hook("Plugin-Ordner", "/x/p"), "entfernen"), "CLAUDE_CODE_PLUGIN_DIRS → /x/p herausnehmen")
+
+    def test_kaputter_ordner_kostet_nur_sich(self):
+        claude = self.tmp / ".claude"
+        for name in ("gut", "kaputt"):
+            self.ordner(f".claude/skills/{name}")
+        echt = build.mod_eintraege
+
+        def eintraege(datei, wurzel, *rest):
+            if wurzel.name == "kaputt":
+                raise RuntimeError("unerwartet")
+            return echt(datei, wurzel, *rest)
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}), \
+                mock.patch.object(build, "SETTINGS", {}), mock.patch.object(build, "mod_eintraege", side_effect=eintraege):
+            hooks = build.ordner_plugins()
+        self.assertEqual({Path(h["ordner"]).name for h in hooks}, {"gut"})
+        self.assertEqual(build.LESEFEHLER, [{"quelle": f"Skill-Ordner {claude / 'skills/kaputt'}", "fehler": "RuntimeError: unerwartet"}])
+
+
 if __name__ == "__main__":
     unittest.main()
