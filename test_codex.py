@@ -307,6 +307,19 @@ class Plugins(CodexOrdner):
             self.schreibe(wurzel.parent / ".codex-remote-plugin-install.json", '{"schema_version":1}')
         return wurzel
 
+    def test_remote_policy_wird_aus_katalog_zugeordnet(self):
+        wurzel = self.plugin("openai-curated-remote", "work-pets", "1", {"name": "work-pets"}, remote=True)
+        self.schreibe(wurzel.parent / ".codex-remote-plugin-install.json", '{"remote_plugin_id":"pets-id"}')
+        self.skill(wurzel / "skills", "pets")
+        katalog = self.home / ".codex/cache/remote_plugin_catalog/test.json"
+        for policy in ("INSTALLED_BY_DEFAULT", "AVAILABLE"):
+            self.schreibe(katalog, json.dumps({"plugins": [{"id": "pets-id", "installation_policy": policy}]}))
+            liste, teile, _ = codex.plugins({}, (set(), set()), {})
+            self.assertEqual(liste[0]["installation_policy"], policy)
+            self.assertEqual("deinstallieren" in codex.aktionen(liste[0]), policy == "AVAILABLE")
+            self.assertEqual("codex plugin remove" in codex.befehl(teile[0], None), policy == "AVAILABLE")
+            self.assertIn("skills.config", codex.befehl(teile[0], "abschalten"))
+
     def test_status_bestandteile_und_keine_geheimnisse(self):
         docs = self.plugin("openai-primary-runtime", "documents", "26.905", {
             "name": "documents", "version": "26.905", "description": "Dokumente", "author": {"name": "OpenAI"},
@@ -606,9 +619,19 @@ class Aktionen(unittest.TestCase):
         # ohne Eintrag in config.toml: Wie Codex ein Plugin dort anlegt, legt `codex plugin add` fest, nicht der Server
         self.assertEqual(sorted(codex.aktionen({**p, "status": "nicht aktiviert"})), ["deinstallieren"])
         konto = {"id": "plugin:sites@openai-curated-remote", "name": "sites", "marktplatz": "openai-curated-remote", "status": "im Konto"}
-        self.assertEqual(codex.aktionen(konto), {"deinstallieren": {"argv": ["codex", "plugin", "remove", "sites@openai-curated-remote"]}})
+        self.assertEqual(codex.aktionen(konto), {})
         self.assertEqual(codex.aktionen({"id": 'plugin:a"b@m', "name": 'a"b', "marktplatz": "m", "status": "aktiv"})["deaktivieren"],
                          {"toml": {"tabelle": 'plugins."a\\"b@m"', "schluessel": "enabled", "wert": "false"}})
+
+    def test_remote_installationssperre_und_unbekannte_policy(self):
+        p = {"id": "plugin:work-pets@openai-curated-remote", "name": "work-pets",
+             "marktplatz": "openai-curated-remote", "status": "im Konto"}
+        for policy in (None, "INSTALLED_BY_DEFAULT", "NOT_AVAILABLE"):
+            e = {**p, "installation_policy": policy}
+            self.assertNotIn("deinstallieren", codex.aktionen(e))
+            self.assertNotIn("codex plugin remove", codex.befehl(e, "entfernen"))
+        erlaubt = {**p, "installation_policy": "AVAILABLE"}
+        self.assertIn("deinstallieren", codex.aktionen(erlaubt))
 
     def test_mcp_server(self):
         eigen = {"id": "mcp:node_repl", "name": "node_repl", "art": "User", "status": "aktiv"}
