@@ -847,6 +847,23 @@ class Verlauf(unittest.TestCase):
         self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {}, "entfernt": {}})
 
 
+class Sammelordner(unittest.TestCase):
+    def test_ordner_voller_projekte_ohne_eigenes_repo(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        for ordner in ("home/Projekte/A/.git", "home/Projekte/B", "home/Mono/.git", "home/Mono/teil", "home/Allein"):
+            (tmp / ordner).mkdir(parents=True)
+        (tmp / "home/Wt").mkdir()
+        (tmp / "home/Wt/.git").write_text("gitdir: woanders")  # ein Git-Worktree hat .git als Datei
+        (tmp / "home/Wt/sub").mkdir()
+        h = str(tmp / "home")
+        projekte = [h, h + "/Projekte", h + "/Projekte/A", h + "/Projekte/B", h + "/Mono", h + "/Mono/teil", h + "/Allein",
+                    h + "/Wt", h + "/Wt/sub", h + "/Weg", h + "/Weg/x", h + "/Projekte-2"]
+        # ~ und der Ordner voller Projekte, auch wenn es ihn nicht mehr gibt; ein Repo mit eingetragenem Unterordner bleibt ein Projekt
+        self.assertEqual(build.sammelordner(projekte), [h, h + "/Projekte", h + "/Weg"])
+        self.assertEqual(build.sammelordner([]), [])
+
+
 class HarnessWahl(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

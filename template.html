@@ -930,6 +930,11 @@ function renderProjekte() {
   const strich = '<span class="leer">–</span>';
   const teil = (titel, html) => html ? `<p class="label">${titel}</p>${html}` : "";
   const spalten = je(7, 5);
+  /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner). Lädt dort aber etwas, bleibt er stehen:
+     Projekt-Skills und Projekt-Server zeigt nur dieser Tab. */
+  const sammel = new Set((D.sammelordner || []).map(kurzPfad));
+  const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.aus.length).map(([pfad]) => pfad);
+  weggelassen.forEach(pfad => projekte.delete(pfad));
   const zeilen = [...projekte.entries()].sort(([a], [b]) => a.split("/").pop().localeCompare(b.split("/").pop())).map(([pfad, p]) => {
     const tokens = p.skills.reduce((s, e) => s + e.tokens, 0);
     const extra = [];
@@ -950,7 +955,8 @@ function renderProjekte() {
         teil("Regeln ohne Rückfrage", p.regeln.length && RECHT.gebuendelt(p.regeln)) +
         teil(`Modelle, letzte ${esc((D.modelle || {}).tage)} Tage`, p.gemessen.length && MESSUNG.messung(p.gemessen)));
   }).join("");
-  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th>${je('<th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>`;
+  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th>${je('<th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>` +
+    (weggelassen.length ? `<p class="klein">Nicht gezeigt, weil darin andere Projekte liegen: ${weggelassen.map(p => `<code>${esc(kurz(p))}</code>`).join(", ")}. Ihre Regeln stehen unter „Berechtigungen“, ihre Tokens unter „Modelle“.</p>` : "");
   return abschnitt("projekte", "Was in den einzelnen Projekten gilt",
     gruppen || '<p class="leer">Keine projektbezogenen Skills, Befehle oder MCP-Server gefunden.</p>',
     je("Alles zu einem Projekt an einer Stelle: seine Regeln, die Modelle, die dort liefen, und was dort laut ~/.claude.json zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.",
