@@ -1149,6 +1149,15 @@ def fuers_dashboard(inhalt):
             "bewertung_stand": stand if isinstance(stand, str) else None}
 
 
+def sammelordner(projekte):
+    """Eingetragene Ordner, in denen andere eingetragene Projekte liegen und die selbst kein Git-Repo sind: ~ oder ein
+    Ordner voller Projekte. Claude Code trägt jeden Ordner ein, in dem einmal eine Sitzung lief; der Tab „Projekte“
+    lässt diese weg. Ein Repo mit eingetragenem Unterordner bleibt ein Projekt."""
+    projekte = [str(p) for p in projekte]
+    return sorted(p for p in projekte if not (Path(p) / ".git").exists()
+                  and any(q.startswith(p.rstrip("/") + "/") for q in projekte))
+
+
 def claude_inventar():
     plugin_liste, plugin_teile, plugin_hooks = plugins()
     plugin_updates_markieren(plugin_liste)
@@ -1189,6 +1198,7 @@ def claude_inventar():
         "projekt_mcp": mcp_projekte,
         "hooks": hooks,
         "hook_tage": HOOK_TAGE,
+        "sammelordner": sammelordner((CFG.get("projects") or {}).keys()),
         "eingebaut": eingebaut,
         "gruppen": BEWERTUNG.get("gruppen", []),
         "hinweise": BEWERTUNG.get("hinweise", []),
