@@ -77,7 +77,14 @@ nav .unternav a:not([aria-current]):not(:hover) { color: var(--text); }
 main { padding-inline: 30px; }
 section { padding-block: 24px 8px; scroll-margin-top: var(--kopf, 0px); }
 .label { color: var(--cyan); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
-section > .wrap > h2 { font-size: 22px; font-weight: 400; margin-bottom: 10px; }
+section > .wrap > h2, .erklaerung h2 { font-size: 22px; font-weight: 400; }
+section > .wrap > h2, .erklaerung { margin-bottom: 10px; }
+.erklaerung > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; list-style: none; }
+.erklaerung > summary::-webkit-details-marker { display: none; }
+.erklaerung > summary > .klein::after { content: " ▸"; color: var(--cyan); }
+.erklaerung[open] > summary > .klein::after { content: " ▾"; }
+.erklaerung > summary:hover > .klein { color: var(--cyan-dark); }
+.erklaerung .intro { margin: 8px 0 14px; }
 .intro { max-width: 760px; margin: 0 0 20px; }
 h3 { font-size: 16px; font-weight: 600; }
 .klein { font-size: 13px; color: var(--text-light); }
@@ -123,7 +130,13 @@ tr.inhalt .label { margin: 16px 0 0; font-size: 12px; }
 .verlauf svg { display: block; width: 100%; height: auto; }
 .verlauf .enden { display: flex; justify-content: space-between; color: var(--text-light); font-variant-numeric: tabular-nums; }
 
-.tabelle { overflow-x: auto; margin-top: 12px; }
+.tabelle { margin-top: 12px; }
+/* Tabellenköpfe bleiben unter Seitenkopf und Filter stehen; nicht in aufgeklappten Zeilen. Der Rahmen einer
+   zusammengelegten Tabelle wandert nicht mit, deshalb die Linie als Schatten. Kein overflow an .tabelle:
+   Damit hinge der Kopf an diesem Kasten statt an der Seite; nur schmal scrollt die Tabelle für sich. */
+.tabelle:not(tr .tabelle) > table > thead th { position: sticky; top: calc(var(--kopf, 0px) + var(--filter, 0px) - 4px); z-index: 4;
+  background: var(--bg); box-shadow: inset 0 -1px 0 var(--cool-gray); }
+@media (max-width: 900px) { .tabelle { overflow-x: auto; } }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-light); padding: 8px 10px; border-bottom: 1px solid var(--cool-gray); white-space: nowrap; vertical-align: bottom; }
 th.sortierbar { cursor: pointer; user-select: none; }
@@ -224,7 +237,10 @@ td details pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); color: var(--text
 .karte .fazit { background: var(--bg-gray); padding: 10px 12px; margin-top: 14px; font-size: 14px; border-radius: 2px; }
 .karte .fazit b { color: var(--text-dark); }
 
-.filter { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; font-size: 14px; }
+.filter { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; margin-top: 8px; font-size: 14px;
+  position: sticky; top: calc(var(--kopf, 0px) - 2px); z-index: 5; background: var(--bg); padding-block: 10px 8px; }
+/* Bleibt beim Scrollen unter dem Seitenkopf stehen, 2px unter ihn geschoben: --kopf und --filter sind gerundete
+   Höhen, und bei halben Pixeln schien die Tabelle darunter in einem Spalt durch. Der Tabellenkopf überlappt ebenso. */
 .filter input[type=search], .filter select { font: 14px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 6px 9px; background: var(--bg); }
 .filter input[type=search] { min-width: 220px; flex: 1 1 220px; max-width: 340px; }
 .filter label { display: inline-flex; gap: 6px; align-items: center; }
@@ -488,8 +504,65 @@ function wahlFeld(e) {
 }
 const wahlZelle = e => AKTIONEN ? `<td>${wahlFeld(e)}</td>` : "";
 
+/* Filter über jeder Tabelle. „Skills“ filtert seine Daten selbst (skillsFiltern), die Empfehlungen entstehen bei jeder
+   Aktion neu (empfFiltern). Alle anderen Tabellen stehen fertig im Dokument: tabellenFilter() setzt ein Suchfeld
+   davor, das im Text der Zeile und ihrer aufgeklappten Einzelheiten sucht, und je Spalte mit data-filter eine
+   Auswahl aus den Werten, die in der Tabelle vorkommen. Tabellen in aufgeklappten Zeilen bekommen keinen. */
+const ohne = (el, weg) => { const k = el.cloneNode(true); k.querySelectorAll(weg).forEach(x => x.remove()); return k.textContent.replace(/\s+/g, " ").trim(); };
+const zeilenText = zeile => ohne(zeile, "select, button.zeilenknopf, button.kopieren").toLowerCase();
+/* eine Zelle kann mehrere Marken tragen („breit“ und „doppelt“): Jede ist ein eigener Wert */
+const zellWerte = td => { const marken = [...td.querySelectorAll(".status, .badge")];
+  return (marken.length ? marken : [td]).map(el => ohne(el, "[aria-hidden], select, .klein, .geerbt, button.zeilenknopf, button.kopieren")).filter(w => w && w !== "–"); };
+function tabellenFilter() {
+  document.querySelectorAll("#app .tabelle").forEach(huelle => {
+    if (huelle.closest("tr, details, #empf-inhalt, #suche") || huelle.querySelector("#skills-body")) return;
+    const tabelle = huelle.querySelector("table");
+    const zeilen = [...tabelle.tBodies[0].rows].filter(r => !r.matches(".detail, .inhalt"));
+    const einzelheiten = r => r.nextElementSibling?.matches(".detail, .inhalt") ? r.nextElementSibling : null;
+    const text = new Map(zeilen.map(r => [r, zeilenText(r) + (einzelheiten(r) ? " " + zeilenText(einzelheiten(r)) : "")]));
+    const spalten = [...tabelle.tHead.rows[0].cells].map((th, i) => [th, i]).filter(([th]) => th.dataset.filter);
+    const leiste = document.createElement("div");
+    leiste.className = "filter";
+    leiste.innerHTML = '<input type="search" placeholder="Name oder Text suchen …" aria-label="In der Tabelle suchen">' + spalten.map(([th, i]) => {
+      const werte = [...new Set(zeilen.flatMap(r => zellWerte(r.cells[i])))].sort((a, b) => a.localeCompare(b));
+      return `<select data-spalte="${i}" aria-label="${esc(th.textContent)}"><option value="">${esc(th.dataset.filter)}</option>${werte.map(w => `<option>${esc(w)}</option>`).join("")}</select>`;
+    }).join("") + '<span class="anzahl"></span>';
+    /* Filter und Tabelle in einem Kasten: Der Filter bleibt nur stehen, solange seine Tabelle zu sehen ist.
+       Sonst klebte er in einem Tab mit zwei Tabellen noch über der zweiten. */
+    const block = document.createElement("div");
+    huelle.before(block);
+    block.append(leiste, huelle);
+    const anwenden = () => {
+      const q = leiste.querySelector("input").value.trim().toLowerCase();
+      const wahl = [...leiste.querySelectorAll("select")].filter(s => s.value).map(s => [Number(s.dataset.spalte), s.value]);
+      let sichtbar = 0;
+      for (const r of zeilen) {
+        const passt = text.get(r).includes(q) && wahl.every(([i, w]) => zellWerte(r.cells[i]).includes(w));
+        if (!passt && einzelheiten(r) && !einzelheiten(r).hidden) klappe(r); /* sonst bliebe das Aufgeklappte ohne seine Zeile stehen */
+        r.hidden = !passt;
+        sichtbar += passt;
+      }
+      leiste.querySelector(".anzahl").textContent = `${sichtbar} von ${zeilen.length}`;
+    };
+    leiste.addEventListener("input", anwenden);
+    anwenden();
+  });
+}
+function empfFiltern() {
+  const q = document.getElementById("empf-suche").value.trim().toLowerCase();
+  const zeilen = [...document.querySelectorAll("#empf-inhalt tbody > tr")];
+  zeilen.forEach(r => { r.hidden = !zeilenText(r).includes(q); });
+  document.querySelectorAll("#empf-inhalt .empf-gruppe").forEach(g => { g.hidden = !g.querySelector("tbody > tr:not([hidden])"); });
+  document.getElementById("empf-anzahl").textContent = zeilen.length ? `${zeilen.filter(r => !r.hidden).length} von ${zeilen.length}` : "";
+}
+
+/* Die Erläuterung steht eingeklappt hinter der Überschrift: Wer das Dashboard kennt, braucht sie nicht bei jedem
+   Aufruf, und oben nahm sie den Platz der Tabelle. <div>, weil manche eine Legende als Liste enthalten. */
 function abschnitt(id, titel, inhalt, intro) {
-  return `<section id="${id}"><div class="wrap"><h2>${esc(titel)}</h2>${intro ? `<p class="intro">${intro}</p>` : ""}${inhalt}</div></section>`;
+  const kopf = intro
+    ? `<details class="erklaerung"><summary><h2>${esc(titel)}</h2><span class="klein">Erläuterung</span></summary><div class="intro">${intro}</div></details>`
+    : `<h2>${esc(titel)}</h2>`;
+  return `<section id="${id}"><div class="wrap">${kopf}${inhalt}</div></section>`;
 }
 
 /* Was seit dem letzten Lauf vor heute dazukam oder wegfiel, aus build.py (aenderungen). Ein Status zählt nicht,
@@ -575,7 +648,7 @@ const GRUPPEN_TEXT = {
 };
 function renderEmpfehlungen() {
   return abschnitt("empfehlungen", "Was weg kann und was du entscheiden solltest",
-    '<div id="empf-inhalt"></div>',
+    '<div class="filter"><input type="search" id="empf-suche" placeholder="Name oder Text suchen …" aria-label="In den Empfehlungen suchen"><span class="anzahl" id="empf-anzahl"></span></div><div id="empf-inhalt"></div>',
     "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills." +
     (AKTIONEN ? ` Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
       : " Nichts wird automatisch geändert."));
@@ -610,6 +683,7 @@ function renderEmpfInhalt() {
   const erledigt = ALLE.filter(umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
   if (erledigt.length) html += `<p class="klein">Schon umgesetzt: ${erledigt.map(esc).join(", ")}.</p>`;
   document.getElementById("empf-inhalt").innerHTML = html || '<p class="leer">Keine offenen Empfehlungen.</p>';
+  empfFiltern();
   if (TOKEN) {
     const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
     document.querySelectorAll(".zahl-aktionen").forEach(z => { z.textContent = offen ? ` (${offen})` : ""; });
@@ -695,7 +769,7 @@ function renderMcp() {
       ["Entfernen", befehlZeile(m.befehl)],
     ])).join("");
   return abschnitt("mcp", "Global eingetragene Server und ihr Status",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Status</th><th class="zahl">Werkzeuge</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Genutzt</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th data-filter="jede Art">Art</th><th data-filter="jeder Status">Status</th><th class="zahl">Werkzeuge</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Genutzt</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je(`Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. ` +
       `„Genutzt“ stammt aus den Transkripten der letzten ${D.hook_tage} Tage. HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen; alle anderen misst sie in denselben Transkripten, und wer dort nie geladen wurde, steht als „nicht gemessen“. ` +
       `„Kontext je Sitzung“ zählt den Anweisungsblock und die Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details. ` +
@@ -731,7 +805,7 @@ function renderPlugins() {
       ]);
   }).join("");
   return abschnitt("plugins", "Installierte Plugins, ihre Nutzung und Kontextkosten",
-    `<div class="tabelle"><table><thead><tr><th>Name</th><th>Autor</th><th>Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th>Name</th><th data-filter="jeder Autor">Autor</th><th data-filter="jeder Status">Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je("„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen.",
       "Plugins aus <code>~/.codex/plugins/cache</code> mit ihrem Schalter in <code>~/.codex/config.toml</code>. „im Konto“: kommt aus deinem ChatGPT-Konto, geschaltet wird dort. „wirkungslos“: steht in config.toml, aber Codex lädt openai-curated-Plugins aus dem Online-Katalog. „Genutzt“ zählt Codex-Sitzungen, in denen Skills des Plugins liefen. „Kontext“ ist die geschätzte Tokenzahl seiner Skill-Beschreibungen je Sitzung."));
 }
@@ -752,7 +826,7 @@ function renderSkillsRahmen() {
   const quellen = [...new Set(SKILLS.map(lieferweg))].sort((a, b) => a.localeCompare(b));
   const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
   const filter = `<div class="filter">
-    <input type="search" id="f-suche" placeholder="Suchen …" aria-label="In Name und Beschreibung suchen">
+    <input type="search" id="f-suche" placeholder="Name oder Text suchen …" aria-label="In Name und Beschreibung suchen">
     <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
     <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar", UNGENUTZT], "jeder Status")}</select>
     <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $"]), "jeder Aufruf")}</select>
@@ -901,7 +975,7 @@ function renderHooks() {
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th>Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.`,
       "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
 }
@@ -918,7 +992,7 @@ function renderWerkzeuge() {
       <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>' : ""}${w.id === "python3" && w.befehl
         ? '<div class="klein">Danach den Server neu starten: Er läuft sonst mit dem gelöschten alten Python weiter, und Aktionen scheitern.</div>' : ""}</td></tr>`).join("");
   return abschnitt("versionen", "Programme und ihre Versionen",
-    `<div class="tabelle"><table><thead><tr><th>Programm</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th>Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>` + renderQuellcode(),
+    `<div class="tabelle"><table><thead><tr><th>Programm</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th data-filter="jeder Status">Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>` + renderQuellcode(),
     `Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten. „veraltet“ heißt: In der eigenen Versionslinie gibt es Neueres; eine neuere Linie steht darunter, macht aber nichts veraltet. „ohne Pflege“: Die Linie bekommt keine Sicherheitsupdates mehr. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Aktualisieren musst du selbst — den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code). <code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen.`);
 }
 
@@ -994,7 +1068,7 @@ function renderBerechtigungen() {
   const auffaellig = liste.filter(z => z.marken.length);
   const knopf = z => z.aktionen?.entfernen ? `<button type="button" class="zeilenknopf" data-recht="${esc(z.id)}">entfernen</button>` : '<span class="leer">von Hand</span>';
   const oben = auffaellig.length
-    ? `<div class="tabelle"><table><thead><tr><th>Regel</th><th>${je("Projekt", "Bereich")}</th><th>Quelle</th><th>Hinweis</th>${TOKEN ? "<th>Aufräumen</th>" : ""}</tr></thead><tbody>${
+    ? `<div class="tabelle"><table><thead><tr><th>Regel</th><th data-filter="${je("jedes Projekt", "jeder Bereich")}">${je("Projekt", "Bereich")}</th><th>Quelle</th><th data-filter="jeder Hinweis">Hinweis</th>${TOKEN ? "<th>Aufräumen</th>" : ""}</tr></thead><tbody>${
       auffaellig.map(z => `<tr><td><code>${esc(z.art === "Vertrauen" ? kurzPfad(z.bereich) : z.regel)}</code></td><td class="nowrap">${esc(z.art === "Vertrauen" ? "Vertraute Ordner" : ordnerName(z.bereich))}</td>
         <td class="klein">${esc(datei(z))}</td><td class="nowrap">${marken(z)}</td>${TOKEN ? `<td class="nowrap">${knopf(z)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : '<p class="leer">Nichts Auffälliges: keine breite, verwaiste, widersprüchliche oder doppelte Regel.</p>';
@@ -1410,6 +1484,7 @@ function waehleReiter(gewaehlt) {
     r.tabIndex = r === gewaehlt ? 0 : -1; /* Tab springt zum Inhalt, zwischen den Reitern wechseln die Pfeiltasten */
     document.getElementById(r.getAttribute("aria-controls")).hidden = r !== gewaehlt;
   });
+  filterHoehen();
 }
 document.addEventListener("keydown", ev => {
   const reiter = ev.target.closest?.('[role="tab"]');
@@ -1477,6 +1552,13 @@ for (const [id, feld] of FILTERFELDER) {
 }
 document.getElementById("f-teile").checked = F.teile;
 skillsFiltern();
+tabellenFilter();
+document.getElementById("empf-suche").addEventListener("input", empfFiltern);
+/* Der Tabellenkopf steht unter dem Filter: dessen Höhe (er bricht um) als --filter an dem Element danach.
+   Beim Wechsel von Tab und Reiter sofort, nicht erst mit dem nächsten Bild: Sonst läge der Kopf kurz unter dem Filter. */
+const filterHoehe = f => f.nextElementSibling.style.setProperty("--filter", f.offsetHeight + "px");
+const filterHoehen = () => document.querySelectorAll("#app .filter").forEach(filterHoehe);
+document.querySelectorAll("#app .filter").forEach(f => new ResizeObserver(() => filterHoehe(f)).observe(f));
 {
   const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length
     + (D.quellcode || []).filter(q => q.befehl || q.upstream.befehl).length;
@@ -1498,6 +1580,8 @@ function zeigeTab() {
   document.querySelectorAll("nav .unternav").forEach(u => { u.hidden = u.dataset.gruppe !== gruppe; });
   document.querySelectorAll("nav a").forEach(a =>
     (a.dataset.gruppe ? a.dataset.gruppe === gruppe : a.hash === "#" + aktiv.id) ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  kopfHoehe(); /* die zweite Zeile der Tabs kommt oder geht */
+  filterHoehen();
   window.scrollTo(0, 0);
 }
 /* Kopf und Tabs stehen fest: Sprungziele um ihre Höhe versetzen, auch wenn die Tabs umbrechen */
