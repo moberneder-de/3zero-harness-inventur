@@ -17,6 +17,7 @@ Aufruf: python3 build.py [--harness claude-code|codex]   (ohne Angabe gilt der z
 import argparse
 import base64
 import json
+import os
 import re
 import statistics
 import subprocess
@@ -398,6 +399,69 @@ def hook_eintraege(roh, schluessel, quelle, pfad, status="aktiv"):
     return ergebnis
 
 
+MOD_AUFRUF = re.compile(r"""\bon\(\s*(['"`])([\w.*-]+)\1\s*(?:,\s*(\{[^{}]{0,200}\}))?""")
+
+
+def mod_eintraege(hooks_datei, wurzel, schluessel, quelle, status="aktiv"):
+    """Mods: Hook-Module, die hooks/hooks.json unter `modules` nennt. Sie laufen in jeder Sitzung mit und können
+    Werkzeug-Aufrufe, Prompt und System-Prompt ändern. Ein Eintrag je Ereignis, abgelesen an `on('…'` im Text der
+    genannten Datei — gelesen, nie ausgeführt. Steht ein `on(` nur in einer importierten Datei, fehlt es; ohne Fund
+    bleibt deshalb eine Zeile, sonst wäre das Modul unsichtbar."""
+    module = lies_json(hooks_datei).get("modules")
+    ergebnis = {}
+    for m in module if isinstance(module, list) else []:
+        if not isinstance(m, str):
+            continue
+        datei = (hooks_datei.parent / m).resolve()
+        # der Pfad kommt aus einer fremden Datei: nichts lesen, was aus dem Plugin herausführt
+        if not datei.is_relative_to(wurzel.resolve()) or not datei.is_file():
+            continue
+        funde = MOD_AUFRUF.findall(datei.read_text(encoding="utf-8", errors="replace")) or [("", "unbekannt", "")]
+        for _, ereignis, matcher in funde:
+            e = ergebnis.setdefault(ereignis, {
+                "id": f"hook:{schluessel}:mod:{ereignis}", "name": "Mod" if ereignis == "unbekannt" else ereignis, "typ": "Hook",
+                "ereignis": ereignis, "status": status, "befehle": [], "quelle": dict(quelle), "pfad": str(datei),
+                "tokens": 0, "ausgabe": None, "dauer": None, "mod": True})
+            e["befehle"].append({"befehl": datei.name, "matcher": matcher or None, "bedingung": None})
+    return [ergebnis[k] for k in sorted(ergebnis)]
+
+
+PLUGIN_ORDNER = "CLAUDE_CODE_PLUGIN_DIRS"
+
+
+def ordner_plugins():
+    """Hooks und Mods aus Plugins, die ohne Installation aus einem Ordner laden: Skill-Ordner mit eigener plugin.json,
+    die Ordner aus CLAUDE_CODE_PLUGIN_DIRS (Umgebung oder `env` in settings.json) und die Mods aus
+    ~/.claude/dev-mods/<Sitzung>, die nur in ihrer Sitzung laden. Die ID trägt den Ordner, `ordner` sagt `aktionen()`
+    und `befehl()`, dass der Eintrag weder zu einem Plugin noch in settings.json gehört."""
+    def unter(pfad):
+        try:
+            return sorted(p for p in pfad.iterdir() if p.is_dir())
+        except OSError:
+            return []
+    env = SETTINGS.get("env")
+    eingetragen = [os.environ.get(PLUGIN_ORDNER), env.get(PLUGIN_ORDNER) if isinstance(env, dict) else None]
+    orte = [("Skill-Ordner", o, "aktiv") for o in unter(CLAUDE / "skills")]
+    orte += [("Plugin-Ordner", Path(p).expanduser(), "aktiv")
+             for liste in eingetragen if isinstance(liste, str) for p in liste.split(os.pathsep) if p]
+    orte += [("Mod-Ordner", o, "nur eine Sitzung") for sitzung in unter(CLAUDE / "dev-mods") for o in unter(sitzung)]
+    ergebnis, gesehen = [], set()
+    for art, wurzel, status in orte:
+        try:
+            if wurzel.resolve() in gesehen or not (wurzel / ".claude-plugin" / "plugin.json").is_file():
+                continue
+            gesehen.add(wurzel.resolve())
+            quelle = {"art": art, "autor": f"{art} {wurzel.name}"}
+            datei = wurzel / "hooks" / "hooks.json"
+            eintraege = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
+            eintraege += mod_eintraege(datei, wurzel, wurzel, quelle, status)
+        except Exception as fehler:
+            lesefehler(f"{art} {wurzel}", fehler)
+            continue
+        ergebnis += [{**e, "ordner": str(wurzel)} for e in eintraege]
+    return ergebnis
+
+
 def eigene_hooks(settings, pfad):
     quelle = {"art": "Einstellungen", "autor": "eigene Einstellungen"}
     hooks = hook_eintraege(settings.get("hooks"), "einstellungen", quelle, pfad)
@@ -640,6 +704,8 @@ def plugins():
             hooks_roh = hooks_roh if isinstance(hooks_roh, dict) else {}
             for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
                 plugin_hooks.append({**h, "plugin": pid})
+            mods = mod_eintraege(hooks_datei, wurzel, pid, {"art": "Plugin", "autor": autor, "repo": pid}, "aktiv" if aktiv else "aus")
+            plugin_hooks += [{**h, "plugin": pid} for h in mods]
 
             genutzt = [t["nutzung"] for t in teile if t["nutzung"]]
             pnutzung = CFG.get("pluginUsage", {}).get(pid, {})
@@ -661,6 +727,7 @@ def plugins():
                 "befehle": [t["name"] for t in teile if t["typ"] == "Befehl"],
                 "agenten": [t["name"] for t in teile if t["typ"] == "Agent"],
                 "hooks": sorted(hooks_roh.keys()),
+                "mods": [h["ereignis"] for h in mods],
                 "mcp": mcp_definitionen(wurzel, manifest),
                 "tokens": sum(t["tokens"] for t in teile),
                 "nutzung": {
@@ -870,6 +937,11 @@ def papierkorb_befehl(ziel):
 def befehl(e, empfehlung):
     """Der Befehl, mit dem sich die Empfehlung umsetzen ließe."""
     eid = e["id"]
+    if eid.startswith("hook:") and e.get("ordner"):
+        if e["quelle"]["art"] == "Plugin-Ordner":
+            return f"{PLUGIN_ORDNER} → {e['ordner']} herausnehmen"
+        # im Skill-Ordner nur die Hooks: Der Skill daneben soll bleiben
+        return papierkorb_befehl(shellwort(e["ordner"] + ("/hooks" if e["quelle"]["art"] == "Skill-Ordner" else "")))
     if eid.startswith("hook:") and not e.get("plugin"):
         if e["ereignis"] == "Statuszeile":
             return '~/.claude/settings.json → "statusLine" entfernen'
@@ -918,8 +990,8 @@ def aktionen(e):
     settings.json (`hook_entfernen`). Ein Override `None` nimmt den Eintrag weg. Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
     if eid.startswith("hook:"):
-        if e.get("plugin"):
-            return {}  # kommt mit dem Plugin und geht mit ihm
+        if e.get("plugin") or e.get("ordner"):
+            return {}  # kommt mit dem Plugin oder seinem Ordner und geht mit ihm
         # Einen einzelnen Hook kann Claude Code nicht abschalten, nur alle zusammen (disableAllHooks). Bleibt das Entfernen.
         return {"deinstallieren": {"hook_entfernen": "statusLine" if e["ereignis"] == "Statuszeile" else e["ereignis"]}}
     if eid.startswith("plugin:"):
@@ -1164,7 +1236,7 @@ def claude_inventar():
     skills = persoenliche_skills() + plugin_teile
     updates_markieren(skills, LOCK)
     projekte = projekt_skills((CFG.get("projects") or {}).keys())
-    hooks = eigene_hooks(SETTINGS, CLAUDE / "settings.json") + plugin_hooks
+    hooks = eigene_hooks(SETTINGS, CLAUDE / "settings.json") + plugin_hooks + ordner_plugins()
     dateien = transkripte()
     messen(hooks, *hook_ausgaben(dateien))
     for p in plugin_liste:
