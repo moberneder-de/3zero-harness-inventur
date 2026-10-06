@@ -6,11 +6,14 @@ on:
 
 jobs:
   tests:
-    # 3.11 ist die kleinste unterstützte Version (tomllib); Linux und Mac, weil Papierkorb und Browser je System anders gehen
+    # 3.11 ist die kleinste unterstützte Version (tomllib). Nur Linux: GitHub rechnet macOS-Minuten
+    # zehnfach an und rundet jeden Job auf eine volle Minute — zwei Mac-Jobs kosteten je Push 20 Minuten,
+    # im Oktober 2026 waren es 1830 von 2000 freien. Papierkorb und Browser gehen je System anders;
+    # den Mac-Weg prüft der lokale Lauf (`python -m unittest -v`).
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python: ["3.11", "3.13"]
     runs-on: ${{ matrix.os }}
     steps:
