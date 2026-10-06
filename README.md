@@ -45,7 +45,9 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
 
-Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt, seine Regeln und die Modelle, die dort liefen. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
+Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server und Hooks aus den Einstellungen des Projekts), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
+
+**Hooks** zeigt neben Befehlen auch **Mods** (Claude Code): Code eines Plugins, der in der Sitzung mitläuft und Werkzeug-Aufrufe, Prompt und System-Prompt ändern kann. In welche Ereignisse ein Mod eingreift, liest die Inventur am Text seines Moduls ab, ohne es auszuführen. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
 
 Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
 
@@ -140,7 +142,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 
 Umgebungswerte von MCP-Servern übernimmt das Inventar nie. Was in URL oder Argumenten eines Servers nach Zugangsdaten aussieht (Passwort in der URL, Werte in der Query, `--token …`, `…_KEY=…`, `Bearer …`), ersetzt es durch „…“, bevor das Ziel im Inventar und im Dashboard steht. Das erkennt Muster, keine Bedeutung.
 
-Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nicht gemessen“, außer bei HTTP-Servern ohne Anmeldung, die die Inventur selbst fragt. Server, die per Befehl starten, fragt sie nie: Das hieße fremde Programme auszuführen.
+Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods gar nicht und Hooks nicht je Projekt. Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten; dort steht „nicht gemessen“, außer bei HTTP-Servern ohne Anmeldung, die die Inventur selbst fragt. Server, die per Befehl starten, fragt sie nie: Das hieße fremde Programme auszuführen.
 
 ## Voraussetzungen
 
