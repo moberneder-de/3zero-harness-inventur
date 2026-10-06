@@ -84,7 +84,16 @@ section > .wrap > h2, .erklaerung { margin-bottom: 10px; }
 .erklaerung > summary > .klein::after { content: " ▸"; color: var(--cyan); }
 .erklaerung[open] > summary > .klein::after { content: " ▾"; }
 .erklaerung > summary:hover > .klein { color: var(--cyan-dark); }
-.erklaerung .intro { margin: 8px 0 14px; }
+.erklaerung .intro { margin: 10px 0 18px; max-width: 900px; background: var(--bg); border: 1px solid var(--border-light); border-left: 3px solid var(--cyan); border-radius: var(--radius); padding: 16px 22px; font-size: 14.5px; }
+.erklaerung .intro > p { margin: 0; }
+.erklaerung .intro > .label { margin: 16px 0 6px; font-size: 12px; }
+.begriffe { display: grid; grid-template-columns: max-content 1fr; gap: 8px 22px; margin: 14px 0 0; }
+.begriffe dt { font-weight: 600; color: var(--text-dark); }
+.begriffe dd { margin: 0; }
+.wissen { margin: 0; padding-left: 18px; }
+.wissen li { padding: 2px 0; }
+.erklaerung .intro .legende { margin-top: 0; }
+@media (max-width: 640px) { .begriffe { grid-template-columns: 1fr; gap: 2px; } .begriffe dd { margin-bottom: 8px; } }
 .intro { max-width: 760px; margin: 0 0 20px; }
 h3 { font-size: 16px; font-weight: 600; }
 .klein { font-size: 13px; color: var(--text-light); }
@@ -558,6 +567,13 @@ function empfFiltern() {
 
 /* Die Erläuterung steht eingeklappt hinter der Überschrift: Wer das Dashboard kennt, braucht sie nicht bei jedem
    Aufruf, und oben nahm sie den Platz der Tabelle. <div>, weil manche eine Legende als Liste enthalten. */
+/* Der Text einer Erläuterung: ein Satz, worum es geht, dann je Begriff oder Spalte eine Zeile, dann was sonst gilt.
+   Als ein Absatz Fließtext war der Begriff, den man suchte, nicht zu finden. */
+function erklaert(kurz, begriffe = [], wissen = [], anhang = "") {
+  return `<p>${kurz}</p>` +
+    (begriffe.length ? `<dl class="begriffe">${begriffe.map(([b, text]) => `<dt>${b}</dt><dd>${text}</dd>`).join("")}</dl>` : "") +
+    (wissen.length ? `<p class="label">Gut zu wissen</p><ul class="wissen">${wissen.map(w => `<li>${w}</li>`).join("")}</ul>` : "") + anhang;
+}
 function abschnitt(id, titel, inhalt, intro) {
   const kopf = intro
     ? `<details class="erklaerung"><summary><h2>${esc(titel)}</h2><span class="klein">Erläuterung</span></summary><div class="intro">${intro}</div></details>`
@@ -649,9 +665,9 @@ const GRUPPEN_TEXT = {
 function renderEmpfehlungen() {
   return abschnitt("empfehlungen", "Was weg kann und was du entscheiden solltest",
     '<div class="filter"><input type="search" id="empf-suche" placeholder="Name oder Text suchen …" aria-label="In den Empfehlungen suchen"><span class="anzahl" id="empf-anzahl"></span></div><div id="empf-inhalt"></div>',
-    "Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills." +
-    (AKTIONEN ? ` Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen. Wirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`
-      : " Nichts wird automatisch geändert."));
+    erklaert("Die Empfehlungen stützen sich auf Nutzungszahlen, Überschneidungen und den Inhalt der Skills.", [],
+      AKTIONEN ? ["Wähle in der Spalte „Aktion“, was geschehen soll, und starte es je Zeile oder alles zusammen.",
+        `Wirksam ab der nächsten ${je("Claude-Code", esc(D.harness_name))}-Sitzung.`] : ["Nichts wird automatisch geändert."]));
 }
 function empfZeile(e) {
   const a = gewaehlt(e);
@@ -770,13 +786,22 @@ function renderMcp() {
     ])).join("");
   return abschnitt("mcp", "Global eingetragene Server und ihr Status",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th data-filter="jede Art">Art</th><th data-filter="jeder Status">Status</th><th class="zahl">Werkzeuge</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Genutzt</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je(`Global eingetragene Server; was nur in einem Projekt gilt, steht unter Projekte. Status laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen. ` +
-      `„Genutzt“ stammt aus den Transkripten der letzten ${D.hook_tage} Tage. HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen; alle anderen misst sie in denselben Transkripten, und wer dort nie geladen wurde, steht als „nicht gemessen“. ` +
-      `„Kontext je Sitzung“ zählt den Anweisungsblock und die Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details. ` +
-      `↗ markiert Server im Netz, mit der Domain aus der Konfiguration und der Art der Anmeldung; ihr Anweisungsblock ist fremder Text in jeder Sitzung. „nur lesend“ ist eine Angabe des Servers, keine Prüfung. ` +
-      `„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte. Zeile anklicken für Details.`,
-      "Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins; was nur in einem Projekt gilt, steht unter Projekte. Status aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest. " +
-      "„Genutzt“ zählt MCP-Aufrufe in den Codex-Sitzungen. Werkzeuge und Kontextkosten protokolliert Codex nicht; HTTP-Server ohne Anmeldung fragt die Inventur deshalb einmal am Tag selbst. „Kontext je Sitzung“ zählt dann Anweisungsblock und Werkzeugnamen, die Schemata stehen in den Details. ↗ markiert Server im Netz, mit Domain und Anmeldung. Zeile anklicken für Details."));
+    je(erklaert("Global eingetragene Server. Was nur in einem Projekt gilt, steht unter „Projekte“.", [
+        ["Status", "Laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen."],
+        ["Werkzeuge", "HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen. Alle anderen misst sie in den Transkripten; wer dort nie geladen wurde, steht als „nicht gemessen“."],
+        ["Kontext je Sitzung", "Anweisungsblock und Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details."],
+        ["Genutzt", `Aufrufe aus den Transkripten der letzten ${D.hook_tage} Tage.`],
+        ["↗ unter dem Namen", "Server im Netz, mit der Domain aus der Konfiguration und der Art der Anmeldung. Ihr Anweisungsblock ist fremder Text in jeder Sitzung."],
+        ["nur lesend", "Eine Angabe des Servers, keine Prüfung."]],
+      ["„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte.",
+        "Zeile anklicken für Details."]),
+      erklaert("Global eingetragene Server aus <code>~/.codex/config.toml</code> und den Plugins. Was nur in einem Projekt gilt, steht unter „Projekte“.", [
+        ["Status", "Aus der Konfiguration (<code>enabled</code>), ohne Verbindungstest."],
+        ["Werkzeuge", "Protokolliert Codex nicht. HTTP-Server ohne Anmeldung fragt die Inventur deshalb einmal am Tag selbst."],
+        ["Kontext je Sitzung", "Bei direkt gefragten Servern Anweisungsblock und Werkzeugnamen. Die Schemata stehen in den Details."],
+        ["Genutzt", "MCP-Aufrufe in den Codex-Sitzungen."],
+        ["↗ unter dem Namen", "Server im Netz, mit Domain und Anmeldung."]],
+      ["Zeile anklicken für Details."])));
 }
 
 function renderPlugins() {
@@ -806,8 +831,15 @@ function renderPlugins() {
   }).join("");
   return abschnitt("plugins", "Installierte Plugins, ihre Nutzung und Kontextkosten",
     `<div class="tabelle"><table><thead><tr><th>Name</th><th data-filter="jeder Autor">Autor</th><th data-filter="jeder Status">Status</th><th>Bestandteile</th><th class="zahl">Genutzt</th><th class="zahl">Kontext</th><th>Was es macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je("„Genutzt“ zählt Aufrufe der Skills und Befehle eines Plugins. „Kontext“ ist die geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen.",
-      "Plugins aus <code>~/.codex/plugins/cache</code> mit ihrem Schalter in <code>~/.codex/config.toml</code>. „im Konto“: kommt aus deinem ChatGPT-Konto, geschaltet wird dort. „wirkungslos“: steht in config.toml, aber Codex lädt openai-curated-Plugins aus dem Online-Katalog. „Genutzt“ zählt Codex-Sitzungen, in denen Skills des Plugins liefen. „Kontext“ ist die geschätzte Tokenzahl seiner Skill-Beschreibungen je Sitzung."));
+    je(erklaert("Installierte Plugins mit allem, was sie mitbringen.", [
+        ["Genutzt", "Aufrufe der Skills und Befehle des Plugins."],
+        ["Kontext", "Geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen."],
+        ["Mod", "Code des Plugins, der in der Sitzung mitläuft. Einzelheiten stehen unter „Hooks“."]]),
+      erklaert("Plugins aus <code>~/.codex/plugins/cache</code> mit ihrem Schalter in <code>~/.codex/config.toml</code>.", [
+        ["im Konto", "Kommt aus deinem ChatGPT-Konto, geschaltet wird dort."],
+        ["wirkungslos", "Steht in config.toml, aber Codex lädt openai-curated-Plugins aus dem Online-Katalog."],
+        ["Genutzt", "Codex-Sitzungen, in denen Skills des Plugins liefen."],
+        ["Kontext", "Geschätzte Tokenzahl seiner Skill-Beschreibungen je Sitzung."]])));
 }
 
 /* Skills-Tabelle mit Filter und Sortierung */
@@ -839,8 +871,15 @@ function renderSkillsRahmen() {
       : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
-    je(`Globale Skills aus ~/.claude/skills (davon viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills. „nur /“ heißt: lädt erst, wenn du den Befehl eintippst. Eingebaute lassen sich nicht deinstallieren; ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`,
-      `Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system. „nur $“ heißt: lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>). „Genutzt“ zählt Codex-Sitzungen. Eingebaute lassen sich nicht deinstallieren. Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und tragen deshalb die Markierung „${esc(GETEILT)}“; der Filter rechts zeigt sie oder nur die übrigen.`));
+    je(erklaert("Globale Skills aus ~/.claude/skills (viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills.", [
+        ["nur /", "Lädt erst, wenn du den Befehl eintippst."],
+        ["Eingebaute Skills", `Lassen sich nicht deinstallieren. Ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`],
+        [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]]),
+      erklaert("Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system.", [
+        ["nur $", "Lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>)."],
+        ["Genutzt", "Zählt Codex-Sitzungen."],
+        ["Eingebaute Skills", "Lassen sich nicht deinstallieren."],
+        [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]])));
 }
 function skillsFiltern() {
   try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(F)); } catch (_) { /* dann gilt er nur für diese Seite */ }
@@ -966,8 +1005,17 @@ function renderProjekte() {
     (weggelassen.length ? `<p class="klein">Nicht gezeigt, weil darin andere Projekte liegen: ${weggelassen.map(p => `<code>${esc(kurz(p))}</code>`).join(", ")}. Ihre Regeln stehen unter „Berechtigungen“, ihre Tokens unter „Modelle“.</p>` : "");
   return abschnitt("projekte", "Was in den einzelnen Projekten gilt",
     gruppen || '<p class="leer">Keine projektbezogenen Skills, Befehle oder MCP-Server gefunden.</p>',
-    je("Alles zu einem Projekt an einer Stelle: seine Regeln, die Modelle, die dort liefen, und was dort laut ~/.claude.json zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Dazu die Hooks, die nur dort laufen: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>, auch Mods. Sie sind nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.",
-      "Alles zu einem Projekt an einer Stelle: die Modelle, die dort liefen, und was dort laut ~/.codex/config.toml zusätzlich lädt (<code>.agents/skills</code>, <code>.codex/skills</code>, MCP-Server aus <code>.codex/config.toml</code>). Skills laden in jedem Projekt, MCP-Server nur in vertrauten (<code>trust_level = \"trusted\"</code>). Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest."));
+    je(erklaert("Alles zu einem Projekt an einer Stelle. Die Projekte stammen aus ~/.claude.json.", [
+        ["Skills", "Was dort zusätzlich lädt, aus <code>.claude/skills</code> und <code>.claude/commands</code>. Zählt nicht zur Kontextlast je Sitzung."],
+        ["MCP-Server", "Aus <code>.mcp.json</code> und lokal eingetragen, dazu die globalen Server, die dort abgeschaltet sind. Der Status stammt aus der Konfiguration, ohne Verbindungstest."],
+        ["Hooks", "Laufen nur dort: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>, auch Mods. Nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo."],
+        ["Regeln", "Was dort ohne Rückfrage erlaubt ist. Über alle Projekte steht es unter „Berechtigungen“."],
+        ["Ausgabe-Tokens, Modelle", "Was dort lief. Über alle Projekte steht es unter „Modelle“."],
+        ["Genutzt", "Zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten."]]),
+      erklaert("Alles zu einem Projekt an einer Stelle. Die Projekte stammen aus ~/.codex/config.toml.", [
+        ["Skills", "Aus <code>.agents/skills</code> und <code>.codex/skills</code>. Laden in jedem Projekt und zählen nicht zur Kontextlast je Sitzung."],
+        ["MCP-Server", "Aus <code>.codex/config.toml</code> des Projekts. Laden nur in vertrauten Projekten (<code>trust_level = \"trusted\"</code>). Der Status stammt aus der Konfiguration, ohne Verbindungstest."],
+        ["Ausgabe-Tokens, Modelle", "Was dort lief. Über alle Ordner steht es unter „Modelle“."]])));
 }
 
 function renderHooks() {
@@ -989,8 +1037,18 @@ function renderHooks() {
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
     `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th data-filter="jede Art">Art</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
-    je(`Befehle, die Claude Code bei Ereignissen ausführt, aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile. „Ausgabe an Claude“ ist, was ein Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben. Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl; solche Läufe fehlen hier. „Dauer“ ist der Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen: Hooks laufen, während du wartest. „Kontext je Sitzung“ zählt nur SessionStart-Hooks; ihr Anteil steckt auch in der Kontextlast im Überblick. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json. Die Art „Mod“ ist kein Befehl, sondern Code, der in der Sitzung mitläuft (ein Modul unter <code>modules</code> in <code>hooks/hooks.json</code>): Er kann Werkzeug-Aufrufe sperren oder umschreiben und Prompt und System-Prompt ändern. Das Ereignis ist am Text des Moduls abgelesen, nicht gemessen; was in importierten Dateien steht, fehlt. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code>, <code>CLAUDE_CODE_PLUGIN_DIRS</code> und <code>~/.claude/dev-mods</code> (nur in der Sitzung, in der sie entstanden).`,
-      "Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt, aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>. Was Hooks an Codex zurückgeben und wie lange sie laufen, protokolliert Codex nicht. Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."));
+    je(erklaert("Was Claude Code bei Ereignissen ausführt: aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile.", [
+        ["Art", "„Befehl“ ist ein Programm. „Mod“ ist Code, der in der Sitzung mitläuft (ein Modul unter <code>modules</code> in <code>hooks/hooks.json</code>): Er kann Werkzeug-Aufrufe sperren oder umschreiben und Prompt und System-Prompt ändern."],
+        ["Kontext je Sitzung", "Zählt nur SessionStart-Hooks. Ihr Anteil steckt auch in der Kontextlast im Überblick."],
+        ["Ausgabe an Claude", `Was der Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben.`],
+        ["Dauer", "Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen. Hooks laufen, während du wartest."]],
+      ["Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.",
+        "Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl. Solche Läufe fehlen bei der Ausgabe.",
+        "Bei einem Mod ist das Ereignis am Text des Moduls abgelesen, nicht gemessen. Was in importierten Dateien steht, fehlt.",
+        "Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code>, <code>CLAUDE_CODE_PLUGIN_DIRS</code> und <code>~/.claude/dev-mods</code> (nur in der Sitzung, in der sie entstanden)."]),
+      erklaert("Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt: aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>.", [
+        ["Ausgabe an Codex, Dauer", "Protokolliert Codex nicht."]],
+      ["Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."])));
 }
 
 /* Laufzeiten und Kommandozeilen, die Inventur, MCP-Server und Hooks brauchen. Nur Anzeige und Befehl zum Kopieren:
@@ -1006,7 +1064,12 @@ function renderWerkzeuge() {
         ? '<div class="klein">Danach den Server neu starten: Er läuft sonst mit dem gelöschten alten Python weiter, und Aktionen scheitern.</div>' : ""}</td></tr>`).join("");
   return abschnitt("versionen", "Programme und ihre Versionen",
     `<div class="tabelle"><table><thead><tr><th>Programm</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th data-filter="jeder Status">Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>` + renderQuellcode(),
-    `Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten. „veraltet“ heißt: In der eigenen Versionslinie gibt es Neueres; eine neuere Linie steht darunter, macht aber nichts veraltet. „ohne Pflege“: Die Linie bekommt keine Sicherheitsupdates mehr. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag abgefragt; ohne Netz gilt der letzte Stand. Aktualisieren musst du selbst — den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code). <code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen.`);
+    erklaert("Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten.", [
+        ["veraltet", "In der eigenen Versionslinie gibt es Neueres. Eine neuere Linie steht darunter, macht aber nichts veraltet."],
+        ["ohne Pflege", "Die Linie bekommt keine Sicherheitsupdates mehr."],
+        ["neueste", "Von endoflife.date, npm und GitHub, einmal am Tag abgefragt. Ohne Netz gilt der letzte Stand."],
+        ["Aktualisieren", "Musst du selbst. Den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code)."]],
+      ["<code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen."]));
 }
 
 /* MCP-Server, die als Quellcode unter ~ liegen. Ruht ein Projekt upstream, veralten seine Abhängigkeiten trotzdem:
@@ -1105,15 +1168,17 @@ function renderBerechtigungen() {
     ? reiter("rechte", [[`Auffällig${auffaellig.length ? ` (${auffaellig.length})` : ""}`, oben],
       [`Alle Regeln je ${je("Projekt", "Bereich")}`, (regeln.length ? jeBereich : "") + vertrauensTabelle]])
     : '<p class="leer">Keine Regeln gefunden: Es gelten die Standards des Harness.</p>';
-  const legende = eintraege => `<ul class="legende">${eintraege.map(([m, text]) => `<li>${statusBadge(m)} <span>${text}</span></li>`).join("")}</ul>`;
+  const legende = eintraege => `<p class="label">Marken</p><ul class="legende">${eintraege.map(([m, text]) => `<li>${statusBadge(m)} <span>${text}</span></li>`).join("")}</ul>`;
   return abschnitt("berechtigungen", "Was ohne Rückfrage erlaubt ist", inhalt,
-    je(`Aus den verwalteten Einstellungen, <code>~/.claude/settings.json</code> und je Projekt aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code>. ${TOKEN ? "Markierte Regeln nimmt „entfernen“ aus ihrer Datei, mit Sicherung daneben; alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."}` +
-      legende([["breit", `ein ganzes Werkzeug (etwa <code>Bash</code> ohne Klammer), ein ganzer MCP-Server, ein Interpreter mit beliebigen Argumenten wie <code>Bash(python3:*)</code>, <code>defaultMode: bypassPermissions</code>, Ordner wie <code>~</code>`],
-        ["verwaist", "eine Regel für einen MCP-Server, der nicht mehr eingetragen ist"], ["widerspricht", "dieselbe Regel steht auch als ask oder deny; es gilt die strengere"],
-        ["doppelt", "die Regel steht im Projekt und gilt schon global"]]),
-      `Aus <code>~/.codex/config.toml</code> (<code>approval_policy</code>, <code>sandbox_mode</code>, auch in Profilen, und die vertrauten Ordner) und den Regeln in <code>~/.codex/rules</code>. ${TOKEN ? "Einen verwaisten Ordner nimmt „entfernen“ aus <code>config.toml</code>, mit Sicherung daneben; alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."}` +
-      legende([["breit", `<code>approval_policy: never</code>, <code>sandbox_mode: danger-full-access</code> oder eine Regel für ein ganzes Programm oder eine Shell mit <code>-c</code>`],
-        ["verwaist", "ein vertrauter Ordner, den es nicht mehr gibt"]])));
+    je(erklaert("Was Claude Code ohne Rückfrage darf: aus den verwalteten Einstellungen, <code>~/.claude/settings.json</code> und je Projekt aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code>.", [],
+        [TOKEN ? "Markierte Regeln nimmt „entfernen“ aus ihrer Datei, mit Sicherung daneben. Alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."],
+        legende([["breit", `ein ganzes Werkzeug (etwa <code>Bash</code> ohne Klammer), ein ganzer MCP-Server, ein Interpreter mit beliebigen Argumenten wie <code>Bash(python3:*)</code>, <code>defaultMode: bypassPermissions</code>, Ordner wie <code>~</code>`],
+          ["verwaist", "eine Regel für einen MCP-Server, der nicht mehr eingetragen ist"], ["widerspricht", "dieselbe Regel steht auch als ask oder deny; es gilt die strengere"],
+          ["doppelt", "die Regel steht im Projekt und gilt schon global"]])),
+      erklaert("Was Codex ohne Rückfrage darf: aus <code>~/.codex/config.toml</code> (<code>approval_policy</code>, <code>sandbox_mode</code>, auch in Profilen, und die vertrauten Ordner) und den Regeln in <code>~/.codex/rules</code>.", [],
+        [TOKEN ? "Einen verwaisten Ordner nimmt „entfernen“ aus <code>config.toml</code>, mit Sicherung daneben. Alles andere änderst du von Hand in der genannten Datei." : "Ändern von Hand in der genannten Datei."],
+        legende([["breit", `<code>approval_policy: never</code>, <code>sandbox_mode: danger-full-access</code> oder eine Regel für ein ganzes Programm oder eine Shell mit <code>-c</code>`],
+          ["verwaist", "ein vertrauter Ordner, den es nicht mehr gibt"]]))));
 }
 
 /* Tokens je Modell als Tabelle: im Tab „Modelle“ und je Projekt im Tab „Projekte“ */
@@ -1166,13 +1231,20 @@ function renderModelle() {
   return abschnitt("modelle", "Welches Modell eingestellt ist und welches lief",
     kacheln + reiter("modelle", [["Eingestellt", eingestellt], [`Gemessen, ${esc(M.tage)} Tage`, M.gemessen.length ? messung(M.gemessen) : leer],
       [`Je ${je("Projekt", "Ordner")}`, M.gemessen.length ? jeProjekt : leer]]),
-    je(`Eingestellt ist, was in den Einstellungen und im Kopf von Agenten, Skills und Befehlen steht. Gemessen ist, welches Modell laut Transkripten wirklich lief, in Tokens: ` +
-      `Eingabe ist neu gelesener Text, Ausgabe das Geschriebene. Was sich wiederholt, liegt im Cache: einmal geschrieben, danach nur gelesen. ` +
-      `Ein Subagent bekommt sein Modell oft erst beim Aufruf: Das steht in keiner Datei, nur in der Messung. Seine Arbeitsordner zählen zum Projekt. Nur Anzeige: Ändern von Hand in der genannten Datei oder mit <code>/model</code>.` +
-      `<ul class="legende"><li>${statusBadge("überschreibt")} <span>der Wert weicht vom globalen ab</span></li></ul>`,
-      `Eingestellt sind die Modell-Schlüssel aus <code>~/.codex/config.toml</code>, auch in Profilen. Gemessen ist, welches Modell laut <code>~/.codex/sessions</code> je Turn lief, in Tokens: ` +
-      `Eingabe ist neu gelesener Text, Ausgabe das Geschriebene; was sich wiederholt, kommt aus dem Cache. Nur Anzeige: Ändern von Hand in der genannten Datei.` +
-      `<ul class="legende"><li>${statusBadge("überschreibt")} <span>das Profil weicht vom globalen Wert ab</span></li></ul>`));
+    je(erklaert("Welches Modell eingestellt ist und welches laut Transkripten wirklich lief.", [
+        ["Eingestellt", "Was in den Einstellungen und im Kopf von Agenten, Skills und Befehlen steht."],
+        ["Gemessen", "Welches Modell laut Transkripten lief, in Tokens."],
+        ["Eingabe", "Neu gelesener Text."], ["Ausgabe", "Das Geschriebene."],
+        ["Cache", "Was sich wiederholt: einmal geschrieben, danach nur gelesen."]],
+      ["Ein Subagent bekommt sein Modell oft erst beim Aufruf: Das steht in keiner Datei, nur in der Messung. Seine Arbeitsordner zählen zum Projekt.",
+        "Nur Anzeige: Ändern von Hand in der genannten Datei oder mit <code>/model</code>."],
+      `<p class="label">Marken</p><ul class="legende"><li>${statusBadge("überschreibt")} <span>der Wert weicht vom globalen ab</span></li></ul>`),
+      erklaert("Welches Modell eingestellt ist und welches laut <code>~/.codex/sessions</code> je Turn lief.", [
+        ["Eingestellt", "Die Modell-Schlüssel aus <code>~/.codex/config.toml</code>, auch in Profilen."],
+        ["Gemessen", "Welches Modell je Turn lief, in Tokens."],
+        ["Eingabe", "Neu gelesener Text."], ["Ausgabe", "Das Geschriebene."], ["Cache", "Was sich wiederholt."]],
+      ["Nur Anzeige: Ändern von Hand in der genannten Datei."],
+      `<p class="label">Marken</p><ul class="legende"><li>${statusBadge("überschreibt")} <span>das Profil weicht vom globalen Wert ab</span></li></ul>`)));
 }
 
 function renderHinweise() {
@@ -1308,7 +1380,11 @@ function renderSuche() {
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
     : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten; das Dashboard öffnet sich dann von selbst.</p>';
   return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
-    `Beschreibe, wofür du ein Werkzeug suchst. ${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor. Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos. Installiert wird erst, wenn du es bestätigst.`);
+    erklaert("Beschreibe, wofür du ein Werkzeug suchst.", [], [
+      `${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann.`,
+      "Dann sucht es bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor.",
+      `Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos.`,
+      "Installiert wird erst, wenn du es bestätigst."]));
 }
 function renderSuchInhalt() {
   if (!TOKEN) return;
