@@ -544,6 +544,33 @@ def projekte(cfg, aus, autoren):
     return skills, mcp
 
 
+def projekt_hooks(cfg):
+    """Hooks, die nur in einem Projekt laufen: [hooks] in <Projekt>/.codex/config.toml (ohne die Vertrauensliste
+    `state`) und <Projekt>/.codex/hooks.json. Codex lädt sie nur in vertrauten Projekten und führt einen Hook erst aus,
+    wenn der Benutzer ihn mit /hooks geprüft hat; diese Prüfung hängt an einem Hash und steht hier nicht.
+    Wie unter Claude Code nur Anzeige im Tab „Projekte“, ohne Bewertung und Aktion; die ID trägt die Datei."""
+    ergebnis = []
+    projekte_cfg = cfg.get("projects")
+    projekte_cfg = projekte_cfg if isinstance(projekte_cfg, dict) else {}
+    for pfad, p in sorted(projekte_cfg.items()):
+        try:
+            ordner = Path(pfad)
+            if not ordner.is_dir() or ordner.resolve() == HOME.resolve():
+                continue
+            status = "aktiv" if isinstance(p, dict) and p.get("trust_level") == "trusted" else "nicht vertraut"
+            toml, hooks_json = ordner / ".codex" / "config.toml", ordner / ".codex" / "hooks.json"
+            roh = lies_toml(toml).get("hooks")
+            roh = {k: v for k, v in roh.items() if k != "state"} if isinstance(roh, dict) else {}
+            eintraege = hook_eintraege(lesbare_hooks(roh), toml, {"art": "Einstellungen", "autor": toml.name}, toml, status)
+            eintraege += hook_eintraege(lesbare_hooks(lies_json(hooks_json).get("hooks")), hooks_json,
+                                        {"art": "Einstellungen", "autor": hooks_json.name}, hooks_json, status)
+        except Exception as fehler:
+            lesefehler(f"Projekt {pfad}", fehler)
+            continue
+        ergebnis += [{**e, "projekt": pfad, "befehl": befehl(e, "entfernen")} for e in eintraege]
+    return ergebnis
+
+
 def befehl(e, empfehlung):
     """Wie sich eine Empfehlung in Codex umsetzen ließe, als Text zum Kopieren. Für vieles bietet `aktionen()`
     zusätzlich einen Knopf im Dashboard."""
@@ -676,6 +703,7 @@ def inventar():
         "skills": skills,
         "projekt_skills": projekt_skills,
         "projekt_mcp": projekt_mcp,
+        "projekt_hooks": projekt_hooks(cfg),
         "hooks": hooks,
         "hook_tage": None,
         "eingebaut": eingebaut,

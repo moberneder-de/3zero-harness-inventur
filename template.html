@@ -966,14 +966,14 @@ function renderProjekte() {
     ]);
 
   /* Nur Anzeige: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo, entfernt wird er dort. */
-  const hookZeile = h => `<tr><td class="name"><strong>${esc(h.name)}</strong></td><td class="nowrap">${h.mod ? "Mod" : "Befehl"}</td><td>${esc(h.quelle.autor)}</td>
+  const hookZeile = h => `<tr><td class="name"><strong>${esc(h.name)}</strong></td><td class="nowrap">${h.mod ? "Mod" : "Befehl"}</td><td>${esc(h.quelle.autor)}</td><td>${statusBadge(h.status)}</td>
       <td>${h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("")}</td>
       <td>${befehlZeile(h.befehl)}</td></tr>`;
   const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
   const kurz = pfad => pfad.replace(/^\/Users\/[^/]+/, "~");
   const strich = '<span class="leer">–</span>';
   const teil = (titel, html) => html ? `<p class="label">${titel}</p>${html}` : "";
-  const spalten = je(8, 5);
+  const spalten = je(8, 6);
   /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner). Lädt dort aber etwas, bleibt er stehen:
      Projekt-Skills und Projekt-Server zeigt nur dieser Tab. */
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));
@@ -992,16 +992,16 @@ function renderProjekte() {
     const eintraege = [...p.skills].sort((a, b) => a.name.localeCompare(b.name)).map(skillZeile).join("") + p.mcp.map(mcpZeile).join("");
     const name = pfad.split("/").pop() || pfad;
     return `<tr class="haupt"><td class="name">${aufklapp(name)}${fehlt}${kurz(pfad) === name ? "" : `<div class="klein">${esc(kurz(pfad))}</div>`}</td>
-      <td class="zahl">${p.skills.length || strich}</td><td class="zahl">${p.mcp.length || strich}</td>
-      ${je(`<td class="zahl">${p.hooks.length || strich}</td><td class="zahl">${p.regeln.length || strich}</td><td>${esc(RECHT.zusammen(p.regeln)) || strich}</td>`, "")}
+      <td class="zahl">${p.skills.length || strich}</td><td class="zahl">${p.mcp.length || strich}</td><td class="zahl">${p.hooks.length || strich}</td>
+      ${je(`<td class="zahl">${p.regeln.length || strich}</td><td>${esc(RECHT.zusammen(p.regeln)) || strich}</td>`, "")}
       <td class="zahl">${p.gemessen.length ? zahl(MESSUNG.summe(p.gemessen)) : strich}</td><td class="klein">${MESSUNG.jeModell(p.gemessen).map(m => esc(m.modell)).join(", ") || strich}</td></tr>` +
       inhaltZeile(spalten, (zeile ? `<p class="klein" style="margin:12px 0 0">${zeile}</p>` : "") +
         teil("Skills und MCP-Server", eintraege && `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Herkunft</th><th>Status</th><th class="zahl">Kontext</th><th class="zahl">Genutzt</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${eintraege}</tbody></table></div>`) +
-        teil("Hooks", p.hooks.length && `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Art</th><th>Herkunft</th><th>Befehle</th><th>Entfernen</th></tr></thead><tbody>${p.hooks.map(hookZeile).join("")}</tbody></table></div>`) +
+        teil("Hooks", p.hooks.length && `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Art</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th>Entfernen</th></tr></thead><tbody>${p.hooks.map(hookZeile).join("")}</tbody></table></div>`) +
         teil("Regeln ohne Rückfrage", p.regeln.length && RECHT.gebuendelt(p.regeln)) +
         teil(`Modelle, letzte ${esc((D.modelle || {}).tage)} Tage`, p.gemessen.length && MESSUNG.messung(p.gemessen)));
   }).join("");
-  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th>${je('<th class="zahl">Hooks</th><th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>` +
+  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th><th class="zahl">Hooks</th>${je('<th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>` +
     (weggelassen.length ? `<p class="klein">Nicht gezeigt, weil darin andere Projekte liegen: ${weggelassen.map(p => `<code>${esc(kurz(p))}</code>`).join(", ")}. Ihre Regeln stehen unter „Berechtigungen“, ihre Tokens unter „Modelle“.</p>` : "");
   return abschnitt("projekte", "Was in den einzelnen Projekten gilt",
     gruppen || '<p class="leer">Keine projektbezogenen Skills, Befehle oder MCP-Server gefunden.</p>',
@@ -1015,6 +1015,7 @@ function renderProjekte() {
       erklaert("Alles zu einem Projekt an einer Stelle. Die Projekte stammen aus ~/.codex/config.toml.", [
         ["Skills", "Aus <code>.agents/skills</code> und <code>.codex/skills</code>. Laden in jedem Projekt und zählen nicht zur Kontextlast je Sitzung."],
         ["MCP-Server", "Aus <code>.codex/config.toml</code> des Projekts. Laden nur in vertrauten Projekten (<code>trust_level = \"trusted\"</code>). Der Status stammt aus der Konfiguration, ohne Verbindungstest."],
+        ["Hooks", "Laufen nur dort: aus <code>.codex/config.toml</code> und <code>.codex/hooks.json</code> des Projekts, nur in vertrauten Projekten. Codex führt einen Hook außerdem erst aus, wenn du ihn mit <code>/hooks</code> geprüft hast; ob das geschehen ist, zeigt die Inventur nicht. Nur angezeigt, ohne Bewertung und Knopf: Ein Hook im Projekt gehört oft zum Repo."],
         ["Ausgabe-Tokens, Modelle", "Was dort lief. Über alle Ordner steht es unter „Modelle“."]])));
 }
 

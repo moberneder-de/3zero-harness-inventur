@@ -510,7 +510,7 @@ class Inventar(CodexOrdner):
         with mock.patch.object(codex, "updates_markieren"):
             daten = codex.inventar()
         self.assertEqual(sorted(daten), ["bewertung_stand", "config_lesbar", "eingebaut", "entfallen", "gruppen", "hinweise", "hook_tage", "hooks",
-                                         "live_status", "mcp", "overrides_verwaist", "plugins", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
+                                         "live_status", "mcp", "overrides_verwaist", "plugins", "projekt_hooks", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
         self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
                          (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))
         g = daten["skills"][0]
@@ -566,6 +566,53 @@ class HooksUndProjekte(CodexOrdner):
         with mock.patch.object(codex, "skill_eintrag", side_effect=eintrag):
             skills, _ = codex.projekte(cfg, (set(), set()), {})
         self.assertEqual([s["id"] for s in skills], ["skill:B/x"])
+        self.assertEqual([f["quelle"] for f in codex.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
+
+    def test_projekt_hooks_aus_beiden_dateien(self):
+        """Codex lädt Hooks auch aus <Projekt>/.codex/hooks.json und [hooks] in <Projekt>/.codex/config.toml
+        (codex-rs/hooks/src/engine/discovery.rs), aber nur in vertrauten Projekten."""
+        kit, fremd = self.tmp / "Kit", self.tmp / "Fremd"
+        self.schreibe(kit / ".codex/config.toml", '[[hooks.PreToolUse]]\nmatcher = "Bash"\n[[hooks.PreToolUse.hooks]]\ntype = "command"\ncommand = "pruefe.sh"\n'
+                                                  '[hooks.state.k]\nenabled = false\n')
+        self.schreibe(kit / ".codex/hooks.json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "mcp_tool", "server": "q", "tool": "melde"}]}]}}))
+        self.schreibe(fremd / ".codex/hooks.json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "x.sh"}]}]}}))
+        self.schreibe(self.home / ".codex/hooks.json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "global.sh"}]}]}}))
+        cfg = {"projects": {str(kit): {"trust_level": "trusted"}, str(fremd): {"trust_level": "untrusted"},
+                            str(self.home): {"trust_level": "trusted"}, str(self.tmp / "weg"): {"trust_level": "trusted"}}}
+        codex.LESEFEHLER.clear()
+        self.addCleanup(codex.LESEFEHLER.clear)
+        hooks = codex.projekt_hooks(cfg)
+        self.assertEqual([(h["id"], h["status"], h["projekt"]) for h in hooks], [
+            (f"hook:{fremd}/.codex/hooks.json:Stop", "nicht vertraut", str(fremd)),
+            (f"hook:{kit}/.codex/config.toml:PreToolUse", "aktiv", str(kit)),
+            (f"hook:{kit}/.codex/hooks.json:Stop", "aktiv", str(kit))])
+        self.assertEqual([h["befehle"][0]["befehl"] for h in hooks], ["x.sh", "pruefe.sh", "MCP q.melde"])
+        self.assertEqual((hooks[1]["quelle"]["autor"], hooks[1]["befehl"]), ("config.toml", f'{kit}/.codex/config.toml → "PreToolUse" entfernen'))
+        self.assertTrue(all("aktionen" not in h for h in hooks))
+        self.assertEqual(codex.LESEFEHLER, [])
+
+    def test_projekt_hooks_in_fremder_form(self):
+        a, b = self.tmp / "A", self.tmp / "B"
+        self.schreibe(a / ".codex/hooks.json", json.dumps([1]))
+        self.schreibe(a / ".codex/config.toml", 'hooks = "x"\n')
+        self.schreibe(b / ".codex/config.toml", "kein toml [")
+        self.assertEqual(codex.projekt_hooks({"projects": {str(a): {}, str(b): "x"}}), [])
+        self.assertEqual(codex.projekt_hooks({"projects": ["x"]}), [])
+
+    def test_kaputtes_projekt_kostet_nur_seine_hooks(self):
+        for name in ("A", "B"):
+            self.schreibe(self.tmp / name / ".codex/hooks.json", json.dumps({"hooks": {"Stop": [{"hooks": [{"command": "x"}]}]}}))
+        echt = codex.hook_eintraege
+
+        def eintraege(roh, schluessel, *rest):
+            if "/A/" in str(schluessel):
+                raise RuntimeError("unerwartet")
+            return echt(roh, schluessel, *rest)
+        codex.LESEFEHLER.clear()
+        self.addCleanup(codex.LESEFEHLER.clear)
+        with mock.patch.object(codex, "hook_eintraege", side_effect=eintraege):
+            hooks = codex.projekt_hooks({"projects": {str(self.tmp / n): {} for n in ("A", "B")}})
+        self.assertEqual([h["projekt"] for h in hooks], [str(self.tmp / "B")])
         self.assertEqual([f["quelle"] for f in codex.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
 
     def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
