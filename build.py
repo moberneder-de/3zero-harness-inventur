@@ -429,36 +429,71 @@ def mod_eintraege(hooks_datei, wurzel, schluessel, quelle, status="aktiv"):
 PLUGIN_ORDNER = "CLAUDE_CODE_PLUGIN_DIRS"
 
 
+def unterordner(pfad):
+    try:
+        return sorted(p for p in pfad.iterdir() if p.is_dir())
+    except OSError:
+        return []
+
+
+def ordner_hooks(art, wurzel, status):
+    """Hooks und Mods eines Plugins, das als Ordner lädt; ohne .claude-plugin/plugin.json ist es keins."""
+    if not (wurzel / ".claude-plugin" / "plugin.json").is_file():
+        return []
+    quelle = {"art": art, "autor": f"{art} {wurzel.name}"}
+    datei = wurzel / "hooks" / "hooks.json"
+    eintraege = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
+    eintraege += mod_eintraege(datei, wurzel, wurzel, quelle, status)
+    return [{**e, "ordner": str(wurzel)} for e in eintraege]
+
+
 def ordner_plugins():
     """Hooks und Mods aus Plugins, die ohne Installation aus einem Ordner laden: Skill-Ordner mit eigener plugin.json,
     die Ordner aus CLAUDE_CODE_PLUGIN_DIRS (Umgebung oder `env` in settings.json) und die Mods aus
     ~/.claude/dev-mods/<Sitzung>, die nur in ihrer Sitzung laden. Die ID trägt den Ordner, `ordner` sagt `aktionen()`
     und `befehl()`, dass der Eintrag weder zu einem Plugin noch in settings.json gehört."""
-    def unter(pfad):
-        try:
-            return sorted(p for p in pfad.iterdir() if p.is_dir())
-        except OSError:
-            return []
     env = SETTINGS.get("env")
     eingetragen = [os.environ.get(PLUGIN_ORDNER), env.get(PLUGIN_ORDNER) if isinstance(env, dict) else None]
-    orte = [("Skill-Ordner", o, "aktiv") for o in unter(CLAUDE / "skills")]
+    orte = [("Skill-Ordner", o, "aktiv") for o in unterordner(CLAUDE / "skills")]
     orte += [("Plugin-Ordner", Path(p).expanduser(), "aktiv")
              for liste in eingetragen if isinstance(liste, str) for p in liste.split(os.pathsep) if p]
-    orte += [("Mod-Ordner", o, "nur eine Sitzung") for sitzung in unter(CLAUDE / "dev-mods") for o in unter(sitzung)]
+    orte += [("Mod-Ordner", o, "nur eine Sitzung") for sitzung in unterordner(CLAUDE / "dev-mods") for o in unterordner(sitzung)]
     ergebnis, gesehen = [], set()
     for art, wurzel, status in orte:
         try:
-            if wurzel.resolve() in gesehen or not (wurzel / ".claude-plugin" / "plugin.json").is_file():
+            if wurzel.resolve() in gesehen:
                 continue
             gesehen.add(wurzel.resolve())
-            quelle = {"art": art, "autor": f"{art} {wurzel.name}"}
-            datei = wurzel / "hooks" / "hooks.json"
-            eintraege = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
-            eintraege += mod_eintraege(datei, wurzel, wurzel, quelle, status)
+            ergebnis += ordner_hooks(art, wurzel, status)
         except Exception as fehler:
             lesefehler(f"{art} {wurzel}", fehler)
+    return ergebnis
+
+
+def projekt_hooks(projekte):
+    """Hooks und Mods, die nur in einem Projekt laufen: `hooks` aus .claude/settings.json und .claude/settings.local.json
+    und Skill-Ordner mit eigener plugin.json unter .claude/skills. Nur Anzeige im Tab „Projekte“, ohne Bewertung und
+    Aktion: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo. Die ID trägt Datei oder Ordner."""
+    ergebnis, gesehen = [], {CLAUDE.resolve()}
+    for pfad in sorted(projekte):
+        wurzel = Path(pfad) / ".claude"
+        try:
+            if not wurzel.is_dir() or wurzel.resolve() in gesehen:
+                continue
+            gesehen.add(wurzel.resolve())
+        except OSError:  # etwa ~/Documents, das macOS ohne Freigabe verweigert: nur dieses Projekt fällt weg
             continue
-        ergebnis += [{**e, "ordner": str(wurzel)} for e in eintraege]
+        try:
+            eintraege = []
+            for name in ("settings.json", "settings.local.json"):
+                datei = wurzel / name
+                eintraege += hook_eintraege(lies_json(datei).get("hooks"), datei, {"art": "Einstellungen", "autor": name}, datei)
+            for ordner in unterordner(wurzel / "skills"):
+                eintraege += ordner_hooks("Skill-Ordner", ordner, "aktiv")
+        except Exception as fehler:
+            lesefehler(f"Projekt {pfad}", fehler)
+            continue
+        ergebnis += [{**e, "projekt": str(pfad)} for e in eintraege]
     return ergebnis
 
 
@@ -942,6 +977,8 @@ def befehl(e, empfehlung):
             return f"{PLUGIN_ORDNER} → {e['ordner']} herausnehmen"
         # im Skill-Ordner nur die Hooks: Der Skill daneben soll bleiben
         return papierkorb_befehl(shellwort(e["ordner"] + ("/hooks" if e["quelle"]["art"] == "Skill-Ordner" else "")))
+    if eid.startswith("hook:") and e.get("projekt"):
+        return f'{e["pfad"]} → "hooks" → "{e["ereignis"]}" entfernen'
     if eid.startswith("hook:") and not e.get("plugin"):
         if e["ereignis"] == "Statuszeile":
             return '~/.claude/settings.json → "statusLine" entfernen'
@@ -1154,7 +1191,7 @@ def verlauf_fortschreiben(pfad, eintrag):
     return reihe
 
 
-ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "projekt_skills", "projekt_mcp")
+ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "projekt_skills", "projekt_mcp", "projekt_hooks")
 
 
 def aenderungen(reihe):
@@ -1248,6 +1285,9 @@ def claude_inventar():
     mcp = mcp_server(plugin_liste, live, mcp_messungen(dateien, praefixe), lambda c: mcp_direkt.gemessen(c, speicher))
     speicher.sichern()
     mcp_projekte = projekt_mcp(CFG.get("projects") or {})
+    hooks_projekte = projekt_hooks((CFG.get("projects") or {}).keys())
+    for h in hooks_projekte:  # nicht in `alle`: keine Bewertung, keine Aktion, nur der Text zum Kopieren
+        h["befehl"] = befehl(h, "entfernen")
     alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
     eindeutige_ids(alle)
     bewerte(alle)
@@ -1268,6 +1308,7 @@ def claude_inventar():
         "skills": skills,
         "projekt_skills": projekte,
         "projekt_mcp": mcp_projekte,
+        "projekt_hooks": hooks_projekte,
         "hooks": hooks,
         "hook_tage": HOOK_TAGE,
         "sammelordner": sammelordner((CFG.get("projects") or {}).keys()),

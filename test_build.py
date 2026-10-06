@@ -1606,5 +1606,80 @@ class Mods(unittest.TestCase):
         self.assertEqual(build.LESEFEHLER, [{"quelle": f"Skill-Ordner {claude / 'skills/kaputt'}", "fehler": "RuntimeError: unerwartet"}])
 
 
+class ProjektHooks(unittest.TestCase):
+    """Was nur in einem Projekt läuft, stand nirgends: Hooks aus den Einstellungen des Projekts und Skill-Ordner mit
+    eigener plugin.json. Ein geklontes Repo bringt beides mit."""
+
+    MODUL, setUp, ordner = Mods.MODUL, Mods.setUp, Mods.ordner
+    STOP = {"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]}
+
+    def projekt(self, name, datei="settings.json", hooks=STOP):
+        ordner = self.tmp / name / ".claude"
+        ordner.mkdir(parents=True, exist_ok=True)
+        (ordner / datei).write_text(json.dumps({"hooks": hooks}))
+        return self.tmp / name
+
+    def lesen(self, *projekte):
+        with mock.patch.object(build, "CLAUDE", self.tmp / "home/.claude"):
+            return build.projekt_hooks([str(p) for p in projekte])
+
+    def test_beide_einstellungsdateien_und_skill_ordner(self):
+        a = self.projekt("A")
+        self.projekt("A", "settings.local.json", {"Stop": self.STOP["Stop"], "PreToolUse": self.STOP["Stop"]})
+        skill = self.ordner("A/.claude/skills/mit")
+        self.ordner("A/.claude/skills/ohne", manifest=False)
+        hooks = self.lesen(a, self.tmp / "fehlt")
+        self.assertEqual([h["id"] for h in hooks], [
+            f"hook:{a}/.claude/settings.json:Stop", f"hook:{a}/.claude/settings.local.json:PreToolUse",
+            f"hook:{a}/.claude/settings.local.json:Stop", f"hook:{skill}:mod:tool.call", f"hook:{skill}:mod:ui.render"])
+        self.assertEqual({h["projekt"] for h in hooks}, {str(a)})
+        self.assertEqual([h["quelle"]["autor"] for h in hooks],
+                         ["settings.json", "settings.local.json", "settings.local.json", "Skill-Ordner mit", "Skill-Ordner mit"])
+        self.assertEqual((hooks[0]["pfad"], hooks[0]["status"], hooks[3]["mod"]), (f"{a}/.claude/settings.json", "aktiv", True))
+        self.assertEqual(build.LESEFEHLER, [])
+
+    def test_home_ist_kein_projekt(self):
+        """~ steht als Projekt in ~/.claude.json; seine Hooks sind die globalen und stünden sonst doppelt da."""
+        home = self.projekt("home")
+        self.assertEqual(self.lesen(home), [])
+
+    def test_fremde_form(self):
+        a = self.projekt("A", hooks=["echo"])
+        (a / ".claude/settings.local.json").write_text("null")
+        self.assertEqual(self.lesen(a), [])
+
+    def test_kaputtes_projekt_kostet_nur_sich(self):
+        a, b = self.projekt("A"), self.projekt("B")
+        echt = build.hook_eintraege
+
+        def eintraege(roh, schluessel, *rest):
+            if "/A/" in str(schluessel):
+                raise RuntimeError("unerwartet")
+            return echt(roh, schluessel, *rest)
+        with mock.patch.object(build, "hook_eintraege", side_effect=eintraege):
+            hooks = self.lesen(a, b)
+        self.assertEqual([h["projekt"] for h in hooks], [str(b)])
+        self.assertEqual([f["quelle"] for f in build.LESEFEHLER], [f"Projekt {a}"])
+
+    def test_befehl_nennt_die_datei_des_projekts(self):
+        a = self.projekt("A")
+        (h,) = self.lesen(a)
+        self.assertEqual(build.befehl(h, "entfernen"), f'{a}/.claude/settings.json → "hooks" → "Stop" entfernen')
+
+    def test_im_inventar_ohne_aktion_und_ohne_kontextlast(self):
+        a = self.projekt("A", hooks={"SessionStart": self.STOP["Stop"]})
+        with mock.patch.object(build, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(build, "CFG", {"projects": {str(a): {}}}), \
+                mock.patch.object(build, "SETTINGS", {}), mock.patch.object(build, "BEWERTUNG", {}), \
+                mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "mcp_live", return_value=None), \
+                mock.patch.object(build, "transkripte", return_value=[]), mock.patch.object(build, "DATEN", self.tmp), \
+                mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
+            inventar = build.claude_inventar()
+        (h,) = inventar["projekt_hooks"]
+        self.assertEqual((h["befehl"], inventar["hooks"]), (f'{a}/.claude/settings.json → "hooks" → "SessionStart" entfernen', []))
+        self.assertNotIn("aktionen", h)
+        self.assertEqual(build.kontextlast(inventar), 0)
+        self.assertIn("projekt_hooks", build.ID_ARTEN)
+
+
 if __name__ == "__main__":
     unittest.main()

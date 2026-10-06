@@ -568,7 +568,7 @@ function abschnitt(id, titel, inhalt, intro) {
 /* Was seit dem letzten Lauf vor heute dazukam oder wegfiel, aus build.py (aenderungen). Ein Status zählt nicht,
    nur ob der Eintrag da ist. Neues verlinkt auf seinen Tab; Entferntes gibt es dort nicht mehr. */
 const ARTEN = { mcp: ["MCP-Server", "mcp"], plugins: ["Plugins", "plugins"], skills: ["Skills", "skills"], hooks: ["Hooks", "hooks"],
-  projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"] };
+  projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"], projekt_hooks: ["Projekt-Hooks", "projekte"] };
 function renderAenderungen() {
   const a = D.aenderungen;
   if (!a || (!Object.keys(a.neu).length && !Object.keys(a.entfernt).length)) return "";
@@ -890,9 +890,10 @@ function skillsFiltern() {
 /* Alles, was nur in einem Projekt gilt, je Projekt: zusätzliche Skills, Befehle und MCP-Server, dazu dort abgeschaltete globale Server */
 function renderProjekte() {
   const projekte = new Map();
-  const zu = pfad => projekte.get(pfad) || projekte.set(pfad, { skills: [], mcp: [], aus: [], regeln: [], gemessen: [] }).get(pfad);
+  const zu = pfad => projekte.get(pfad) || projekte.set(pfad, { skills: [], mcp: [], hooks: [], aus: [], regeln: [], gemessen: [] }).get(pfad);
   D.projekt_skills.forEach(s => zu(s.projekt).skills.push(s));
   D.projekt_mcp.forEach(m => zu(m.projekt).mcp.push(m));
+  (D.projekt_hooks || []).forEach(h => zu(h.projekt).hooks.push(h));
   D.mcp.filter(m => !m.gesperrt).forEach(m => m.aus_in_projekten.forEach(p => zu(p).aus.push(m.name)));
   /* Regeln und Tokens stehen auch in ihren eigenen Tabs, dort über alle Projekte; hier je Projekt beisammen.
      Unter Codex gelten Regeln nur global, und gemessene Ordner sind oft keine Projekte: Dort kommt nichts Neues dazu. */
@@ -925,21 +926,26 @@ function renderProjekte() {
       ["Entfernen", befehlZeile(m.befehl)],
     ]);
 
+  /* Nur Anzeige: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo, entfernt wird er dort. */
+  const hookZeile = h => `<tr><td class="name"><strong>${esc(h.name)}</strong></td><td class="nowrap">${h.mod ? "Mod" : "Befehl"}</td><td>${esc(h.quelle.autor)}</td>
+      <td>${h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("")}</td>
+      <td>${befehlZeile(h.befehl)}</td></tr>`;
   const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
   const kurz = pfad => pfad.replace(/^\/Users\/[^/]+/, "~");
   const strich = '<span class="leer">–</span>';
   const teil = (titel, html) => html ? `<p class="label">${titel}</p>${html}` : "";
-  const spalten = je(7, 5);
+  const spalten = je(8, 5);
   /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner). Lädt dort aber etwas, bleibt er stehen:
      Projekt-Skills und Projekt-Server zeigt nur dieser Tab. */
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));
-  const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.aus.length).map(([pfad]) => pfad);
+  const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.hooks.length && !p.aus.length).map(([pfad]) => pfad);
   weggelassen.forEach(pfad => projekte.delete(pfad));
   const zeilen = [...projekte.entries()].sort(([a], [b]) => a.split("/").pop().localeCompare(b.split("/").pop())).map(([pfad, p]) => {
     const tokens = p.skills.reduce((s, e) => s + e.tokens, 0);
     const extra = [];
     if (p.skills.length) extra.push(anzahl(p.skills.length, "Skill oder Befehl", "Skills und Befehle") + (tokens ? ` (≈ ${zahl(tokens)} Tokens je Sitzung)` : ""));
     if (p.mcp.length) extra.push(`${p.mcp.length} MCP-Server`);
+    if (p.hooks.length) extra.push(anzahl(p.hooks.length, "Hook", "Hooks"));
     const ohneOrdner = p.mcp.some(m => m.status === "Ordner fehlt");
     const zeile = [extra.length && `${ohneOrdner ? "Eingetragen, aber nie geladen" : "Lädt zusätzlich"}: ${extra.join(", ")}.`,
       p.aus.length && `Abgeschaltet: ${p.aus.map(esc).join(", ")}.`].filter(Boolean).join(" ");
@@ -948,18 +954,19 @@ function renderProjekte() {
     const name = pfad.split("/").pop() || pfad;
     return `<tr class="haupt"><td class="name">${aufklapp(name)}${fehlt}${kurz(pfad) === name ? "" : `<div class="klein">${esc(kurz(pfad))}</div>`}</td>
       <td class="zahl">${p.skills.length || strich}</td><td class="zahl">${p.mcp.length || strich}</td>
-      ${je(`<td class="zahl">${p.regeln.length || strich}</td><td>${esc(RECHT.zusammen(p.regeln)) || strich}</td>`, "")}
+      ${je(`<td class="zahl">${p.hooks.length || strich}</td><td class="zahl">${p.regeln.length || strich}</td><td>${esc(RECHT.zusammen(p.regeln)) || strich}</td>`, "")}
       <td class="zahl">${p.gemessen.length ? zahl(MESSUNG.summe(p.gemessen)) : strich}</td><td class="klein">${MESSUNG.jeModell(p.gemessen).map(m => esc(m.modell)).join(", ") || strich}</td></tr>` +
       inhaltZeile(spalten, (zeile ? `<p class="klein" style="margin:12px 0 0">${zeile}</p>` : "") +
         teil("Skills und MCP-Server", eintraege && `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Herkunft</th><th>Status</th><th class="zahl">Kontext</th><th class="zahl">Genutzt</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${eintraege}</tbody></table></div>`) +
+        teil("Hooks", p.hooks.length && `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Art</th><th>Herkunft</th><th>Befehle</th><th>Entfernen</th></tr></thead><tbody>${p.hooks.map(hookZeile).join("")}</tbody></table></div>`) +
         teil("Regeln ohne Rückfrage", p.regeln.length && RECHT.gebuendelt(p.regeln)) +
         teil(`Modelle, letzte ${esc((D.modelle || {}).tage)} Tage`, p.gemessen.length && MESSUNG.messung(p.gemessen)));
   }).join("");
-  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th>${je('<th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>` +
+  const gruppen = zeilen && `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Skills</th><th class="zahl">MCP-Server</th>${je('<th class="zahl">Hooks</th><th class="zahl">Regeln</th><th>auffällig</th>', "")}<th class="zahl">Ausgabe-Tokens</th><th>Modelle</th></tr></thead><tbody>${zeilen}</tbody></table></div>` +
     (weggelassen.length ? `<p class="klein">Nicht gezeigt, weil darin andere Projekte liegen: ${weggelassen.map(p => `<code>${esc(kurz(p))}</code>`).join(", ")}. Ihre Regeln stehen unter „Berechtigungen“, ihre Tokens unter „Modelle“.</p>` : "");
   return abschnitt("projekte", "Was in den einzelnen Projekten gilt",
     gruppen || '<p class="leer">Keine projektbezogenen Skills, Befehle oder MCP-Server gefunden.</p>',
-    je("Alles zu einem Projekt an einer Stelle: seine Regeln, die Modelle, die dort liefen, und was dort laut ~/.claude.json zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.",
+    je("Alles zu einem Projekt an einer Stelle: seine Regeln, die Modelle, die dort liefen, und was dort laut ~/.claude.json zusätzlich lädt (<code>.claude/skills</code>, <code>.claude/commands</code>, <code>.mcp.json</code>, lokal eingetragene MCP-Server) und welche globalen Server dort abgeschaltet sind. Dazu die Hooks, die nur dort laufen: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>, auch Mods. Sie sind nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo. Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest. „Genutzt“ zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten.",
       "Alles zu einem Projekt an einer Stelle: die Modelle, die dort liefen, und was dort laut ~/.codex/config.toml zusätzlich lädt (<code>.agents/skills</code>, <code>.codex/skills</code>, MCP-Server aus <code>.codex/config.toml</code>). Skills laden in jedem Projekt, MCP-Server nur in vertrauten (<code>trust_level = \"trusted\"</code>). Projekt-Skills zählen nicht zur Kontextlast je Sitzung. Der MCP-Status stammt aus der Konfiguration, ohne Verbindungstest."));
 }
 
