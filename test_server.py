@@ -491,6 +491,52 @@ class Server(unittest.TestCase):
         self.assertTrue(self.ausfuehren("mcp:alt", "einschalten")[1]["ok"])
         self.assertEqual(json.loads(self.settings.read_text()), {"deniedMcpServers": [fremd]})
 
+    def anweisungen(self, *zeilen):
+        (self.tmp / "inventar.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "anweisungen": list(zeilen)}))
+
+    def test_anweisung_ausschliessen_und_wieder_einschliessen(self):
+        """Geschaltet wird in ~/.claude/settings.json: Die CLAUDE.md selbst liegt oft in einem Repo und bleibt, wie sie ist."""
+        datei = self.tmp / "P" / "CLAUDE.md"
+        datei.parent.mkdir()
+        datei.write_text("Anweisung")
+        vorher = {"claudeMdExcludes": ["/alt/CLAUDE.md"], "env": {"A": "1"}}
+        self.settings.write_text(json.dumps(vorher, indent=2) + "\n")
+        self.anweisungen({"id": "anweisung:1", "name": "CLAUDE.md", "aktionen": {"deaktivieren": {"ausschliessen": str(datei)},
+                                                                              "einschalten": {"einschliessen": str(datei)}}})
+        for _ in range(2):  # zweimal ergibt einen Eintrag
+            self.assertTrue(self.ausfuehren("anweisung:1", "deaktivieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {**vorher, "claudeMdExcludes": ["/alt/CLAUDE.md", str(datei)]})
+        self.assertEqual(json.loads(self.sicherung(self.settings).read_text()), vorher)
+        self.assertEqual(datei.read_text(), "Anweisung")
+        self.assertTrue(self.ausfuehren("anweisung:1", "einschalten")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), vorher)
+        self.assertFalse(self.ausfuehren("anweisung:1", "einschalten")[1]["ok"])  # steht nicht mehr da
+        self.assertNotEqual(self.ausfuehren("anweisung:1", "entfernen")[0], 200)  # bietet der Eintrag nicht an
+
+    def test_ausschliessen_nimmt_nur_einen_ganzen_pfad(self):
+        """Claude Code liest den Eintrag als Muster, und der Wert kommt aus dem Inventar: `/**/CLAUDE.md` schaltete alle ab."""
+        vorher = self.settings.read_text()
+        for nr, pfad in enumerate(["/**/CLAUDE.md", "/p/CLAUDE?.md", "/p/[a]/CLAUDE.md", "CLAUDE.md", "/p/settings.json", "", 3, None, ["/p/CLAUDE.md"]]):
+            with self.subTest(pfad=pfad):
+                self.anweisungen({"id": f"anweisung:{nr}", "name": "x", "aktionen": {"deaktivieren": {"ausschliessen": pfad}}})
+                self.assertFalse(self.ausfuehren(f"anweisung:{nr}", "deaktivieren")[1]["ok"])
+        self.assertEqual(self.settings.read_text(), vorher)
+
+    def test_output_style_waehlen_und_abwaehlen(self):
+        vorher = {"outputStyle": "Erklär es mir einfach", "env": {"A": "1"}}
+        self.settings.write_text(json.dumps(vorher, indent=2, ensure_ascii=False) + "\n")
+        self.anweisungen({"id": "anweisung:an", "name": "Erklär es mir einfach", "aktionen": {"deaktivieren": {"output_style": None}}},
+                         {"id": "anweisung:aus", "name": "Knapp", "aktionen": {"einschalten": {"output_style": "Knapp"}}},
+                         {"id": "anweisung:kaputt", "name": "x", "aktionen": {"einschalten": {"output_style": 3}}})
+        self.assertTrue(self.ausfuehren("anweisung:an", "deaktivieren")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {"env": {"A": "1"}})
+        self.assertEqual(json.loads(self.sicherung(self.settings).read_text()), vorher)
+        self.assertFalse(self.ausfuehren("anweisung:an", "deaktivieren")[1]["ok"])  # ist schon abgewählt
+        self.assertTrue(self.ausfuehren("anweisung:aus", "einschalten")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text()), {"env": {"A": "1"}, "outputStyle": "Knapp"})
+        self.assertFalse(self.ausfuehren("anweisung:kaputt", "einschalten")[1]["ok"])
+        self.assertEqual(json.loads(self.settings.read_text())["outputStyle"], "Knapp")
+
     def test_mcp_sperre_landet_einmal_in_settings(self):
         self.settings.write_text('{\n  "deniedMcpServers": [\n    {\n      "serverName": "alt"\n    }\n  ]\n}\n')
         vorher = self.settings.read_text()

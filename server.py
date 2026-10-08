@@ -542,6 +542,9 @@ class Inventarserver(ThreadingHTTPServer):
         for e in inventar.get("berechtigungen", []):  # Regeln haben keinen Namen, nur ihren Text
             if e.get("id") == eid and aktion in e.get("aktionen", {}):
                 return e["regel"], e["aktionen"][aktion]
+        for e in inventar.get("anweisungen", []):
+            if e.get("id") == eid and aktion in e.get("aktionen", {}):
+                return e["name"], e["aktionen"][aktion]
         return None
 
     def sichern(self, datei):
@@ -726,7 +729,8 @@ class Inventarserver(ThreadingHTTPServer):
         return {"ok": True, "ausgabe": "deniedMcpServers: " + json.dumps(eintrag, ensure_ascii=False)}
 
     def settings_eintrag_entfernen(self, feld, eintrag):
-        """Nimmt einen Schlüssel aus skillOverrides oder einen Eintrag aus deniedMcpServers; ein leeres Feld bleibt nicht stehen."""
+        """Nimmt einen Schlüssel aus skillOverrides oder einen Eintrag aus deniedMcpServers oder claudeMdExcludes;
+        ein leeres Feld bleibt nicht stehen."""
         vorhanden = json.loads(self.settings.read_text(encoding="utf-8")).get(feld)
         if not isinstance(vorhanden, (dict, list)) or eintrag not in vorhanden:
             return {"ok": False, "ausgabe": f"{json.dumps(eintrag, ensure_ascii=False)} steht nicht in {feld}"}  # ohne die Datei anzufassen
@@ -740,6 +744,32 @@ class Inventarserver(ThreadingHTTPServer):
                 del daten[feld]
         self.settings_aendern(aendern)
         return {"ok": True, "ausgabe": f"{feld}: {json.dumps(eintrag, ensure_ascii=False)} entfernt"}
+
+    def ausschliessen(self, pfad):
+        """Trägt eine CLAUDE.md, Regel oder AGENTS.md in `claudeMdExcludes` ein: Claude Code lädt sie dann nicht mehr,
+        die Datei selbst bleibt, wie sie ist. Nur ein ganzer Pfad zu einer .md-Datei: Der Wert kommt aus dem Inventar,
+        und Claude Code liest den Eintrag als Muster — mit einem * träfe er mehr als die eine Datei."""
+        if not (isinstance(pfad, str) and pfad.startswith("/") and pfad.endswith(".md") and not set(pfad) & set("*?[]{}")):
+            return {"ok": False, "ausgabe": "Das ist kein Pfad zu einer Anweisungsdatei."}
+
+        def aendern(daten):
+            liste = daten.setdefault("claudeMdExcludes", [])
+            if pfad not in liste:
+                liste.append(pfad)
+        self.settings_aendern(aendern)
+        return {"ok": True, "ausgabe": f"claudeMdExcludes: {json.dumps(pfad, ensure_ascii=False)}"}
+
+    def output_style(self, name):
+        """Wählt einen Output-Style in ~/.claude/settings.json oder nimmt die Wahl weg (`name` None): Dann gilt der Standard."""
+        if name is None:
+            if "outputStyle" not in json.loads(self.settings.read_text(encoding="utf-8")):
+                return {"ok": False, "ausgabe": f"outputStyle steht nicht in {self.settings}"}  # ohne die Datei anzufassen
+            self.settings_aendern(lambda daten: daten.pop("outputStyle"))
+            return {"ok": True, "ausgabe": "outputStyle entfernt"}
+        if not isinstance(name, str) or not name:
+            return {"ok": False, "ausgabe": "Das ist kein Name eines Output-Styles."}
+        self.settings_aendern(lambda daten: daten.update(outputStyle=name))
+        return {"ok": True, "ausgabe": f"outputStyle: {json.dumps(name, ensure_ascii=False)}"}
 
     def hook_entfernen(self, schluessel):
         """Nimmt den Block eines Ereignisses (oder die Statuszeile) aus settings.json; zurück führt die Sicherung."""
@@ -817,6 +847,12 @@ class Inventarserver(ThreadingHTTPServer):
                 return in_den_papierkorb(schritt["papierkorb"])
             if "hook_entfernen" in schritt:
                 return self.hook_entfernen(schritt["hook_entfernen"])
+            if "ausschliessen" in schritt:
+                return self.ausschliessen(schritt["ausschliessen"])
+            if "einschliessen" in schritt:
+                return self.settings_eintrag_entfernen("claudeMdExcludes", schritt["einschliessen"])
+            if "output_style" in schritt:
+                return self.output_style(schritt["output_style"])
             if name.startswith("-") and any(str(a).startswith(name) for a in schritt["argv"][1:]):
                 return {"ok": False, "ausgabe": f"„{name}“ beginnt mit einem Minus: Der Befehl läse den Namen als Option. "
                                                 "Bitte von Hand entfernen."}

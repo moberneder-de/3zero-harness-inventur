@@ -43,11 +43,13 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 ## Was das Dashboard zeigt
 
-Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
+Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks, Anweisungen), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
 
 Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server und Hooks aus den Einstellungen des Projekts), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
 
 **Hooks** zeigt neben Befehlen auch **Mods** (Claude Code): Code eines Plugins, der in der Sitzung mitläuft und Werkzeug-Aufrufe, Prompt und System-Prompt ändern kann. In welche Ereignisse ein Mod eingreift, liest die Inventur am Text seines Moduls ab, ohne es auszuführen. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
+
+**Anweisungen** zeigt, was der Harness als Text in die Sitzung lädt, zusätzlich zu seinem eingebauten Systemprompt: unter Claude Code `CLAUDE.md`, Regeln aus `rules`, den gewählten Output-Style, `MEMORY.md` und `AGENTS.md`, global und je Projekt, mit geschätzten Tokens; unter Codex die globale `AGENTS.md`. Über den Server lässt sich eine `CLAUDE.md` oder Regel ab- und wieder anschalten (`claudeMdExcludes`) und ein Output-Style wählen oder abwählen (`outputStyle`), beides nur in `~/.claude/settings.json`: Die Datei selbst bleibt, wie sie ist, denn sie liegt oft in einem Repo. Den eingebauten Systemprompt zeigt die Inventur nicht, er steht in keiner Datei.
 
 Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
 
@@ -133,6 +135,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 |---|---|---|
 | Nutzung | `skillUsage` in `~/.claude.json`, bzw. `~/.codex/sessions` | gezählt |
 | Kontextkosten | Länge von Name und Beschreibung ÷ 4 | Schätzung |
+| Anweisungen | Länge von `CLAUDE.md`, Regeln, Output-Style und `MEMORY.md` ÷ 4; eingebundene Dateien (`@pfad`) zählen nicht mit. Die globalen zählen zur Kontextlast | Schätzung |
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
 | Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
 | MCP-Server | Aufrufe aus denselben Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | gezählt |

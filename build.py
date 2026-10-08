@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+import anweisungen
 import berechtigungen
 import harness
 import mcp_direkt
@@ -1131,8 +1132,10 @@ def kontextlast(inhalt):
     """Tokens, die in jeder Sitzung laden. Projekt-Skills und Projekt-Server gelten nur in ihrem Projekt.
     Ohne die eingebauten Skills des Harness: Codex legt sie als Dateien ab und könnte sie messen, Claude Code
     spielt sie zur Laufzeit ein. Gezählt wird nur, was beide sehen — sonst hieße die Kachel in beiden
-    Dashboards gleich und meinte Verschiedenes, und die beiden Verläufe wären nicht vergleichbar."""
-    return sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, []))
+    Dashboards gleich und meinte Verschiedenes, und die beiden Verläufe wären nicht vergleichbar. Dazu die globalen
+    Anweisungen (CLAUDE.md, Regeln, der gewählte Output-Style, unter Codex AGENTS.md): Sie laden genauso in jede Sitzung."""
+    return (sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, []))
+            + sum(z["tokens"] for z in inhalt.get("anweisungen", []) if z["bereich"] == "global" and z["laedt"]))
 
 
 def rechte(h, inhalt):
@@ -1172,6 +1175,37 @@ def modelle_lesen(h, inhalt):
                     "kopf": frontmatter(e["pfad"])} for e in inhalt.get("skills", []) + inhalt.get("projekt_skills", []) if e.get("pfad")]
         ergebnis = modelle.claude(HOME, (CFG.get("projects") or {}).keys(), dateien, transkripte(), zeitgrenze())
     return {**ergebnis, "tage": HOOK_TAGE}
+
+
+def anweisungen_lesen(h):
+    """Der Tab „Anweisungen“ des jeweiligen Harness: was als Text in die Sitzung lädt."""
+    if h == "codex":
+        return anweisungen_aktionen(anweisungen.codex(HOME))
+    return anweisungen_aktionen(anweisungen.claude(HOME, SETTINGS, (CFG.get("projects") or {}).keys()))
+
+
+def anweisungen_aktionen(zeilen):
+    """Was sich im Dashboard ab- und wieder anschalten lässt, beides nur in ~/.claude/settings.json: eine CLAUDE.md,
+    Regel oder AGENTS.md über `claudeMdExcludes` (die Datei selbst bleibt, wie sie ist — sie liegt oft in einem Repo),
+    ein Output-Style über `outputStyle`. Wieder anschalten nur, wo genau diese Datei dort eingetragen ist: Ein Muster
+    oder ein Eintrag im Projekt träfe mehr als diese Zeile. Verwaltete Dateien gehören dem Administrator, MEMORY.md
+    schaltet `autoMemoryEnabled` für alles zusammen, und unter Codex gibt es keinen Schalter."""
+    for z in zeilen:
+        z["id"] = f"anweisung:{z['bereich']}:{z['pfad'] or z['name']}"
+        z["aktionen"] = {}
+        if z.get("verwaltet") or z["pfad"] and ".codex" in Path(z["pfad"]).parts:
+            continue
+        if z["art"] == "Output-Style":
+            if z["gewaehlt"]:
+                z["aktionen"] = {"deaktivieren": {"output_style": None}}
+            elif z["pfad"]:
+                z["aktionen"] = {"einschalten": {"output_style": z["name"]}}
+        elif z["art"] in ("CLAUDE.md", "Regel", "AGENTS.md"):
+            if z.get("ausgeschlossen") == "eigen":
+                z["aktionen"] = {"einschalten": {"einschliessen": z["pfad"]}}
+            elif not z.get("ausgeschlossen"):
+                z["aktionen"] = {"deaktivieren": {"ausschliessen": z["pfad"]}}
+    return zeilen
 
 
 def verlauf_fortschreiben(pfad, eintrag):
@@ -1363,6 +1397,11 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("Modelle", fehler)
         inhalt["modelle"] = {"eingestellt": [], "gemessen": [], "tage": HOOK_TAGE}
+    try:
+        inhalt["anweisungen"] = anweisungen_lesen(h)
+    except Exception as fehler:
+        lesefehler("Anweisungen", fehler)
+        inhalt["anweisungen"] = []
     inhalt.update(lesefehler=list(LESEFEHLER), ungenutzt_tage=UNGENUTZT_TAGE, ruhend_tage=werkzeuge.RUHEND_TAGE)
     last = kontextlast(inhalt)
     verlauf = verlauf_fortschreiben(DATEN / angaben["verlauf"], {
