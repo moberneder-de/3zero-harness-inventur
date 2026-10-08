@@ -793,6 +793,13 @@ class Verlauf(unittest.TestCase):
                   "projekt_skills": [{"tokens": 999}], "projekt_mcp": [{"tokens": 999}]}
         self.assertEqual(build.kontextlast(inhalt), 115)
 
+    def test_kontextlast_zaehlt_globale_anweisungen_die_laden(self):
+        """CLAUDE.md, Regeln und der gewählte Output-Style laden wie Skill-Beschreibungen in jede Sitzung. Was aus ist,
+        erst bei Bedarf lädt oder nur in einem Projekt gilt, zählt nicht."""
+        z = lambda bereich, tokens, laedt: {"bereich": bereich, "tokens": tokens, "laedt": laedt}
+        inhalt = {"skills": [{"tokens": 10}], "anweisungen": [z("global", 300, True), z("global", 50, False), z("/p", 9000, True)]}
+        self.assertEqual(build.kontextlast(inhalt), 310)
+
     def test_je_tag_eine_zeile_der_letzte_lauf_gilt(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -847,6 +854,42 @@ class Verlauf(unittest.TestCase):
         self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {}, "entfernt": {}})
 
 
+class AnweisungenAktionen(unittest.TestCase):
+    """Abschalten heißt hier nie, die Datei anzufassen: Sie liegt oft in einem Repo. Geschaltet wird in ~/.claude/settings.json."""
+
+    def zeile(self, art="CLAUDE.md", pfad="/p/CLAUDE.md", **extra):
+        return {"bereich": "/p", "art": art, "name": "CLAUDE.md", "pfad": pfad, "status": "aktiv", "marken": [], **extra}
+
+    def aktionen(self, **zeile):
+        (z,) = build.anweisungen_aktionen([self.zeile(**zeile)])
+        return z["aktionen"]
+
+    def test_datei_ausschliessen_und_wieder_einschliessen(self):
+        self.assertEqual(self.aktionen(), {"deaktivieren": {"ausschliessen": "/p/CLAUDE.md"}})
+        self.assertEqual(self.aktionen(art="Regel", status="bei Bedarf"), {"deaktivieren": {"ausschliessen": "/p/CLAUDE.md"}})
+        self.assertEqual(self.aktionen(status="aus", ausgeschlossen="eigen"), {"einschalten": {"einschliessen": "/p/CLAUDE.md"}})
+
+    def test_ohne_aktion(self):
+        """Ein Muster oder ein Eintrag im Projekt träfe mehr als diese Zeile; verwaltete Dateien gehören dem Administrator."""
+        self.assertEqual(self.aktionen(status="aus", ausgeschlossen="muster"), {})
+        self.assertEqual(self.aktionen(verwaltet=True), {})
+        self.assertEqual(self.aktionen(art="Memory"), {})
+        self.assertEqual(self.aktionen(art="AGENTS.md", pfad="/h/.codex/AGENTS.md"), {})
+
+    def test_output_style(self):
+        self.assertEqual(self.aktionen(art="Output-Style", name="Einfach", gewaehlt=True), {"deaktivieren": {"output_style": None}})
+        self.assertEqual(self.aktionen(art="Output-Style", name="Knapp", gewaehlt=False, status="aus"), {"einschalten": {"output_style": "Knapp"}})
+        # ein eingebauter oder unbekannter Name hat keine Datei: abwählen geht, wählen nur, was es als Datei gibt
+        self.assertEqual(self.aktionen(art="Output-Style", pfad=None, name="concise", gewaehlt=True, status="wirkungslos"), {"deaktivieren": {"output_style": None}})
+
+    def test_id_nennt_bereich_und_datei(self):
+        """Dieselbe geerbte CLAUDE.md steht in jedem Projekt darunter: Mit dem Pfad allein teilten sich die Zeilen eine ID."""
+        a, b = build.anweisungen_aktionen([self.zeile(), {**self.zeile(), "bereich": "/q"}])
+        self.assertEqual((a["id"], b["id"]), ("anweisung:/p:/p/CLAUDE.md", "anweisung:/q:/p/CLAUDE.md"))
+        (stil,) = build.anweisungen_aktionen([self.zeile(art="Output-Style", pfad=None, name="Concise", gewaehlt=True, bereich="global")])
+        self.assertEqual(stil["id"], "anweisung:global:Concise")
+
+
 class Sammelordner(unittest.TestCase):
     def test_ordner_voller_projekte_ohne_eigenes_repo(self):
         tmp = Path(tempfile.mkdtemp())
@@ -879,7 +922,9 @@ class HarnessWahl(unittest.TestCase):
                         mock.patch.object(build.berechtigungen, "claude", return_value=[]),
                         mock.patch.object(build.berechtigungen, "codex", return_value=[]),
                         mock.patch.object(build.modelle, "claude", return_value={"eingestellt": [], "gemessen": []}),
-                        mock.patch.object(build.modelle, "codex", return_value={"eingestellt": [], "gemessen": []})]
+                        mock.patch.object(build.modelle, "codex", return_value={"eingestellt": [], "gemessen": []}),
+                        mock.patch.object(build.anweisungen, "claude", return_value=[]),
+                        mock.patch.object(build.anweisungen, "codex", return_value=[])]
         (self.tmp / "logo.svg").write_text("<svg></svg>")
         for p in self.patches:
             p.start()
@@ -979,6 +1024,22 @@ class HarnessWahl(unittest.TestCase):
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual(daten["lesefehler"], [{"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"}])
         self.assertEqual((daten["skills"][0]["ungenutzt"], daten["ungenutzt_tage"]), (True, 30))
+
+    def test_anweisungen_kommen_ins_inventar_und_zaehlen_zur_kontextlast(self):
+        zeile = {"bereich": "global", "art": "CLAUDE.md", "name": "~/.claude/CLAUDE.md", "pfad": "/h/.claude/CLAUDE.md",
+                 "tokens": 300, "status": "aktiv", "laedt": True, "marken": []}
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar(skills=[{"id": "skill:a", "tokens": 10}])), \
+                mock.patch.object(build, "version", return_value=None), mock.patch.object(build, "ungenutzt_markieren"), \
+                mock.patch.object(build.anweisungen, "claude", return_value=[dict(zeile)]):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["kontextlast"], daten["anweisungen"][0]["id"], daten["anweisungen"][0]["aktionen"]),
+                         (310, "anweisung:global:/h/.claude/CLAUDE.md", {"deaktivieren": {"ausschliessen": "/h/.claude/CLAUDE.md"}}))
+        with mock.patch.object(build, "claude_inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
+                mock.patch.object(build.anweisungen, "claude", side_effect=RuntimeError("kaputt")):
+            build.main(["--harness", "claude-code"])
+        daten = json.loads((self.daten / "inventar.json").read_text())
+        self.assertEqual((daten["anweisungen"], daten["lesefehler"]), ([], [{"quelle": "Anweisungen", "fehler": "RuntimeError: kaputt"}]))
 
     def test_berechtigungen_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         regel = {"bereich": "global", "quelle": "~/.claude/settings.json", "art": "allow", "regel": "Bash", "marken": ["breit"]}
