@@ -985,6 +985,8 @@ function renderProjekte() {
   /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner). Lädt dort aber etwas, bleibt er stehen:
      Projekt-Skills und Projekt-Server zeigt nur dieser Tab. */
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));
+  /* Ein gelöschtes Projekt bleibt stehen, solange dort Tokens gemessen sind (build.fehlende_ordner): mit Marke statt unsichtbar */
+  const ordnerFehlt = new Set((D.ordner_fehlt || []).map(kurzPfad));
   const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.hooks.length && !p.aus.length).map(([pfad]) => pfad);
   weggelassen.forEach(pfad => projekte.delete(pfad));
   const zeilen = [...projekte.entries()].sort(([a], [b]) => a.split("/").pop().localeCompare(b.split("/").pop())).map(([pfad, p]) => {
@@ -996,7 +998,7 @@ function renderProjekte() {
     const ohneOrdner = p.mcp.some(m => m.status === "Ordner fehlt");
     const zeile = [extra.length && `${ohneOrdner ? "Eingetragen, aber nie geladen" : "Lädt zusätzlich"}: ${extra.join(", ")}.`,
       p.aus.length && `Abgeschaltet: ${p.aus.map(esc).join(", ")}.`].filter(Boolean).join(" ");
-    const fehlt = ohneOrdner ? ' <span class="tag">Ordner fehlt</span>' : "";
+    const fehlt = ohneOrdner || ordnerFehlt.has(kurzPfad(pfad)) ? ' <span class="tag">Ordner fehlt</span>' : "";
     const eintraege = [...p.skills].sort((a, b) => a.name.localeCompare(b.name)).map(skillZeile).join("") + p.mcp.map(mcpZeile).join("");
     const name = pfad.split("/").pop() || pfad;
     return `<tr class="haupt"><td class="name">${aufklapp(name)}${fehlt}${kurz(pfad) === name ? "" : `<div class="klein">${esc(kurz(pfad))}</div>`}</td>
@@ -1021,7 +1023,9 @@ function renderProjekte() {
         ["Hooks", "Laufen nur dort: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>, auch Mods. Nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo."],
         ["Regeln", "Was dort ohne Rückfrage erlaubt ist. Über alle Projekte steht es unter „Berechtigungen“."],
         ["Ausgabe-Tokens, Modelle", "Was dort lief. Über alle Projekte steht es unter „Modelle“."],
-        ["Genutzt", "Zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten."]]),
+        ["Genutzt", "Zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten."],
+        ["Ordner fehlt", "Den Ordner gibt es nicht mehr. Das Projekt steht noch da, solange in den letzten Tagen dort Tokens gemessen wurden; danach fällt es von selbst heraus."]],
+      ["Arbeitsordner, die die Desktop-App für Sitzungen ohne Projekt anlegt, stehen nicht hier. Ihre Tokens zählen im Tab „Modelle“ zu „temporäre Ordner“."]),
       erklaert("Alles zu einem Projekt an einer Stelle. Die Projekte stammen aus ~/.codex/config.toml.", [
         ["Skills", "Aus <code>.agents/skills</code> und <code>.codex/skills</code>. Laden in jedem Projekt und zählen nicht zur Kontextlast je Sitzung."],
         ["MCP-Server", "Aus <code>.codex/config.toml</code> des Projekts. Laden nur in vertrauten Projekten (<code>trust_level = \"trusted\"</code>). Der Status stammt aus der Konfiguration, ohne Verbindungstest."],

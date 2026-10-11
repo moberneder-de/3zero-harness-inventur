@@ -20,6 +20,8 @@ SCHLUESSEL = ("model", "availableModels", "deniedModels", "fallbackModel", "effo
               "alwaysThinkingEnabled", "fastMode")
 UMGEBUNG = ("ANTHROPIC_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_EFFORT_LEVEL", "MAX_THINKING_TOKENS")
 TEMP = ("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/")
+# Arbeitsordner der Desktop-App für Sitzungen ohne Projektordner (~/Library/Application Support/Claude/…): je Sitzung ein neuer
+SCRATCH = "/Claude/scratch-workspaces/"
 FELDER = ("tokens", "eingabe", "cache_schreiben", "cache_lesen")  # tokens: Ausgabe; eingabe: neu, ohne Cache
 GLOBAL = {"model": "model", "effortLevel": "effortLevel", "effort": "effortLevel"}  # womit „überschreibt“ vergleicht
 
@@ -80,6 +82,8 @@ def projekt_von(ordner, projekte, home):
     def unter(oben):
         return ordner == oben or ordner.startswith(oben.rstrip("/") + "/")
     ordner = ordner.split("/.claude/worktrees/")[0]
+    if SCRATCH in ordner + "/":
+        return "temporäre Ordner"  # vor den Projekten: Claude Code trägt so einen Ordner als Projekt ein
     darueber = [p for p in projekte if p != str(home) and unter(p)]
     if darueber:
         return max(darueber, key=len)
