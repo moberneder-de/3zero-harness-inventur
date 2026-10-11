@@ -10,7 +10,10 @@ paths:
 # template.html
 
 `template.html` ist die Oberfläche.
-Die Erläuterung eines Tabs steht eingeklappt hinter seiner Überschrift (`abschnitt()`, ein `<details>` mit der Überschrift als `summary`): Oben nahm sie der Tabelle den Platz.
+Die Erläuterung eines Tabs steht am rechten Fensterrand (`details.erklaerung` aus `abschnitt()`, `position: fixed`), wie im 3zero-Cobol-Analyzer: zugeklappt eine schmale Lasche, aufgeklappt eine Tafel über dem Inhalt.
+Erst stand sie über der Tabelle und nahm ihr den Platz, dann eingeklappt hinter der Überschrift und schob die Tabelle aufgeklappt nach unten.
+Je Tab ein eigenes `<details>`; zu sehen ist nur das des gewählten, und alle klappen gemeinsam (`toggle` im Einfangen, es steigt nicht auf): Wer die Tafel offen hat, will sie nach dem Wechsel des Tabs weiter sehen.
+`main` hat rechts dafür mehr Rand als links, sonst läge die Lasche über der Trefferzahl des Filters.
 Sie merkt sich nichts, nach dem Neuladen ist sie wieder zu.
 Ihr Text ist gegliedert (`erklaert()`): ein Satz, worum es geht, dann je Begriff oder Spalte eine Zeile (`dl.begriffe`), dann „Gut zu wissen“ und, wo es Marken gibt, deren Legende.
 Als ein Absatz Fließtext war der Begriff, den man suchte, nicht zu finden.
