@@ -573,6 +573,7 @@ function empfFiltern() {
 /* Der Text einer Erläuterung: ein Satz, worum es geht, dann je Begriff oder Spalte eine Zeile, dann was sonst gilt.
    Als ein Absatz Fließtext war der Begriff, den man suchte, nicht zu finden. */
 function erklaert(kurz, begriffe = [], wissen = [], anhang = "") {
+  wissen = wissen.filter(Boolean); /* ein Punkt, der nur mit Server gilt, ist sonst null */
   return `<p>${kurz}</p>` +
     (begriffe.length ? `<dl class="begriffe">${begriffe.map(([b, text]) => `<dt>${b}</dt><dd>${text}</dd>`).join("")}</dl>` : "") +
     (wissen.length ? `<p class="label">Gut zu wissen</p><ul class="wissen">${wissen.map(w => `<li>${w}</li>`).join("")}</ul>` : "") + anhang;
@@ -1121,8 +1122,11 @@ const ANWEISUNG = (() => {
   const beiBedarf = zeilen => zeilen.filter(z => z.status === "bei Bedarf").reduce((s, z) => s + z.tokens, 0);
   const marken = z => [z.verwaltet && "verwaltet", z.geerbt && "aus dem Ordner darüber", ...z.marken.map(m => m === "Importe" ? `${z.importe} ${z.importe === 1 ? "Import" : "Importe"}, nicht mitgezählt` : m)]
     .filter(Boolean).map(m => `<span class="tag">${esc(m)}</span>`).join("");
-  const knopf = z => { const a = Object.keys(z.aktionen || {})[0]; return a ? `<button type="button" class="zeilenknopf" data-anweisung="${esc(z.id)}">${esc(a)}</button>` : strich; };
-  const tabelle = zeilen => `<div class="tabelle"><table><thead><tr><th>Datei</th><th data-filter="jede Art">Art</th><th data-filter="jeder Status">Status</th><th class="zahl">Tokens</th><th>geändert</th>${TOKEN && !CODEX ? "<th>Schalten</th>" : ""}</tr></thead><tbody>${
+  /* „prüfen“ gibt es nur, wo build.py der Zeile einen Auftrag mitgibt: die CLAUDE.md eines Projekts, wenn der Skill dafür installiert ist */
+  const knopf = z => { const a = Object.keys(z.aktionen || {})[0];
+    return [a && `<button type="button" class="zeilenknopf" data-anweisung="${esc(z.id)}">${esc(a)}</button>`,
+      z.pruefen && `<button type="button" class="zeilenknopf" data-pruefen="${esc(z.id)}">prüfen</button>`].filter(Boolean).join(" ") || strich; };
+  const tabelle = zeilen => `<div class="tabelle"><table><thead><tr><th>Datei</th><th data-filter="jede Art">Art</th><th data-filter="jeder Status">Status</th><th class="zahl">Tokens</th><th>geändert</th>${TOKEN && !CODEX ? "<th>Aktion</th>" : ""}</tr></thead><tbody>${
     zeilen.map(z => `<tr><td class="name"><strong>${esc(z.art === "Output-Style" || z.art === "Memory" ? z.name : z.name.split("/").pop())}</strong>
         ${z.pfad ? `<div class="klein"><code>${esc(kurzPfad(z.pfad))}</code></div>` : ""}${z.gebunden ? `<div class="klein">lädt bei ${z.gebunden.map(m => `<code>${esc(m)}</code>`).join(", ")}</div>` : ""}${marken(z)}</td>
       <td class="nowrap">${esc(z.art)}</td><td class="nowrap">${statusBadge(z.status)}</td>
@@ -1163,7 +1167,8 @@ function renderAnweisungen() {
         ["groß", "Eine CLAUDE.md mit mehr als 200 Zeilen oder mehr als 5.000 Tokens. Die Doku von Claude Code rät zu unter 200 Zeilen: Längere Dateien kosten Kontext, und Claude hält sich schlechter daran. Was nur einen Teil des Codes betrifft, kann in eine Regel mit <code>paths</code> wandern und lädt dann erst bei Bedarf."],
         ["zwei CLAUDE.md", "Im Projekt liegen <code>CLAUDE.md</code> und <code>.claude/CLAUDE.md</code>. Claude Code lädt beide. Wer nur eine öffnet, hält sie leicht für die ganze Anleitung."],
         ["Tokens", "Geschätzt: Zeichen ÷ 4. Dateien, die eine Anweisung mit <code>@pfad</code> einbindet, zählen nicht mit."]],
-      [TOKEN ? "„deaktivieren“ trägt die Datei in <code>claudeMdExcludes</code> in <code>~/.claude/settings.json</code> ein, „einschalten“ nimmt sie wieder heraus. Die Datei selbst bleibt, wie sie ist: Sie liegt oft in einem Repo." : "Schalten geht nur über den Server; als Datei geöffnet ist das Dashboard nur lesbar.",
+      [TOKEN ? "„prüfen“ lässt Claude die CLAUDE.md eines Projekts mit dem Skill <code>claude-md-improver</code> bewerten: Note, Befunde und Vorschläge. Der Lauf liest nur, und nur im Projekt, dauert einige Minuten und verbraucht Kontingent. Den Knopf gibt es, wenn das Plugin <code>claude-md-management</code> installiert ist. Umgesetzt wird in einer Sitzung im Projekt, nicht hier." : null,
+        TOKEN ? "„deaktivieren“ trägt die Datei in <code>claudeMdExcludes</code> in <code>~/.claude/settings.json</code> ein, „einschalten“ nimmt sie wieder heraus. Die Datei selbst bleibt, wie sie ist: Sie liegt oft in einem Repo." : "Schalten geht nur über den Server; als Datei geöffnet ist das Dashboard nur lesbar.",
         "Ohne Knopf bleibt, was ein Muster oder ein Eintrag im Projekt ausschließt, was verwaltet ist, und <code>MEMORY.md</code>: Das Auto-Memory schaltet <code>autoMemoryEnabled</code> für alles zusammen.",
         "Einen Output-Style kann ein Projekt für sich anders wählen (<code>.claude/settings.local.json</code>). Das steht hier nicht.",
         "Die globalen Zeilen, die laden, zählen zur Kontextlast im Überblick. Was nur in einem Projekt lädt, zählt dort nicht, wie bei Projekt-Skills."]),
@@ -1337,7 +1342,8 @@ function renderHinweise() {
 const ERGEBNIS = new Map();
 /* offenerLauf: zu welchem Claude-Lauf auf dem Server die Karte gehört („bewertung“); Schließen verwirft ihn dort */
 /* seiteVeraltet: Der Server steht auf dem anderen Harness; die Karte bietet dann nur „Seite neu laden“ an */
-let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false, seiteVeraltet = false;
+/* laufArt: welchen Lauf „abbrechen“ in der Karte meint; Bewertung und Prüfung teilen sich die Karte */
+let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false, laufArt = "bewertung", seiteVeraltet = false;
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
     REIHENFOLGE.indexOf(gewaehlt(a)) - REIHENFOLGE.indexOf(gewaehlt(b)) || a.name.localeCompare(b.name));
@@ -1393,7 +1399,7 @@ function renderMeldung() {
   document.getElementById("meldung-bereich").innerHTML = meldung
     ? `<div class="meldung"><div class="zeile"><p class="label">${esc(meldungTitel)}</p>
        ${seiteVeraltet ? '<button type="button" class="kopieren" id="meldung-neu-laden">Seite neu laden</button>'
-         : bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="bewertung"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
+         : bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="${laufArt}"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
          : '<button type="button" class="kopieren" id="meldung-zu">schließen</button>'}</div>
        <div class="inhalt${lang ? " gekuerzt" : ""}">${inhalt}</div>
        ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}</div>`
@@ -1434,7 +1440,7 @@ function zeichne() {
   renderEmpfInhalt();
   renderSuchInhalt();
   /* Die Bestandstabellen entstehen nicht neu: Ihre Auswahl bleibt gesperrt, solange etwas läuft */
-  document.querySelectorAll("select.wahl, [data-recht], [data-anweisung]").forEach(s => { s.disabled = beschaeftigt; });
+  document.querySelectorAll("select.wahl, [data-recht], [data-anweisung], [data-pruefen]").forEach(s => { s.disabled = beschaeftigt; });
 }
 /* Bestätigung im 3zero-Stil statt confirm(); Esc und „Abbrechen“ zählen als Nein */
 function frage(titel, text, ja, liste = []) {
@@ -1804,7 +1810,7 @@ if (TOKEN) {
     if (!document.body.contains(s)) document.querySelector(`select.wahl[data-wahl="${CSS.escape(s.dataset.wahl)}"]`)?.focus();
   });
   document.addEventListener("click", async ev => {
-    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #meldung-neu-laden, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen], [data-recht], [data-anweisung]");
+    const knopf = ev.target.closest("#alle-ausfuehren, #neu-einlesen, #bewerten, #meldung-zu, #meldung-neu-laden, #suche-verwerfen, [data-ausfuehren], [data-installieren], [data-abbrechen], [data-recht], [data-anweisung], [data-pruefen]");
     if (!knopf) return;
     if (knopf.dataset.abbrechen) {
       /* Nur anstoßen: Das Ende meldet die laufende Abfrage des Standes, auch wenn der Lauf gerade von selbst fertig wurde */
@@ -1866,6 +1872,14 @@ if (TOKEN) {
         if (!r.ok) return setMeldung("Entfernen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
         await neuEinlesen();
       });
+    } else if (knopf.dataset.pruefen !== undefined) {
+      const z = (D.anweisungen || []).find(x => x.id === knopf.dataset.pruefen);
+      if (!z?.pruefen) return;
+      if (!await frage("CLAUDE.md prüfen?", `Claude liest ${kurzPfad(z.pfad)} und das Projekt dazu und bewertet die Datei mit dem Skill claude-md-improver: Note, Befunde und Vorschläge.\n\nDer Lauf liest nur und ändert nichts. Er dauert einige Minuten und verbraucht Kontingent deines Claude-Abos.`, "prüfen")) return;
+      const r = await api("/api/pruefen", { id: z.id });
+      if (r.harnessWechsel) return harnessGewechselt(r);
+      if (!r.ok) return setMeldung("Prüfung nicht gestartet:\n\n" + r.ausgabe, "Fehler");
+      pruefungVerfolgen(); /* ohne Sperre: Der Lauf ändert nichts, andere Aktionen müssen nicht minutenlang warten */
     } else if (knopf.dataset.anweisung !== undefined) {
       const z = (D.anweisungen || []).find(x => x.id === knopf.dataset.anweisung);
       const aktion = z && Object.keys(z.aktionen || {})[0];
@@ -1907,6 +1921,11 @@ if (TOKEN) {
     if (b.harnessWechsel) harnessGewechselt(b);
     else if (b.laeuft) mitSperre(bewertungVerfolgen);
     else if ("ok" in b && b.verbindung !== false) bewertungZeigen(b);
+    /* erst danach: Bewertung und Prüfung teilen sich die Karte, die Bewertung geht vor */
+    if (!b.laeuft && !("ok" in b)) api("/api/pruefung").then(p => {
+      if (p.laeuft) pruefungVerfolgen();
+      else if ("ok" in p && p.verbindung !== false) pruefungZeigen(p);
+    });
   });
   sucheVerfolgen();
 }
@@ -1918,10 +1937,43 @@ async function bewertungVerfolgen() {
     if (b.verbindung === false) { bewertungLaeuft = false; return setMeldung(b.ausgabe, "Fehler"); }
     if (b.harnessWechsel) { bewertungLaeuft = false; return harnessGewechselt(b); }
     if (!b.laeuft) { bewertungLaeuft = false; return location.reload(); } /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
+    laufArt = "bewertung";
     bewertungLaeuft = b.abgebrochen ? "abbruch" : "ja"; /* der Knopf entsteht alle zwei Sekunden neu und bliebe sonst klickbar */
     setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");
     await warte(2000);
   }
+}
+/* Prüfung einer CLAUDE.md (server.pruefen): läuft im Hintergrund, der Bericht bleibt auf dem Server, bis die Karte zugeht */
+async function pruefungVerfolgen() {
+  for (;;) {
+    const b = await api("/api/pruefung");
+    if (b.verbindung === false) { bewertungLaeuft = false; return setMeldung(b.ausgabe, "Fehler"); }
+    if (b.harnessWechsel) { bewertungLaeuft = false; return harnessGewechselt(b); }
+    if (!b.laeuft) { bewertungLaeuft = false; return pruefungZeigen(b); }
+    laufArt = "pruefung";
+    bewertungLaeuft = b.abgebrochen ? "abbruch" : "ja";
+    setMeldung(`Claude prüft \`${kurzPfad(b.datei)}\` … (${b.sekunden} s)`, "Prüfung läuft");
+    await warte(2000);
+  }
+}
+const KRITERIEN = { befehle: "Befehle und Abläufe", aufbau: "Aufbau", muster: "Nicht Offensichtliches", knappheit: "Knappheit", aktualitaet: "Aktualität", umsetzbarkeit: "Umsetzbarkeit" };
+/* Der Bericht kommt geprüft vom Server (pruefbericht) und geht als Markdown durch markdown(), das zuerst alles escapt.
+   Der Befehl zum Umsetzen entsteht hier aus dem Projektpfad, nicht aus Claudes Text. */
+function pruefungZeigen(b) {
+  offenerLauf = "pruefung";
+  if (b.abgebrochen) return setMeldung("Die Prüfung wurde abgebrochen.", "Prüfung abgebrochen");
+  if (!b.ok || !b.bericht) return setMeldung("Prüfung fehlgeschlagen:\n\n" + (b.ausgabe || ""), "Fehler bei der Prüfung");
+  const r = b.bericht, zelle = s => String(s).replace(/\|/g, "/").replace(/\n/g, " ");
+  /* markdown() kennt keine Codeblöcke: Jede Zeile darin wird ein Listenpunkt mit Code, sonst flössen Befehle zu einem Absatz zusammen */
+  const ohneZaun = s => { let code = false; return s.split("\n").map(z => {
+    if (z.trim().startsWith("\`\`\`")) { code = !code; return ""; }
+    return code && z.trim() ? "- \`" + z.replace(/\`/g, "'") + "\`" : z; }).join("\n"); };
+  setMeldung([`\`${kurzPfad(b.datei)}\``, "", `## ${r.summe} von 100 · Note ${r.note}`, "", "| Kriterium | Punkte | Befund |", "|---|---|---|",
+    ...Object.entries(r.punkte).map(([k, p]) => `| ${KRITERIEN[k] || k} | ${p.punkte}/${p.von} | ${zelle(p.notiz)} |`), "",
+    ...(r.probleme.length ? ["## Probleme", "", ...r.probleme.map(p => `- ${zelle(p)}`), ""] : []),
+    ...r.vorschlaege.flatMap((v, i) => [`## Vorschlag ${i + 1}`, "", `**Warum:** ${zelle(v.warum)}`, "", ohneZaun(v.text), ""]),
+    "## Umsetzen", "", `Die Prüfung ändert nichts. Zum Umsetzen den Skill in einer Sitzung im Projekt starten: \`cd ${b.projekt} && claude "/claude-md-management:claude-md-improver"\``,
+  ].join("\n"), "Prüfung der CLAUDE.md");
 }
 function harnessGewechselt(b) {
   seiteVeraltet = true;

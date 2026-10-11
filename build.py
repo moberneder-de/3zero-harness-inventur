@@ -1177,22 +1177,39 @@ def modelle_lesen(h, inhalt):
     return {**ergebnis, "tage": HOOK_TAGE}
 
 
-def anweisungen_lesen(h):
+PRUEF_SKILL = "claude-md-management:claude-md-improver"
+
+
+def pruefskill(inhalt):
+    """Der Ordner des Skills claude-md-improver, wenn sein Plugin installiert ist und er lädt; sonst None. Mit ihm prüft
+    das Dashboard eine CLAUDE.md (Schritt `pruefen` im Server)."""
+    for e in inhalt.get("skills", []):
+        if e.get("name") == PRUEF_SKILL and e.get("status") == "aktiv" and e.get("pfad"):
+            return str(Path(e["pfad"]).parent)
+    return None
+
+
+def anweisungen_lesen(h, inhalt):
     """Der Tab „Anweisungen“ des jeweiligen Harness: was als Text in die Sitzung lädt."""
     if h == "codex":
         return anweisungen_aktionen(anweisungen.codex(HOME))
-    return anweisungen_aktionen(anweisungen.claude(HOME, SETTINGS, (CFG.get("projects") or {}).keys()))
+    return anweisungen_aktionen(anweisungen.claude(HOME, SETTINGS, (CFG.get("projects") or {}).keys()), bool(inhalt.get("pruefskill")))
 
 
-def anweisungen_aktionen(zeilen):
+def anweisungen_aktionen(zeilen, pruefbar=False):
     """Was sich im Dashboard ab- und wieder anschalten lässt, beides nur in ~/.claude/settings.json: eine CLAUDE.md,
     Regel oder AGENTS.md über `claudeMdExcludes` (die Datei selbst bleibt, wie sie ist — sie liegt oft in einem Repo),
     ein Output-Style über `outputStyle`. Wieder anschalten nur, wo genau diese Datei dort eingetragen ist: Ein Muster
     oder ein Eintrag im Projekt träfe mehr als diese Zeile. Verwaltete Dateien gehören dem Administrator, MEMORY.md
-    schaltet `autoMemoryEnabled` für alles zusammen, und unter Codex gibt es keinen Schalter."""
+    schaltet `autoMemoryEnabled` für alles zusammen, und unter Codex gibt es keinen Schalter.
+    `pruefen` bekommt die CLAUDE.md eines Projekts, wenn der Skill dafür da ist (`pruefbar`): Der Server lässt Claude
+    sie dann lesend bewerten. Nicht die globale (das Raster des Skills fragt nach Befehlen und Aufbau eines Projekts),
+    keine geerbte (sie gehört zum Ordner darüber) und keine verwaltete."""
     for z in zeilen:
         z["id"] = f"anweisung:{z['bereich']}:{z['pfad'] or z['name']}"
         z["aktionen"] = {}
+        if pruefbar and z["art"] == "CLAUDE.md" and z["bereich"] != "global" and not z.get("geerbt") and not z.get("verwaltet"):
+            z["pruefen"] = {"datei": z["pfad"], "projekt": z["bereich"]}
         if z.get("verwaltet") or z["pfad"] and ".codex" in Path(z["pfad"]).parts:
             continue
         if z["art"] == "Output-Style":
@@ -1420,7 +1437,8 @@ def main(argv=None):
     if h != "codex":  # unter Codex sind gemessene Ordner oft keine Projekte, und [projects] ohne Ordner fällt schon in codex.py weg
         inhalt["ordner_fehlt"] = fehlende_ordner(inhalt, (CFG.get("projects") or {}).keys())
     try:
-        inhalt["anweisungen"] = anweisungen_lesen(h)
+        inhalt["pruefskill"] = None if h == "codex" else pruefskill(inhalt)
+        inhalt["anweisungen"] = anweisungen_lesen(h, inhalt)
     except Exception as fehler:
         lesefehler("Anweisungen", fehler)
         inhalt["anweisungen"] = []

@@ -882,6 +882,19 @@ class AnweisungenAktionen(unittest.TestCase):
         # ein eingebauter oder unbekannter Name hat keine Datei: abwählen geht, wählen nur, was es als Datei gibt
         self.assertEqual(self.aktionen(art="Output-Style", pfad=None, name="concise", gewaehlt=True, status="wirkungslos"), {"deaktivieren": {"output_style": None}})
 
+    def test_pruefen_nur_fuer_die_claude_md_eines_projekts_und_nur_mit_dem_skill(self):
+        self.assertEqual(build.anweisungen_aktionen([self.zeile()], True)[0]["pruefen"], {"datei": "/p/CLAUDE.md", "projekt": "/p"})
+        for zeile in (self.zeile(bereich="global"), self.zeile(geerbt=True), self.zeile(verwaltet=True), self.zeile(art="Regel"), self.zeile(art="Memory")):
+            with self.subTest(zeile=zeile):
+                self.assertNotIn("pruefen", build.anweisungen_aktionen([zeile], True)[0])
+        self.assertNotIn("pruefen", build.anweisungen_aktionen([self.zeile()])[0])  # ohne den Skill kein Knopf
+
+    def test_pruefskill_ist_der_ordner_des_installierten_skills(self):
+        skill = {"name": "claude-md-management:claude-md-improver", "status": "aktiv", "pfad": "/c/skills/claude-md-improver/SKILL.md"}
+        self.assertEqual(build.pruefskill({"skills": [{"name": "anderer", "status": "aktiv", "pfad": "/x/SKILL.md"}, skill]}), "/c/skills/claude-md-improver")
+        self.assertIsNone(build.pruefskill({"skills": [{**skill, "status": "aus"}]}))  # abgeschaltet lädt er nicht
+        self.assertIsNone(build.pruefskill({}))
+
     def test_id_nennt_bereich_und_datei(self):
         """Dieselbe geerbte CLAUDE.md steht in jedem Projekt darunter: Mit dem Pfad allein teilten sich die Zeilen eine ID."""
         a, b = build.anweisungen_aktionen([self.zeile(), {**self.zeile(), "bereich": "/q"}])

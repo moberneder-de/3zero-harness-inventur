@@ -51,6 +51,16 @@ Das gilt für `Read`, `Grep` und `Glob`, auch wenn `Grep` im Ordner darüber suc
 `WebFetch` bleibt für jede Adresse offen, weil die Suche nach MCP-Servern die Doku der Anbieter braucht — die Sperre nimmt dem Lauf also das Lesenswerte, nicht den Weg nach draußen.
 Jeder Kandidat trägt `belege` (Installationen, Sterne, letzter Push, Lizenz); `belege()` lässt nur diese Felder mit passendem Typ durch.
 `/api/installieren` installiert nur Skills und Plugins aus der letzten Suche, mit einem Befehl, den der Server aus den geprüften Feldern baut, nie mit Claudes Befehlstext.
+Der Knopf „prüfen“ an der `CLAUDE.md` eines Projekts startet über `/api/pruefen` einen dritten Lauf (`pruefen()`): Claude bewertet die Datei mit dem Skill `claude-md-improver` aus dem Plugin `claude-md-management` und gibt Punkte je Kriterium, Probleme und Vorschläge per `--json-schema` zurück.
+Er ist enger eingezäunt als die Suche, weil er ein fremdes Repo liest: nur `Read`, `Glob` und `Grep`, kein Schreiben, keine Shell, kein Netz — ohne Netz kann er auch nichts verschicken, was er liest — und gelesen wird nur im Projekt (`PRUEFEN_GRENZEN` mit `--add-dir <Projekt>`, nicht das Home wie in `CLAUDE_GRENZEN`).
+Er startet in einem Temp-Ordner, nicht im Projekt: Dort lüde Claude Code dessen Einstellungen und Hooks.
+Der Skill schriebe nach Zustimmung auch in die Datei; `PRUEFEN_HINWEIS` lässt ihn nach dem Bericht enden, und ohne Werkzeug zum Schreiben könnte er es auch nicht.
+Umgesetzt wird in einer Sitzung im Projekt; die Karte nennt dafür einen Befehl, den die Seite aus dem Projektpfad baut, nicht aus Claudes Text.
+Datei, Projekt und Skill nimmt `pruefauftrag()` aus dem Inventar (`pruefen` an der Zeile, `pruefskill` oben), einer Datei, die auch andere schreiben können: Als Projekt gilt deshalb weder das Home noch ein Ordner darüber, die Datei muss eine `CLAUDE.md` in diesem Projekt sein und der Skill-Ordner `claude-md-improver` heißen.
+Den Skill bekommt der Lauf als Kopie in einem Plugin im Temp-Ordner (`/pruefung:claude-md-improver`), mit seinen `references`, weil `--restricted` die Plugins des Benutzers nicht lädt.
+`pruefbericht()` lässt nur die erwarteten Felder durch und rechnet Summe und Note selbst, jedes Kriterium höchstens bis zu seinem Höchstwert (`PRUEFEN_KRITERIEN`): Was Claude als Gesamtzahl nennt, muss nicht zu seinen Einzelwerten passen.
+Der Bericht bleibt wie bei der Suche auf dem Server, bis die Karte geschlossen wird, und wird nicht gespeichert; `/api/pruefung` nennt den Stand, `/api/abbrechen` beendet auch diesen Lauf.
+Die Seite hält dafür keine Sperre: Der Lauf ändert nichts, andere Aktionen müssen nicht minutenlang warten.
 Bewertung und Suche laufen im Hintergrund (`im_hintergrund()`); der Browser fragt den Stand über `/api/bewertung` und `/api/suche` ab, das Ergebnis bleibt auf dem Server, bis die Karte geschlossen wird.
 Eine minutenlang offene Anfrage riss beim Neuladen der Seite ab.
 Die Bewertung hält die Sperre nur für `build.py` davor und für Zurückschreiben und `build.py` danach, nicht für den Lauf selbst: Sonst hing jede Aktion bis zu 20 Minuten, und die Suche wurde abgelehnt.

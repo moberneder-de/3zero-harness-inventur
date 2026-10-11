@@ -491,8 +491,118 @@ class Server(unittest.TestCase):
         self.assertTrue(self.ausfuehren("mcp:alt", "einschalten")[1]["ok"])
         self.assertEqual(json.loads(self.settings.read_text()), {"deniedMcpServers": [fremd]})
 
-    def anweisungen(self, *zeilen):
-        (self.tmp / "inventar.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "anweisungen": list(zeilen)}))
+    def anweisungen(self, *zeilen, **extra):
+        (self.tmp / "inventar.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "anweisungen": list(zeilen), **extra}))
+
+    PUNKTE = {k: {"punkte": 10, "notiz": f"Notiz zu {k}"} for k in server.PRUEFEN_KRITERIEN}
+
+    def pruefprojekt(self):
+        """Ein Projekt mit CLAUDE.md, der Skill als Ordner und das Inventar dazu; liefert (Projekt, Skill)."""
+        projekt, skill = self.tmp / "P", self.tmp / "plugins/skills/claude-md-improver"
+        (projekt / ".claude").mkdir(parents=True)
+        (projekt / "CLAUDE.md").write_text("# P")
+        (skill / "references").mkdir(parents=True)
+        (skill / "SKILL.md").write_text("Skill")
+        (skill / "references/quality-criteria.md").write_text("Raster")
+        zeile = lambda eid, datei, wo: {"id": eid, "name": "CLAUDE.md", "pruefen": {"datei": str(datei), "projekt": str(wo)}}
+        (self.tmp / "aussen.md").write_text("x")
+        self.anweisungen(zeile("a:gut", projekt / "CLAUDE.md", projekt), zeile("a:fremd", self.tmp / "aussen.md", projekt),
+                         zeile("a:name", projekt / ".claude", projekt), zeile("a:home", Path.home() / ".claude/CLAUDE.md", Path.home()),
+                         zeile("a:wurzel", projekt / "CLAUDE.md", "/"), {"id": "a:ohne", "name": "CLAUDE.md"},
+                         {"id": "a:kaputt", "name": "x", "pruefen": {"datei": 3}}, pruefskill=str(skill))
+        return projekt, skill
+
+    def pruefen(self, eid, ausgabe=None):
+        """Startet die Prüfung und wartet auf ihr Ende; liefert (Status, Stand der Prüfung oder Fehlermeldung)."""
+        if ausgabe is not None or not (self.tmp / "bin" / "claude").exists():
+            self.claude_ersatz(ausgabe if ausgabe is not None else "Warning: irgendwas\n" + json.dumps(
+                {"type": "result", "result": "…", "structured_output": {"punkte": self.PUNKTE, "probleme": ["Befehle fehlen."],
+                                                                         "vorschlaege": [{"warum": "Tests", "text": "`python3 -m unittest`"}]}}))
+        status, inhalt = self.anfrage("POST", "/api/pruefen", {"id": eid})
+        if status != 200:
+            return status, json.loads(inhalt)
+        for _ in range(100):
+            stand = json.loads(self.anfrage("POST", "/api/pruefung")[1])
+            if not stand["laeuft"]:
+                return status, stand
+            time.sleep(0.1)
+        self.fail("Prüfung wurde nicht fertig")
+
+    def test_pruefen_startet_claude_nur_lesend_und_nur_im_projekt(self):
+        """Der Lauf liest ein fremdes Repo, das Anweisungen an ihn enthalten kann: kein Schreiben, keine Shell, kein Netz,
+        und lesen nur im Projekt statt im ganzen Home."""
+        projekt, skill = self.pruefprojekt()
+        status, stand = self.pruefen("a:gut")
+        self.assertEqual((status, stand["ok"], stand["bericht"]["summe"], stand["bericht"]["note"]), (200, True, 60, "C"))
+        self.assertEqual((stand["datei"], stand["projekt"]), (str((projekt / "CLAUDE.md").resolve()), str(projekt.resolve())))
+        argv = (self.tmp / "argv").read_text().split("\n")
+        self.assertEqual(argv[0], "-p")
+        self.assertEqual((argv[1], argv[3]), ("/pruefung:claude-md-improver", f"Datei: {(projekt / 'CLAUDE.md').resolve()}"))  # der Prompt hat drei Zeilen
+        self.assertEqual(argv[argv.index("--tools") + 1], "Read,Glob,Grep")
+        self.assertEqual(argv[argv.index("--add-dir") + 1], str(projekt.resolve()))
+        self.assertEqual(argv.count("--add-dir"), 1)  # nicht auch das Home
+        for erwartet in ("--json-schema", "--restricted", "--strict-mcp-config", "--no-session-persistence"):
+            self.assertIn(erwartet, argv)
+        for verboten in ("Edit", "Write", "Bash", "WebFetch", "WebSearch", "--dangerously-skip-permissions", str(Path.home())):
+            self.assertNotIn(verboten, argv)
+        cwd = Path((self.tmp / "cwd").read_text().strip()).resolve()
+        self.assertFalse(cwd.is_relative_to(Path.home()))
+        self.assertFalse(cwd.is_relative_to(projekt.resolve()))  # im Projekt gestartet lüde Claude dessen Einstellungen und Hooks
+        self.assertEqual((projekt / "CLAUDE.md").read_text(), "# P")
+
+    def test_pruefen_gibt_dem_lauf_den_skill_als_kopie(self):
+        """--restricted lädt keine Plugins des Benutzers; die Kopie liegt im Temp-Ordner und nimmt die Referenzen mit."""
+        self.pruefprojekt()
+        self.claude_ersatz(json.dumps({"structured_output": {"punkte": self.PUNKTE, "probleme": [], "vorschlaege": []}}))
+        skript = self.tmp / "bin" / "claude"
+        skript.write_text(skript.read_text().replace(
+            "cat <<", f'v=""; for a in "$@"; do [ "$v" = "--plugin-dir" ] && cp -R "$a" "{self.tmp}/plugin"; [ "$v" = "--settings" ] && cp "$a" "{self.tmp}/einstellungen"; v="$a"; done\ncat <<', 1))
+        self.assertTrue(self.pruefen("a:gut")[1]["ok"])
+        self.assertEqual(json.loads((self.tmp / "plugin/.claude-plugin/plugin.json").read_text()), {"name": "pruefung"})
+        self.assertEqual((self.tmp / "plugin/skills/claude-md-improver/references/quality-criteria.md").read_text(), "Raster")
+        self.assertIn("Read(~/.ssh/**)", json.loads((self.tmp / "einstellungen").read_text())["permissions"]["deny"])
+
+    def test_pruefen_lehnt_ab_was_kein_projekt_mit_claude_md_ist(self):
+        """Das Inventar können auch andere schreiben: Mit dem Home oder / als Projekt läse der Lauf alles."""
+        self.pruefprojekt()
+        self.claude_ersatz("{}")
+        for eid in ("a:fremd", "a:name", "a:home", "a:wurzel", "a:ohne", "a:kaputt", "a:gibt-es-nicht", None):
+            with self.subTest(eid=eid):
+                status, antwort = self.pruefen(eid)
+                self.assertEqual((status, antwort["ok"]), (400, False))
+        self.assertFalse((self.tmp / "argv").exists())  # claude lief nie
+
+    def test_pruefen_ohne_skill_und_unter_codex(self):
+        _, skill = self.pruefprojekt()
+        shutil.rmtree(skill)
+        self.assertEqual(self.pruefen("a:gut")[0], 400)
+        harness.merken(self.tmp, "codex")
+        self.assertIn(self.anfrage("POST", "/api/pruefen", {"id": "a:gut"}, seite="codex")[0], (400, 409))
+
+    def test_pruefen_meldet_eine_unbrauchbare_antwort(self):
+        self.pruefprojekt()
+        for ausgabe in ("kein json", json.dumps({"result": "Ich konnte nichts lesen.", "structured_output": {"punkte": {"befehle": 3}}})):
+            with self.subTest(ausgabe=ausgabe):
+                status, stand = self.pruefen("a:gut", ausgabe)
+                self.assertEqual((status, stand["ok"]), (200, False))
+                self.assertNotIn("bericht", stand)
+                json.loads(self.anfrage("POST", "/api/pruefung", {"verwerfen": True})[1])
+
+    def test_pruefbericht_rechnet_selbst_und_laesst_nur_erwartetes_durch(self):
+        """Was Claude als Gesamtzahl nennt, muss nicht zu seinen Einzelwerten passen; ein Wert über dem Höchstwert zählt nur bis dorthin."""
+        roh = {"punkte": {**self.PUNKTE, "befehle": {"punkte": 99, "notiz": "zu viel"}, "aufbau": {"punkte": -4, "notiz": 7}},
+               "summe": 100, "note": "A", "probleme": ["eins", 2, None], "vorschlaege": [{"warum": "w", "text": "t", "befehl": "rm -rf"}, {"warum": "ohne Text"}, "x"],
+               "fremd": "x"}
+        b = server.pruefbericht(roh)
+        self.assertEqual((b["summe"], b["note"]), (20 + 0 + 10 * 4, "C"))
+        self.assertEqual(b["punkte"]["befehle"], {"punkte": 20, "von": 20, "notiz": "zu viel"})
+        self.assertEqual((b["probleme"], b["vorschlaege"]), (["eins"], [{"warum": "w", "text": "t"}]))
+        self.assertEqual(sorted(b), ["note", "probleme", "punkte", "summe", "vorschlaege"])
+        self.assertEqual([server.pruefbericht({"punkte": {k: {"punkte": p, "notiz": ""} for k in server.PRUEFEN_KRITERIEN}})["note"]
+                          for p in (15, 12, 9, 5, 0)], ["A", "B", "C", "D", "F"])
+        for kaputt in (None, [], {}, {"punkte": []}, {"punkte": {"befehle": {"punkte": "10"}}}, {"punkte": {**self.PUNKTE, "befehle": {"punkte": True}}}):
+            with self.subTest(kaputt=kaputt):
+                self.assertIsNone(server.pruefbericht(kaputt))
 
     def test_anweisung_ausschliessen_und_wieder_einschliessen(self):
         """Geschaltet wird in ~/.claude/settings.json: Die CLAUDE.md selbst liegt oft in einem Repo und bleibt, wie sie ist."""
