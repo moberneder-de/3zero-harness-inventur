@@ -1160,6 +1160,7 @@ function renderAnweisungen() {
         ["Output-Style", "Der Style, den <code>outputStyle</code> in <code>~/.claude/settings.json</code> nennt. Ein eigener Style lässt die eingebauten Programmier-Anweisungen weg, außer mit <code>keep-coding-instructions: true</code> im Kopf."],
         ["Memory", "<code>MEMORY.md</code> des Projekts, die Claude selbst schreibt. Geladen werden nur die ersten 200 Zeilen oder 25 KB."],
         ["AGENTS.md", "Liest Claude Code nur, wenn es im Projekt und darüber keine CLAUDE.md gibt. Sonst steht sie als „wirkungslos“ da."],
+        ["groß", "Eine CLAUDE.md mit mehr als 200 Zeilen oder mehr als 5.000 Tokens. Die Doku von Claude Code rät zu unter 200 Zeilen: Längere Dateien kosten Kontext, und Claude hält sich schlechter daran. Was nur einen Teil des Codes betrifft, kann in eine Regel mit <code>paths</code> wandern und lädt dann erst bei Bedarf."],
         ["zwei CLAUDE.md", "Im Projekt liegen <code>CLAUDE.md</code> und <code>.claude/CLAUDE.md</code>. Claude Code lädt beide. Wer nur eine öffnet, hält sie leicht für die ganze Anleitung."],
         ["Tokens", "Geschätzt: Zeichen ÷ 4. Dateien, die eine Anweisung mit <code>@pfad</code> einbindet, zählen nicht mit."]],
       [TOKEN ? "„deaktivieren“ trägt die Datei in <code>claudeMdExcludes</code> in <code>~/.claude/settings.json</code> ein, „einschalten“ nimmt sie wieder heraus. Die Datei selbst bleibt, wie sie ist: Sie liegt oft in einem Repo." : "Schalten geht nur über den Server; als Datei geöffnet ist das Dashboard nur lesbar.",
