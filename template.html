@@ -74,17 +74,26 @@ nav .unternav[hidden] { display: none; }
 nav .unternav a { font-size: 12px; }
 nav .unternav a:not([aria-current]):not(:hover) { color: var(--text); }
 
-main { padding-inline: 30px; }
+main { padding-inline: 30px 48px; } /* rechts Platz für die Lasche der Erläuterungen */
 section { padding-block: 24px 8px; scroll-margin-top: var(--kopf, 0px); }
 .label { color: var(--cyan); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
-section > .wrap > h2, .erklaerung h2 { font-size: 22px; font-weight: 400; }
-section > .wrap > h2, .erklaerung { margin-bottom: 10px; }
-.erklaerung > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; list-style: none; }
-.erklaerung > summary::-webkit-details-marker { display: none; }
-.erklaerung > summary > .klein::after { content: " ▸"; color: var(--cyan); }
-.erklaerung[open] > summary > .klein::after { content: " ▾"; }
-.erklaerung > summary:hover > .klein { color: var(--cyan-dark); }
-.erklaerung .intro { margin: 10px 0 18px; max-width: 900px; background: var(--bg); border: 1px solid var(--border-light); border-left: 3px solid var(--cyan); border-radius: var(--radius); padding: 16px 22px; font-size: 14.5px; }
+section > .wrap > h2 { font-size: 22px; font-weight: 400; margin-bottom: 10px; }
+/* Die Erläuterung eines Tabs steht am rechten Fensterrand, wie im 3zero-Cobol-Analyzer: zugeklappt eine schmale Lasche,
+   aufgeklappt eine Tafel über dem Inhalt. Hinter der Überschrift schob sie aufgeklappt die Tabelle nach unten. Es bleibt
+   das <details> des jeweiligen Tabs; zu sehen ist nur das des gewählten, die anderen liegen in ausgeblendeten Abschnitten. */
+details.erklaerung { position: fixed; top: calc(var(--kopf, 120px) + 22px); right: 0; z-index: 50; margin: 0;
+  background: var(--bg-gray); border: 1px solid var(--border-light); border-right: none; border-radius: var(--radius) 0 0 var(--radius);
+  box-shadow: var(--shadow-hover); }
+details.erklaerung > summary { cursor: pointer; list-style: none; writing-mode: vertical-rl; padding: 14px 7px;
+  color: var(--cyan-dark); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+details.erklaerung > summary::-webkit-details-marker { display: none; }
+details.erklaerung > summary:hover { color: var(--cyan); }
+details.erklaerung[open] { width: min(480px, 92vw); max-height: calc(100vh - var(--kopf, 120px) - 44px); overflow-y: auto; background: var(--bg); }
+details.erklaerung[open] > summary { writing-mode: horizontal-tb; position: sticky; top: 0; padding: 11px 18px;
+  background: var(--bg-gray); border-bottom: 1px solid var(--border-light); }
+/* zeigt, dass ein Klick auf die Überschrift die Tafel wieder wegklappt */
+details.erklaerung[open] > summary::after { content: "schließen ›"; float: right; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-light); }
+.erklaerung .intro { padding: 16px 18px 20px; font-size: 14.5px; }
 .erklaerung .intro > p { margin: 0; }
 .erklaerung .intro > .label { margin: 16px 0 6px; font-size: 12px; }
 .begriffe { display: grid; grid-template-columns: max-content 1fr; gap: 8px 22px; margin: 14px 0 0; }
@@ -93,6 +102,9 @@ section > .wrap > h2, .erklaerung { margin-bottom: 10px; }
 .wissen { margin: 0; padding-left: 18px; }
 .wissen li { padding: 2px 0; }
 .erklaerung .intro .legende { margin-top: 0; }
+/* in der Tafel untereinander: Neben einem langen Begriff bliebe der Erklärung sonst eine schmale Spalte */
+.erklaerung .begriffe { grid-template-columns: 1fr; gap: 2px; }
+.erklaerung .begriffe dd { margin-bottom: 10px; }
 @media (max-width: 640px) { .begriffe { grid-template-columns: 1fr; gap: 2px; } .begriffe dd { margin-bottom: 8px; } }
 .intro { max-width: 760px; margin: 0 0 20px; }
 h3 { font-size: 16px; font-weight: 600; }
@@ -582,9 +594,8 @@ function erklaert(kurz, begriffe = [], wissen = [], anhang = "") {
     (wissen.length ? `<p class="label">Gut zu wissen</p><ul class="wissen">${wissen.map(w => `<li>${w}</li>`).join("")}</ul>` : "") + anhang;
 }
 function abschnitt(id, titel, inhalt, intro) {
-  const kopf = intro
-    ? `<details class="erklaerung"><summary><h2>${esc(titel)}</h2><span class="klein">Erläuterung</span></summary><div class="intro">${intro}</div></details>`
-    : `<h2>${esc(titel)}</h2>`;
+  const kopf = `<h2>${esc(titel)}</h2>` +
+    (intro ? `<details class="erklaerung"><summary>Erläuterungen</summary><div class="intro">${intro}</div></details>` : "");
   return `<section id="${id}"><div class="wrap">${kopf}${inhalt}</div></section>`;
 }
 
@@ -1765,6 +1776,13 @@ function zeigeTab() {
 const kopf = document.querySelector(".seitenkopf");
 const kopfHoehe = () => document.documentElement.style.setProperty("--kopf", kopf.offsetHeight + "px");
 kopfHoehe(); /* sofort, sonst springt der Browser beim Laden mit Anker noch ohne Versatz */
+/* Die Erläuterungen aller Tabs klappen gemeinsam: Wer die Tafel offen hat, will sie nach dem Wechsel des Tabs weiter
+   sehen, und wer sie schließt, überall los sein. `toggle` steigt nicht auf, deshalb im Einfangen. */
+document.addEventListener("toggle", ev => {
+  const quelle = ev.target;
+  if (!(quelle instanceof HTMLDetailsElement) || !quelle.classList.contains("erklaerung")) return;
+  document.querySelectorAll("details.erklaerung").forEach(d => { if (d.open !== quelle.open) d.open = quelle.open; });
+}, true);
 new ResizeObserver(kopfHoehe).observe(kopf);
 zeigeTab();
 window.addEventListener("hashchange", zeigeTab);
