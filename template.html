@@ -131,11 +131,14 @@ td details.rechte > summary { padding: 0; }
 tr.inhalt > td { background: var(--bg-gray); padding: 2px 18px 22px; }
 tr.inhalt .label { margin: 16px 0 0; font-size: 12px; }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 10px; }
-.kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 18px 18px 16px; }
-.kpi .zahl { color: var(--cyan); font-size: 2rem; font-weight: 700; line-height: 1.1; }
-.kpi .zahl small { font-size: 1rem; font-weight: 600; }
-.kpi .was { font-size: 13px; color: var(--text); margin-top: 6px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 10px; }
+.kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 12px 14px 12px; }
+.kpi .zahl { color: var(--cyan); font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+.kpi .zahl small { font-size: .95rem; font-weight: 600; }
+.kpi .was { font-size: 13px; color: var(--text); margin-top: 5px; }
+/* im Überblick ist `was` ein Wort für die Zahl und `zusatz` die zweite Zeile; im Tab „Modelle“ bleibt es ein Halbsatz */
+.kpi.kurz .was { font-size: 13.5px; font-weight: 600; color: var(--text-dark); }
+.kpi .zusatz { font-size: 12px; color: var(--text-light); margin-top: 1px; }
 
 .balken { margin-top: 30px; max-width: 760px; }
 .balken h3 { margin-bottom: 4px; }
@@ -633,14 +636,26 @@ function renderUeberblick() {
   if (D.config_lesbar === false) banner.push("<strong><code>~/.codex/config.toml</code> ließ sich nicht lesen:</strong> MCP-Server, aktivierte Plugins, abgeschaltete Skills und Projekte fehlen deshalb unten. Erst die Datei richtigstellen, dann neu einlesen — sonst bewertet der Skill einen halben Bestand.");
   const bannerHtml = banner.length ? `<div class="banner">${banner.join("<br>")}<br>Führe in ${esc(D.harness_name)} <code>${je("/", "$")}3zero-harness-inventur</code> aus, um die Bewertung nachzuziehen.</div>` : "";
 
+  /* Jede Kachel: Zahl, ein Wort dafür, eine kurze zweite Zeile. Was die Zahl genau zählt, steht in der Tafel „Erläuterungen“
+     und beim Überfahren; als Fließtext in der Kachel machte die längste alle sieben so hoch wie sich selbst. */
+  const kpi = (wert, was, zusatz, genau) => `<div class="kpi kurz" title="${esc(genau)}"><div class="zahl">${wert}</div><div class="was">${was}</div><div class="zusatz">${zusatz}</div></div>`;
+  const GENAU = {
+    mcp: je("Global eingetragene MCP-Server und wie viele davon laut claude mcp list verbunden sind.", "Global eingetragene MCP-Server und wie viele davon eingeschaltet sind."),
+    plugins: "Installierte Plugins und wie viele davon aktiv sind.",
+    skills: "Skills, Befehle und Agenten, eigene und aus Plugins, und wie viele davon laden.",
+    last: `Tokens, die in jeder Sitzung laden: automatisch geladene Beschreibungen, SessionStart-Hooks, MCP-Anweisungen und Werkzeugnamen und deine globalen Anweisungen (${je("CLAUDE.md, Output-Style", "AGENTS.md")}). Ohne die eingebauten Skills und den Systemprompt des Harness. Geschätzt: Zeichen ÷ 4.`,
+    empfehlungen: "Offene Empfehlungen aus der Bewertung: zum Entfernen, zum Abschalten (auch „nur manuell“) und zum Prüfen. Was schon umgesetzt ist, zählt nicht mehr.",
+    sparen: "So viele Tokens je Sitzung fallen weg, wenn du alle Empfehlungen zum Entfernen und Abschalten umsetzt. Ohne „prüfen“: Dort fehlt noch deine Entscheidung.",
+    ungenutzt: `Skills, die ihre Beschreibung in jede Sitzung laden, seit ${D.ungenutzt_tage} Tagen nicht genutzt wurden und länger installiert sind, mit ihren Tokens je Sitzung. Im Tab Skills zeigt sie der Statusfilter „${UNGENUTZT}“.`,
+  };
   const kpis = `<div class="kpis">
-    <div class="kpi"><div class="zahl">${mcpAn}<small> / ${D.mcp.length}</small></div><div class="was">MCP-Server ${je("verbunden", "aktiv")} / eingetragen</div></div>
-    <div class="kpi"><div class="zahl">${plAn}<small> / ${D.plugins.length}</small></div><div class="was">Plugins aktiv / installiert</div></div>
-    <div class="kpi"><div class="zahl">${skAn}<small> / ${D.skills.length}</small></div><div class="was">Skills, Befehle, Agenten aktiv / gesamt</div></div>
-    <div class="kpi"><div class="zahl">≈ ${zahl(tokensGesamt)}</div><div class="was">Tokens je Sitzung für automatisch geladene Beschreibungen, SessionStart-Hooks, MCP-Anweisungen und Werkzeugnamen und deine globalen Anweisungen (${je("CLAUDE.md, Output-Style", "AGENTS.md")}), ohne die eingebauten Skills und den Systemprompt des Harness</div></div>
-    <div class="kpi"><div class="zahl">${zaehle("entfernen")}</div><div class="was">Empfehlungen zum Entfernen, dazu ${zaehle("abschalten") + zaehle("nur manuell")} zum Abschalten, ${zaehle("prüfen")} zum Prüfen</div></div>
-    <div class="kpi"><div class="zahl">− ${zahl(tokensSparen)}</div><div class="was">Tokens je Sitzung nach Umsetzung (ohne „prüfen“)</div></div>
-    <div class="kpi"><div class="zahl">${ungenutzt.length}<small> · ≈ ${zahl(ungenutzt.reduce((s, e) => s + e.tokens, 0))}</small></div><div class="was">Skills laden in jede Sitzung und wurden seit ${D.ungenutzt_tage} Tagen nicht genutzt (Tokens je Sitzung); im Tab Skills über den Statusfilter „${esc(UNGENUTZT)}“</div></div>
+    ${kpi(`${mcpAn}<small> / ${D.mcp.length}</small>`, "MCP-Server", `${je("verbunden", "aktiv")} / eingetragen`, GENAU.mcp)}
+    ${kpi(`${plAn}<small> / ${D.plugins.length}</small>`, "Plugins", "aktiv / installiert", GENAU.plugins)}
+    ${kpi(`${skAn}<small> / ${D.skills.length}</small>`, "Skills, Befehle, Agenten", "aktiv / gesamt", GENAU.skills)}
+    ${kpi(`≈ ${zahl(tokensGesamt)}`, "Kontextlast", "Tokens je Sitzung", GENAU.last)}
+    ${kpi(zaehle("entfernen"), "zum Entfernen", `${zaehle("abschalten") + zaehle("nur manuell")} abschalten · ${zaehle("prüfen")} prüfen`, GENAU.empfehlungen)}
+    ${kpi(`− ${zahl(tokensSparen)}`, "Ersparnis", "Tokens nach Umsetzung", GENAU.sparen)}
+    ${kpi(ungenutzt.length, "Skills ungenutzt", `seit ${D.ungenutzt_tage} Tagen · ≈ ${zahl(ungenutzt.reduce((s, e) => s + e.tokens, 0))} Tokens`, GENAU.ungenutzt)}
   </div>`;
 
   const summen = new Map();
@@ -671,7 +686,11 @@ function renderUeberblick() {
          <button type="button" role="tab" id="kontext-reiter-zeit" aria-controls="kontext-zeit" aria-selected="false" tabindex="-1">über die Zeit</button>
        </div>${balken}${zeit}`
     : balken;
-  return abschnitt("ueberblick", "Was installiert ist und was es kostet", renderAenderungen() + bannerHtml + kpis + kontext);
+  return abschnitt("ueberblick", "Was installiert ist und was es kostet", renderAenderungen() + bannerHtml + kpis + kontext,
+    erklaert("Der Stand auf einen Blick: was installiert ist, was es in jeder Sitzung kostet und was sich aufräumen lässt.", [
+      ["MCP-Server", GENAU.mcp], ["Plugins", GENAU.plugins], ["Skills, Befehle, Agenten", GENAU.skills], ["Kontextlast", GENAU.last],
+      ["zum Entfernen", GENAU.empfehlungen], ["Ersparnis", GENAU.sparen], ["Skills ungenutzt", esc(GENAU.ungenutzt)]],
+      ["Die Zahlen zu Tokens sind Schätzungen. Woher jede Zahl kommt, steht unter „Hilfe“."]));
 }
 
 /* Empfehlungen: was der Eintrag tut, warum die Empfehlung so lautet, und die Umsetzung in derselben Zeile */
