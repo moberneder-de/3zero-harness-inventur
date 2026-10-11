@@ -15,6 +15,8 @@ Erst stand sie über der Tabelle und nahm ihr den Platz, dann eingeklappt hinter
 Je Tab ein eigenes `<details>`; zu sehen ist nur das des gewählten, und alle klappen gemeinsam (`toggle` im Einfangen, es steigt nicht auf): Wer die Tafel offen hat, will sie nach dem Wechsel des Tabs weiter sehen.
 `main` hat rechts dafür mehr Rand als links, sonst läge die Lasche über der Trefferzahl des Filters.
 Sie merkt sich nichts, nach dem Neuladen ist sie wieder zu.
+Die Kacheln im Überblick (`.kpi.kurz`) zeigen nur Zahl, ein Wort dafür und eine kurze zweite Zeile; was die Zahl genau zählt, steht in der Tafel und beim Überfahren (`GENAU`).
+Als Fließtext in der Kachel machte die längste Erklärung alle sieben so hoch wie sich selbst.
 Ihr Text ist gegliedert (`erklaert()`): ein Satz, worum es geht, dann je Begriff oder Spalte eine Zeile (`dl.begriffe`), dann „Gut zu wissen“ und, wo es Marken gibt, deren Legende.
 Als ein Absatz Fließtext war der Begriff, den man suchte, nicht zu finden.
 Eine neue Erläuterung deshalb nicht als Fließtext schreiben.
