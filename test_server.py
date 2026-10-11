@@ -550,6 +550,36 @@ class Server(unittest.TestCase):
         self.assertFalse(cwd.is_relative_to(projekt.resolve()))  # im Projekt gestartet lüde Claude dessen Einstellungen und Hooks
         self.assertEqual((projekt / "CLAUDE.md").read_text(), "# P")
 
+    def test_pruefen_legt_den_bericht_ab_und_nennt_den_befehl_zum_umsetzen(self):
+        """Wer die Vorschläge übernehmen will, startete den Skill im Projekt noch einmal und zahlte die Analyse doppelt.
+        Der Bericht liegt deshalb als Datei im Datenordner, und der Befehl lässt Claude ihn nur noch umsetzen."""
+        projekt, _ = self.pruefprojekt()
+        stand = self.pruefen("a:gut")[1]
+        datei = Path(stand["berichtsdatei"])
+        self.assertEqual((datei.parent, datei.name.startswith("pruefung-P-"), datei.suffix), (self.tmp, True, ".md"))
+        text = datei.read_text()
+        for erwartet in (str((projekt / "CLAUDE.md").resolve()), "60 von 100", "Note C", "Befehle fehlen.", "`python3 -m unittest`", "Notiz zu aufbau"):
+            self.assertIn(erwartet, text)
+        self.assertIn("~~~~markdown\n`python3 -m unittest`\n~~~~", text)  # der Vorschlag ist vom Bericht abgegrenzt
+        self.assertEqual(stand["befehl"], server.umsetzen_befehl((projekt / "CLAUDE.md").resolve(), projekt.resolve(), datei))
+        self.assertTrue(stand["befehl"].startswith(f"cd {projekt.resolve()} && claude '"))
+        self.assertIn(str(datei), stand["befehl"])
+        self.assertNotIn("claude-md-improver", stand["befehl"])  # nicht noch einmal den Skill
+        self.assertEqual(self.pruefen("a:gut")[1]["berichtsdatei"], str(datei))  # je Projekt eine Datei, der letzte Bericht gilt
+
+    def test_umsetzen_befehl_haelt_auch_schwierige_pfade_zusammen(self):
+        """Der Befehl steht neben einem Kopierknopf: Ein Projektpfad mit Leerzeichen, Anführungszeichen oder $(…)
+        darf im Terminal nichts anderes ausführen, als dasteht."""
+        projekt = Path("/tmp/Mein Projekt's $(rm -rf x)")
+        befehl = server.umsetzen_befehl(projekt / ".claude/CLAUDE.md", projekt, Path("/d/pruefung-x.md"))
+        import shlex
+        teile = shlex.split(befehl)
+        self.assertEqual(teile[:4], ["cd", str(projekt), "&&", "claude"])
+        self.assertEqual(len(teile), 5)  # der ganze Auftrag ist ein Argument
+        self.assertIn(".claude/CLAUDE.md", teile[4])
+        self.assertIn("/d/pruefung-x.md", teile[4])
+        self.assertNotEqual(server.pruefdatei(Path("/d"), Path("/a/app")), server.pruefdatei(Path("/d"), Path("/b/app")))  # gleicher Ordnername, zwei Projekte
+
     def test_pruefen_gibt_dem_lauf_den_skill_als_kopie(self):
         """--restricted lädt keine Plugins des Benutzers; die Kopie liegt im Temp-Ordner und nimmt die Referenzen mit."""
         self.pruefprojekt()

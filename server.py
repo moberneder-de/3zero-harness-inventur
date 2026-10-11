@@ -16,10 +16,12 @@ Welcher Harness gilt (Claude Code oder Codex), steht in harness.json: Der Skill 
 letzte Start zählt. Danach richten sich Dashboard, Inventar und die Läufe für Bewertung und Suche.
 """
 
+import hashlib
 import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import subprocess
@@ -483,6 +485,38 @@ def pruefbericht(roh):
             "punkte": kriterien, "probleme": [p[:600] for p in liste("probleme") if isinstance(p, str)][:12],
             "vorschlaege": [{"warum": v["warum"][:600], "text": v["text"][:4000]} for v in liste("vorschlaege")
                             if isinstance(v, dict) and isinstance(v.get("warum"), str) and isinstance(v.get("text"), str)][:5]}
+
+
+def pruefdatei(daten, projekt):
+    """Wo der Bericht zu einem Projekt liegt: je Projekt eine Datei im Datenordner, der letzte gilt. Mit einem Stück
+    Hash, weil zwei Projekte denselben Ordnernamen tragen können."""
+    name = re.sub(r"[^A-Za-z0-9._-]", "-", projekt.name)
+    return Path(daten) / f"pruefung-{name}-{hashlib.sha256(str(projekt).encode()).hexdigest()[:8]}.md"
+
+
+def pruefbericht_text(datei, bericht):
+    """Der Bericht als Markdown, für die Sitzung, die ihn umsetzt. Die Vorschläge stehen ganz darin."""
+    namen = {"befehle": "Befehle und Abläufe", "aufbau": "Aufbau", "muster": "Nicht Offensichtliches", "knappheit": "Knappheit",
+             "aktualitaet": "Aktualität", "umsetzbarkeit": "Umsetzbarkeit"}
+    zeilen = [f"# Prüfung von {datei}", "", f"Stand {time.strftime('%Y-%m-%d %H:%M')}, aus dem Dashboard der Harness-Inventur (Skill claude-md-improver).",
+              "Der Lauf hat nur gelesen. Die Vorschläge sind ungeprüft: vor dem Übernehmen ansehen.", "",
+              f"## {bericht['summe']} von 100 · Note {bericht['note']}", ""]
+    zeilen += [f"- {namen[k]}: {p['punkte']}/{p['von']} — {p['notiz']}" for k, p in bericht["punkte"].items()]
+    zeilen += ["", "## Probleme", "", *[f"- {p}" for p in bericht["probleme"]]]
+    for nr, v in enumerate(bericht["vorschlaege"], 1):
+        # der Text in einem Zaun aus Tilden: Seine eigenen Überschriften und ```-Blöcke gehören sonst zum Bericht
+        zeilen += ["", f"## Vorschlag {nr}", "", f"Warum: {v['warum']}", "", "~~~~markdown", v["text"], "~~~~"]
+    return "\n".join(zeilen) + "\n"
+
+
+def umsetzen_befehl(datei, projekt, berichtsdatei):
+    """Der Befehl, mit dem eine Sitzung im Projekt den Bericht umsetzt, ohne neu zu prüfen: Sonst kostete die Analyse
+    ein zweites Mal Zeit und Tokens. Er steht neben einem Kopierknopf und entsteht hier aus den Pfaden, nicht aus
+    Claudes Text; shlex hält auch einen Pfad mit Leerzeichen oder $(…) zusammen."""
+    ziel = datei.relative_to(projekt)
+    auftrag = (f"Lies {berichtsdatei}: Das ist der Bericht einer Prüfung von {ziel}. Setze die Vorschläge daraus in {ziel} um, "
+               "ohne die Datei neu zu bewerten. Zeig mir jede Änderung, bevor du sie schreibst, und lass weg, was nicht mehr zur Datei passt.")
+    return f"cd {shlex.quote(str(projekt))} && claude {shlex.quote(auftrag)}"
 
 
 def belege(roh):
@@ -1051,7 +1085,14 @@ class Inventarserver(ThreadingHTTPServer):
         bericht = pruefbericht((claude_json(r["stdout"]) or {}).get("structured_output"))
         if not r["ok"] or bericht is None:
             return {"ok": False, "ausgabe": claude_text(r["stdout"]) if claude_json(r["stdout"]) else r["ausgabe"]}
-        return {"ok": True, "ausgabe": "", "bericht": bericht}
+        ergebnis = {"ok": True, "ausgabe": "", "bericht": bericht}
+        try:  # ohne die Datei bleibt der Bericht in der Karte, nur der Befehl zum Umsetzen fehlt
+            berichtsdatei = pruefdatei(self.daten, projekt)
+            self.schreiben(berichtsdatei, pruefbericht_text(datei, bericht))
+            ergebnis.update(berichtsdatei=str(berichtsdatei), befehl=umsetzen_befehl(datei, projekt, berichtsdatei))
+        except OSError:
+            pass
+        return ergebnis
 
     def im_hintergrund(self, art, arbeit, **angaben):
         """Startet einen minutenlangen Claude-Lauf. Eine so lange offene Anfrage riss ab, wenn der Browser neu lud,
