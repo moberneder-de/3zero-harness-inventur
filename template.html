@@ -1167,7 +1167,7 @@ function renderAnweisungen() {
         ["groß", "Eine CLAUDE.md mit mehr als 200 Zeilen oder mehr als 5.000 Tokens. Die Doku von Claude Code rät zu unter 200 Zeilen: Längere Dateien kosten Kontext, und Claude hält sich schlechter daran. Was nur einen Teil des Codes betrifft, kann in eine Regel mit <code>paths</code> wandern und lädt dann erst bei Bedarf."],
         ["zwei CLAUDE.md", "Im Projekt liegen <code>CLAUDE.md</code> und <code>.claude/CLAUDE.md</code>. Claude Code lädt beide. Wer nur eine öffnet, hält sie leicht für die ganze Anleitung."],
         ["Tokens", "Geschätzt: Zeichen ÷ 4. Dateien, die eine Anweisung mit <code>@pfad</code> einbindet, zählen nicht mit."]],
-      [TOKEN ? "„prüfen“ lässt Claude die CLAUDE.md eines Projekts mit dem Skill <code>claude-md-improver</code> bewerten: Note, Befunde und Vorschläge. Der Lauf liest nur, und nur im Projekt, dauert einige Minuten und verbraucht Kontingent. Den Knopf gibt es, wenn das Plugin <code>claude-md-management</code> installiert ist. Umgesetzt wird in einer Sitzung im Projekt, nicht hier." : null,
+      [TOKEN ? "„prüfen“ lässt Claude die CLAUDE.md eines Projekts mit dem Skill <code>claude-md-improver</code> bewerten: Note, Befunde und Vorschläge. Der Lauf liest nur, und nur im Projekt, dauert einige Minuten und verbraucht Kontingent. Den Knopf gibt es, wenn das Plugin <code>claude-md-management</code> installiert ist. Umgesetzt wird in einer Sitzung im Projekt, nicht hier: Der Bericht liegt dafür als Datei bereit, und der Befehl unter der Karte lässt Claude ihn nur noch umsetzen, ohne neu zu prüfen." : null,
         TOKEN ? "„deaktivieren“ trägt die Datei in <code>claudeMdExcludes</code> in <code>~/.claude/settings.json</code> ein, „einschalten“ nimmt sie wieder heraus. Die Datei selbst bleibt, wie sie ist: Sie liegt oft in einem Repo." : "Schalten geht nur über den Server; als Datei geöffnet ist das Dashboard nur lesbar.",
         "Ohne Knopf bleibt, was ein Muster oder ein Eintrag im Projekt ausschließt, was verwaltet ist, und <code>MEMORY.md</code>: Das Auto-Memory schaltet <code>autoMemoryEnabled</code> für alles zusammen.",
         "Einen Output-Style kann ein Projekt für sich anders wählen (<code>.claude/settings.local.json</code>). Das steht hier nicht.",
@@ -1343,6 +1343,8 @@ const ERGEBNIS = new Map();
 /* offenerLauf: zu welchem Claude-Lauf auf dem Server die Karte gehört („bewertung“); Schließen verwirft ihn dort */
 /* seiteVeraltet: Der Server steht auf dem anderen Harness; die Karte bietet dann nur „Seite neu laden“ an */
 /* laufArt: welchen Lauf „abbrechen“ in der Karte meint; Bewertung und Prüfung teilen sich die Karte */
+/* meldungBefehl: ein Befehl unter der Karte, mit Kopierknopf (kommt fertig vom Server) */
+let meldungBefehl = "";
 let beschaeftigt = false, meldung = "", meldungTitel = "", offenerLauf = "", bewertungLaeuft = false, laufArt = "bewertung", seiteVeraltet = false;
 function warteschlange() {
   return ALLE.filter(gewaehlt).sort((a, b) =>
@@ -1402,12 +1404,14 @@ function renderMeldung() {
          : bewertungLaeuft ? `<button type="button" class="kopieren" data-abbrechen="${laufArt}"${bewertungLaeuft === "abbruch" ? " disabled" : ""}>abbrechen</button>`
          : '<button type="button" class="kopieren" id="meldung-zu">schließen</button>'}</div>
        <div class="inhalt${lang ? " gekuerzt" : ""}">${inhalt}</div>
-       ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}</div>`
+       ${lang ? '<button type="button" class="kopieren" id="meldung-mehr">ganz anzeigen</button>' : ""}
+       ${meldungBefehl ? befehlZeile(meldungBefehl) : ""}</div>`
     : "";
 }
-function setMeldung(text, titel = meldungTitel) {
+function setMeldung(text, titel = meldungTitel, befehl = "") {
   meldung = text;
   meldungTitel = titel;
+  meldungBefehl = befehl;
   renderMeldung();
 }
 /* Kandidaten der letzten Suche: Skills und Plugins installiert der Server mit selbst gebautem Befehl, MCP-Server nur zum Kopieren */
@@ -1972,8 +1976,10 @@ function pruefungZeigen(b) {
     ...Object.entries(r.punkte).map(([k, p]) => `| ${KRITERIEN[k] || k} | ${p.punkte}/${p.von} | ${zelle(p.notiz)} |`), "",
     ...(r.probleme.length ? ["## Probleme", "", ...r.probleme.map(p => `- ${zelle(p)}`), ""] : []),
     ...r.vorschlaege.flatMap((v, i) => [`## Vorschlag ${i + 1}`, "", `**Warum:** ${zelle(v.warum)}`, "", ohneZaun(v.text), ""]),
-    "## Umsetzen", "", `Die Prüfung ändert nichts. Zum Umsetzen den Skill in einer Sitzung im Projekt starten: \`cd ${b.projekt} && claude "/claude-md-management:claude-md-improver"\``,
-  ].join("\n"), "Prüfung der CLAUDE.md");
+    "## Umsetzen", "", b.befehl
+      ? "Die Prüfung ändert nichts. Der Bericht liegt als Datei bereit. Der Befehl unten startet eine Sitzung im Projekt, die die Vorschläge umsetzt, ohne neu zu prüfen: Sie zeigt dir jede Änderung vorher."
+      : "Die Prüfung ändert nichts. Zum Umsetzen den Skill claude-md-improver in einer Sitzung im Projekt starten.", /* ohne Berichtsdatei, oder ein Server mit älterem Stand */
+  ].join("\n"), "Prüfung der CLAUDE.md", b.befehl || "");
 }
 function harnessGewechselt(b) {
   seiteVeraltet = true;
