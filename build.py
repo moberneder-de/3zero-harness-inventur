@@ -1292,6 +1292,26 @@ def fuers_dashboard(inhalt):
             "bewertung_stand": stand if isinstance(stand, str) else None}
 
 
+def fehlende_ordner(inhalt, projekte):
+    """Eingetragene oder gemessene Projekte, deren Ordner es nicht mehr gibt. Ein gelöschtes Projekt steht noch im Tab
+    „Projekte“, solange dort Tokens gemessen sind; die Zeile trägt dann „Ordner fehlt“, statt wie ein Projekt
+    auszusehen, das es gibt. Ausblenden hieße, dass seine Tokens in der Summe fehlen."""
+    gemessen = (inhalt.get("modelle") or {}).get("gemessen")
+    pfade = set(projekte)
+    for z in gemessen if isinstance(gemessen, list) else []:
+        p = z.get("projekt") if isinstance(z, dict) else None
+        if isinstance(p, str) and p.startswith(("~", "/")):
+            pfade.add(str(HOME) + p[1:] if p.startswith("~") else p)
+    fehlt = []
+    for p in sorted(pfade):
+        try:
+            if not Path(p).is_dir():
+                fehlt.append(p)
+        except OSError:  # etwa ~/Documents ohne Freigabe: unbekannt ist nicht „fehlt“
+            pass
+    return fehlt
+
+
 def sammelordner(projekte):
     """Eingetragene Ordner, in denen andere eingetragene Projekte liegen und die selbst kein Git-Repo sind: ~ oder ein
     Ordner voller Projekte. Claude Code trägt jeden Ordner ein, in dem einmal eine Sitzung lief; der Tab „Projekte“
@@ -1397,6 +1417,8 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("Modelle", fehler)
         inhalt["modelle"] = {"eingestellt": [], "gemessen": [], "tage": HOOK_TAGE}
+    if h != "codex":  # unter Codex sind gemessene Ordner oft keine Projekte, und [projects] ohne Ordner fällt schon in codex.py weg
+        inhalt["ordner_fehlt"] = fehlende_ordner(inhalt, (CFG.get("projects") or {}).keys())
     try:
         inhalt["anweisungen"] = anweisungen_lesen(h)
     except Exception as fehler:

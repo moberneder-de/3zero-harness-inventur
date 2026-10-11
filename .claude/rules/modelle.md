@@ -13,6 +13,7 @@ Gemessen im Fenster `HOOK_TAGE`: unter Claude Code je Antwort `message.model`, `
 Den Ordner schlägt `projekt_von()` seinem Projekt zu: Ein Subagent arbeitet oft in `<Projekt>/.claude/worktrees/…`, eine Sitzung wechselt in Unterordner, und beides stand sonst als eigenes Projekt da (86 Zeilen statt 8).
 Es gilt das längste eingetragene Projekt über dem Ordner; `~` zählt nur selbst, sonst schluckte es alles darunter.
 Läufe in Temp-Ordnern (`TEMP`, etwa „neu bewerten“) heißen jedes Mal anders und stehen zusammen als „temporäre Ordner“.
+Dazu zählen die Arbeitsordner der Desktop-App für Sitzungen ohne Projektordner (`SCRATCH`, unter `~/Library/Application Support/Claude/scratch-workspaces`), und zwar vor den eingetragenen Projekten: Claude Code trägt so einen Ordner als Projekt ein, und er stand im Tab „Projekte“ wie ein eigenes.
 Unter Codex je `turn_context` Ordner, Modell und Aufwand, die `token_count`-Ereignisse danach (`last_token_usage`) gehören zu diesem Turn, und `input_tokens` enthält dort auch, was aus dem Cache kam (neu ist der Rest); gelesen werden nur Sitzungsdateien, die im Fenster geändert wurden.
 Welches Modell am Ende gilt, rechnet das Modul bewusst nicht aus: Die Rangfolge der Quellen ist nicht sicher belegt, und ein Subagent bekommt sein Modell oft erst beim Aufruf.
 „überschreibt“ heißt deshalb nur, dass ein Wert vom globalen abweicht (`inherit` nie).

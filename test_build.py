@@ -890,6 +890,23 @@ class AnweisungenAktionen(unittest.TestCase):
         self.assertEqual(stil["id"], "anweisung:global:Concise")
 
 
+class FehlendeOrdner(unittest.TestCase):
+    def test_gemessene_und_eingetragene_projekte_ohne_ordner(self):
+        """Ein gelöschtes Projekt steht noch 14 Tage im Tab „Projekte“, weil dort Tokens gemessen sind: Die Zahl ist
+        echt, aber die Zeile sah aus wie ein Projekt, das es noch gibt (3zero-Zyklenkompass)."""
+        tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "home/da").mkdir(parents=True)
+        home = tmp / "home"
+        inhalt = {"modelle": {"gemessen": [{"projekt": "~/da"}, {"projekt": "~/weg"}, {"projekt": "~/weg"}, {"projekt": "temporäre Ordner"},
+                                           {"projekt": "/x/gibt-es-nicht"}, {"projekt": "~"}, {"projekt": 3}, {}]}}
+        with mock.patch.object(build, "HOME", home):
+            self.assertEqual(build.fehlende_ordner(inhalt, [str(home / "da"), str(home / "auch-weg")]),
+                             sorted(["/x/gibt-es-nicht", str(home / "auch-weg"), str(home / "weg")]))
+            self.assertEqual(build.fehlende_ordner({}, []), [])
+            self.assertEqual(build.fehlende_ordner({"modelle": {"gemessen": "kaputt"}}, []), [])
+
+
 class Sammelordner(unittest.TestCase):
     def test_ordner_voller_projekte_ohne_eigenes_repo(self):
         tmp = Path(tempfile.mkdtemp())

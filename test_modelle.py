@@ -125,6 +125,12 @@ class ClaudeGemessen(Basis):
             self.antwort("m9", "opus", 256, cwd="/private/tmp/claude-501/x/scratchpad/wt"),
         ])
         zeilen = m.claude(self.home, [home, p], [], [a], GRENZE)["gemessen"]
+        # Ohne Projektordner legt die Desktop-App einen Arbeitsordner an und Claude Code trägt ihn als Projekt ein:
+        # Er stand im Tab „Projekte“ wie ein eigenes Projekt. Er liegt unter ~ und ist eingetragen, zählt aber als temporär.
+        scratch = home + "/Library/Application Support/Claude/scratch-workspaces/30/fa/scratch-2026-10-10-0636ad"
+        b = self.protokoll("b.jsonl", [self.antwort("s1", "opus", 512, cwd=scratch), self.antwort("s2", "opus", 1024, cwd=scratch + "/src")])
+        self.assertEqual([(z["projekt"], z["tokens"]) for z in m.claude(self.home, [home, p, scratch], [], [b], GRENZE)["gemessen"]],
+                         [("temporäre Ordner", 1536)])
         self.assertEqual([(z["projekt"], z["subagent"], z["tokens"]) for z in zeilen], [
             ("/x/Q", False, 8), ("temporäre Ordner", False, 384), ("~", False, 32), ("~/Anders", False, 16), ("~/P", False, 5), ("~/P", True, 2), ("~/P-2", False, 64)])
 
