@@ -161,7 +161,7 @@ Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst und dem H
 python3 -m unittest
 ```
 
-Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux und macOS mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`).
+Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`); den Mac-Weg (Papierkorb, Browser) prüft der lokale Lauf.
 
 ## Diagramme
 
