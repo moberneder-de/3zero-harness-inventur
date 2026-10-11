@@ -49,7 +49,7 @@ Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Pr
 
 **Hooks** zeigt neben Befehlen auch **Mods** (Claude Code): Code eines Plugins, der in der Sitzung mitläuft und Werkzeug-Aufrufe, Prompt und System-Prompt ändern kann. In welche Ereignisse ein Mod eingreift, liest die Inventur am Text seines Moduls ab, ohne es auszuführen. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
 
-**Anweisungen** zeigt, was der Harness als Text in die Sitzung lädt, zusätzlich zu seinem eingebauten Systemprompt: unter Claude Code `CLAUDE.md`, Regeln aus `rules`, den gewählten Output-Style, `MEMORY.md` und `AGENTS.md`, global und je Projekt, mit geschätzten Tokens; unter Codex die globale `AGENTS.md`. Über den Server lässt sich eine `CLAUDE.md` oder Regel ab- und wieder anschalten (`claudeMdExcludes`) und ein Output-Style wählen oder abwählen (`outputStyle`), beides nur in `~/.claude/settings.json`: Die Datei selbst bleibt, wie sie ist, denn sie liegt oft in einem Repo. Den eingebauten Systemprompt zeigt die Inventur nicht, er steht in keiner Datei.
+**Anweisungen** zeigt, was der Harness als Text in die Sitzung lädt, zusätzlich zu seinem eingebauten Systemprompt: unter Claude Code `CLAUDE.md`, Regeln aus `rules`, den gewählten Output-Style, `MEMORY.md` und `AGENTS.md`, global und je Projekt, mit geschätzten Tokens; unter Codex die globale `AGENTS.md`. Über den Server lässt sich eine `CLAUDE.md` oder Regel ab- und wieder anschalten (`claudeMdExcludes`) und ein Output-Style wählen oder abwählen (`outputStyle`), beides nur in `~/.claude/settings.json`: Die Datei selbst bleibt, wie sie ist, denn sie liegt oft in einem Repo. Den eingebauten Systemprompt zeigt die Inventur nicht, er steht in keiner Datei. Ist das Plugin `claude-md-management` installiert, bietet jede `CLAUDE.md` eines Projekts außerdem **prüfen** an: Claude bewertet sie mit dem Skill `claude-md-improver` und zeigt Note, Befunde und Vorschläge als Karte. Der Lauf liest nur, und nur im Projekt; umgesetzt wird in einer Sitzung dort.
 
 Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
 
@@ -121,7 +121,7 @@ Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". 
 
 ## Neu bewerten und Suchen
 
-Zwei Knöpfe starten einen Agenten im Hintergrund. Beide sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
+Drei Knöpfe starten einen Agenten im Hintergrund. Alle sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
 
 **Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (Einstellungen und MCP-Server des Benutzers bleiben draußen), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
 
