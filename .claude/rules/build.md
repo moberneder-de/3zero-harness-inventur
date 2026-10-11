@@ -40,6 +40,7 @@ Dazu die IDs je Art (`ids`), aber nur heute und beim letzten Lauf davor, sonst w
 `aenderungen()` vergleicht beide, deshalb mit dem Tag davor und nicht mit dem letzten Lauf: Nach dem zweiten Lauf eines Tages wäre sonst alles „unverändert“.
 Eine Art, die der alte Stand nicht kennt, zählt nicht als neu.
 Ins Inventar und ins Dashboard kommt nur das Ergebnis (`aenderungen`), nicht die IDs; das Dashboard zeigt es als Karte oben im Überblick.
+Weil mit dem Tag davor verglichen wird, steht die Karte den ganzen Tag bei jedem Öffnen da; der Knopf „gelesen“ blendet sie aus, der Browser merkt sich dafür genau diesen Stand (Datum, Neues, Entferntes), und mit einer weiteren Änderung kommt sie wieder.
 Die Kontextlast zählt Skills, Hooks, MCP-Anweisungen, Werkzeugnamen und die globalen Anweisungsdateien (`anweisungen.py`), aber nicht die eingebauten Skills des Harness: Codex legt sie als Dateien ab und könnte sie messen, Claude Code spielt sie zur Laufzeit ein.
 Sonst hieße dieselbe Kachel in beiden Dashboards gleich und meinte Verschiedenes.
 Ob Skills aus `npx skills` ein Update haben, fragt `build.py` per `gh api` bei GitHub ab (Ordner-SHA gegen `skillFolderHash`); ohne `gh` oder Netz fehlt nur diese Angabe, ebenso bei einer unerwarteten Antwort oder einem Lock-Eintrag ohne Repo, Pfad oder Stand.

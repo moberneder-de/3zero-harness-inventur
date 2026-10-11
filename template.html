@@ -131,6 +131,7 @@ td details.rechte > summary { padding: 0; }
 tr.inhalt > td { background: var(--bg-gray); padding: 2px 18px 22px; }
 tr.inhalt .label { margin: 16px 0 0; font-size: 12px; }
 
+.banner > .kopieren { float: right; margin-left: 12px; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 10px; }
 .kpi { background: var(--bg-gray); border-radius: var(--radius); padding: 12px 14px 12px; }
 .kpi .zahl { color: var(--cyan); font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
@@ -606,9 +607,19 @@ function abschnitt(id, titel, inhalt, intro) {
    nur ob der Eintrag da ist. Neues verlinkt auf seinen Tab; Entferntes gibt es dort nicht mehr. */
 const ARTEN = { mcp: ["MCP-Server", "mcp"], plugins: ["Plugins", "plugins"], skills: ["Skills", "skills"], hooks: ["Hooks", "hooks"],
   projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"], projekt_hooks: ["Projekt-Hooks", "projekte"] };
+/* Die Karte steht den ganzen Tag da, bei jedem Öffnen: Verglichen wird mit dem Lauf vor heute. Wer sie gelesen hat,
+   klickt sie weg; der Browser merkt sich genau diesen Stand, und mit einer weiteren Änderung kommt sie wieder. */
+const GELESEN_SPEICHER = `3zero-harness-inventur:aenderungen:${D.harness}`;
+const aenderungenStand = () => JSON.stringify([D.aenderungen.seit, D.aenderungen.neu, D.aenderungen.entfernt]);
+document.addEventListener("click", ev => {
+  if (ev.target.id !== "aenderungen-gelesen") return;
+  try { localStorage.setItem(GELESEN_SPEICHER, aenderungenStand()); } catch (_) { /* dann ist sie nur bis zum Neuladen weg */ }
+  ev.target.closest(".banner").remove();
+});
 function renderAenderungen() {
   const a = D.aenderungen;
   if (!a || (!Object.keys(a.neu).length && !Object.keys(a.entfernt).length)) return "";
+  try { if (localStorage.getItem(GELESEN_SPEICHER) === aenderungenStand()) return ""; } catch (_) { /* ohne Speicher bleibt sie stehen */ }
   const kurz = id => esc(id.slice(id.indexOf(":") + 1));
   /* eine Zeile je Art; nach einem ganz neuen Bestand wären das Dutzende Namen, die klappen ein */
   const zeilen = (wie, teil, link) => Object.entries(teil).filter(([art]) => ARTEN[art]).map(([art, ids]) => {
@@ -616,7 +627,7 @@ function renderAenderungen() {
     const titel = `<strong>${wie}, ${ARTEN[art][0]}:</strong>`;
     return ids.length <= 8 ? `<div>${titel} ${namen}</div>` : `<details><summary>${titel} ${ids.length}</summary><div class="klein">${namen}</div></details>`;
   }).join("");
-  return `<div class="banner"><strong>Seit dem Lauf vom ${datum(a.seit)}</strong>${zeilen("Neu", a.neu, true)}${zeilen("Entfernt", a.entfernt, false)}</div>`;
+  return `<div class="banner"><button type="button" class="kopieren" id="aenderungen-gelesen" title="Blendet die Karte aus, bis sich wieder etwas ändert">gelesen</button><strong>Seit dem Lauf vom ${datum(a.seit)}</strong>${zeilen("Neu", a.neu, true)}${zeilen("Entfernt", a.entfernt, false)}</div>`;
 }
 
 function renderUeberblick() {
