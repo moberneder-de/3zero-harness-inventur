@@ -18,6 +18,7 @@ EINGEBAUT = ("Proactive", "Concise", "Explanatory", "Learning")
 ANWEISUNG = ("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
 ZAUN = re.compile(r"(?ms)^```.*?^```")
 IMPORT = re.compile(r"(?<![\w`@/])@((?:~|\.{1,2})?/?[\w.-][^\s`)]*)")
+GROSS_ZEILEN, GROSS_TOKENS = 200, 5_000  # darüber trägt eine CLAUDE.md die Marke „groß“
 SUCHGRENZE = 20_000  # so viele Dateien eines Projekts sieht die Prüfung „verwaist“ höchstens an
 AUSLASSEN = {".git", "node_modules", ".venv"}
 KOPF = re.compile(r"\A\ufeff?---\n(.*?)\n---", re.S)
@@ -169,6 +170,8 @@ def ausschliessbar(bereich, art, datei, home, aus, eigene, **extra):
     if text is None:
         return None
     z = zeile(bereich, art, datei, home, text, **extra)
+    if art == "CLAUDE.md" and (len(text.splitlines()) > GROSS_ZEILEN or z["tokens"] > GROSS_TOKENS):
+        z["marken"].append("groß")
     if str(datei) in eigene:
         z.update(status="aus", laedt=False, ausgeschlossen="eigen")
     elif any(fnmatch.fnmatchcase(str(datei), m) for m in aus):

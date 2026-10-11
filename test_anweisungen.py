@@ -47,6 +47,19 @@ class Global(Ordner):
         self.assertTrue(all("verwaltet" not in z for z in zeilen[1:]))
         self.assertEqual((immer.name, bedarf.name), ("stil.md", "api.md"))
 
+    def test_grosse_claude_md_faellt_auf(self):
+        """Die Doku rät zu unter 200 Zeilen je CLAUDE.md. Die Token-Grenze fängt Dateien mit wenigen, sehr langen
+        Zeilen: Die CLAUDE.md dieses Repos hatte 24 Zeilen und 10.000 Tokens."""
+        marken = lambda text: self.claude()[0]["marken"] if self.schreibe(self.home / ".claude/CLAUDE.md", text) else None
+        self.assertEqual(marken("z\n" * 200), [])
+        self.assertEqual(marken("z\n" * 201), ["groß"])
+        self.assertEqual(marken("x" * 20_000), [])
+        self.assertEqual(marken("x" * 20_004), ["groß"])
+        self.schreibe(self.home / ".claude/CLAUDE.md", "kurz")
+        regel = self.schreibe(self.home / ".claude/rules/lang.md", "z\n" * 500)
+        self.assertEqual([z["marken"] for z in self.claude()], [[], []])  # nur CLAUDE.md: Eine Regel ist schon der ausgelagerte Teil
+        self.assertEqual(regel.name, "lang.md")
+
     def test_leerer_rechner(self):
         shutil.rmtree(self.home / ".claude")
         self.assertEqual(self.claude(projekte=[self.tmp / "fehlt"]), [])
