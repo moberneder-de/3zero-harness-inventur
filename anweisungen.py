@@ -7,6 +7,7 @@ https://code.claude.com/docs/en/memory und …/output-styles; für Codex in code
 
 import fnmatch
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ EINGEBAUT = ("Proactive", "Concise", "Explanatory", "Learning")
 ANWEISUNG = ("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
 ZAUN = re.compile(r"(?ms)^```.*?^```")
 IMPORT = re.compile(r"(?<![\w`@/])@((?:~|\.{1,2})?/?[\w.-][^\s`)]*)")
+SUCHGRENZE = 20_000  # so viele Dateien eines Projekts sieht die Prüfung „verwaist“ höchstens an
+AUSLASSEN = {".git", "node_modules", ".venv"}
 KOPF = re.compile(r"\A\ufeff?---\n(.*?)\n---", re.S)
 
 
@@ -39,6 +42,86 @@ def kopf(text):
     """Die Schlüssel der ersten Ebene im Kopf einer Datei; ein Wert über mehrere Zeilen (`paths:` als Liste) steht als ""."""
     m = KOPF.match(text)
     return dict(re.findall(r"(?m)^([\w-]+)[ \t]*:[ \t]*(.*?)[ \t]*$", m.group(1))) if m else {}
+
+
+def gebunden(text):
+    """Die Muster aus `paths` im Kopf einer Regel, als Liste oder als Text mit Kommas; None ohne das Feld. Mit `paths`
+    lädt die Regel erst, wenn Claude eine passende Datei mit Read, Edit oder Write anfasst."""
+    m = KOPF.match(text)
+    zeilen = m.group(1).split("\n") if m else []
+    for nr, z in enumerate(zeilen):
+        wert = re.match(r"paths[ \t]*:[ \t]*(.*?)[ \t]*$", z)
+        if not wert:
+            continue
+        if wert.group(1):
+            teile = re.split(r",(?![^{]*\})", wert.group(1).strip("[]"))  # ein Komma in {ts,tsx} trennt nicht
+        else:
+            teile = []
+            for folge in zeilen[nr + 1:]:
+                eintrag = re.match(r"[ \t]+-[ \t]*(.*?)[ \t]*$", folge)
+                if not eintrag:
+                    break
+                teile.append(eintrag.group(1))
+        return [t for t in (t.strip().strip("\"'") for t in teile) if t] or None
+    return None
+
+
+def muster_regex(muster):
+    """Ein Muster aus `paths` als Regex über den Pfad relativ zum Projekt: `**` über Ordner hinweg, `*` und `?` in
+    einem Namen, `{a,b}` als Auswahl, `[ab]` wie geschrieben. None, wenn es sich so nicht lesen lässt. Claude Code
+    rechnet mit seiner eigenen Logik; bei ausgefallenen Mustern können beide abweichen."""
+    aus, i, tiefe = "", 0, 0
+    while i < len(muster):
+        c = muster[i]
+        if muster.startswith("**/", i):
+            aus, i = aus + "(?:.*/)?", i + 3
+            continue
+        if muster.startswith("**", i):
+            aus, i = aus + ".*", i + 2
+            continue
+        ende = muster.find("]", i + 2) if c == "[" else -1
+        if ende > 0:
+            aus, i = aus + muster[i:ende + 1], ende + 1
+            continue
+        if c == "{":
+            tiefe += 1
+        elif c == "}":
+            tiefe -= 1
+        aus += {"*": "[^/]*", "?": "[^/]", "{": "(?:", "}": ")"}.get(c) or ("|" if c == "," and tiefe else re.escape(c))
+        i += 1
+    try:
+        return re.compile(aus + r"\Z") if tiefe == 0 else None
+    except re.error:
+        return None
+
+
+def dateien_im(ordner):
+    """Die Pfade der Dateien eines Projekts, relativ und mit /, höchstens SUCHGRENZE; dazu, ob das alle waren."""
+    pfade = []
+    for wurzel, unter, namen in os.walk(ordner):
+        unter[:] = [u for u in unter if u not in AUSLASSEN]
+        rel = os.path.relpath(wurzel, ordner)
+        vor = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+        for name in namen:
+            if len(pfade) >= SUCHGRENZE:
+                return pfade, False
+            pfade.append(vor + name)
+    return pfade, True
+
+
+def verwaiste_markieren(zeilen, ordner):
+    """„verwaist“: Auf kein Muster der Regel passt eine Datei des Projekts, sie lädt also nie — etwa nach dem
+    Umbenennen einer Datei. „nicht geprüft“, wo sich das nicht sagen lässt: ein Muster, das sich nicht lesen ließ,
+    oder ein Projekt mit mehr Dateien als SUCHGRENZE. Lieber kein Urteil als eine falsche Warnung."""
+    offen = [z for z in zeilen if z["status"] == "bei Bedarf" and z.get("gebunden")]
+    if not offen:
+        return
+    pfade, alle = dateien_im(ordner)
+    for z in offen:
+        regexe = [muster_regex(m) for m in z["gebunden"]]
+        if any(r.match(p) for r in regexe if r for p in pfade):
+            continue
+        z["marken"].append("verwaist" if alle and all(regexe) else "nicht geprüft")
 
 
 def kurz(pfad, home):
@@ -91,8 +174,11 @@ def ausschliessbar(bereich, art, datei, home, aus, eigene, **extra):
     elif any(fnmatch.fnmatchcase(str(datei), m) for m in aus):
         z.update(status="aus", laedt=False, ausgeschlossen="muster")
         z["marken"].append("per Muster")
-    elif art == "Regel" and "paths" in kopf(text):
-        z.update(status="bei Bedarf", laedt=False)  # lädt erst, wenn Claude eine passende Datei anfasst
+    muster = gebunden(text) if art == "Regel" else None
+    if muster:
+        z["gebunden"] = muster
+        if z["status"] == "aktiv":
+            z.update(status="bei Bedarf", laedt=False)  # lädt erst, wenn Claude eine passende Datei anfasst
     return z
 
 
@@ -180,7 +266,9 @@ def claude(home, settings, projekte, verwaltet=VERWALTET):
         if len(beide) == 2:
             for z in beide:
                 z["marken"].append("zwei CLAUDE.md")
-        neu += regeln(projekt, ordner / ".claude" / "rules", home, aus, eigene)
+        gefunden = regeln(projekt, ordner / ".claude" / "rules", home, aus, eigene)
+        verwaiste_markieren(gefunden, ordner)
+        neu += gefunden
         for name in ("AGENTS.md", ".claude/AGENTS.md"):
             z = ausschliessbar(projekt, "AGENTS.md", ordner / name, home, aus, eigene)
             if z and claude_md and z["status"] == "aktiv":

@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import anweisungen
 
@@ -74,6 +75,71 @@ class Global(Ordner):
         (self.home / ".claude/CLAUDE.md").write_bytes("Prüfung".encode("latin-1"))
         (z,) = self.claude()
         self.assertEqual(z["status"], "aktiv")
+
+
+class GebundeneRegeln(Ordner):
+    """Eine Regel mit `paths` lädt erst, wenn Claude eine passende Datei anfasst. Passt nach einem Umbenennen keine
+    Datei mehr, lädt sie nie, und das merkt niemand."""
+
+    def regel(self, projekt, name, kopf, text="r" * 40):
+        return self.schreibe(projekt / ".claude/rules" / name, f"---\n{kopf}\n---\n{text}")
+
+    def test_paths_als_liste_und_als_text(self):
+        self.assertEqual(anweisungen.gebunden('---\npaths:\n  - "src/**/*.ts"\n  - lib/*.py\nname: x\n---\n'), ["src/**/*.ts", "lib/*.py"])
+        self.assertEqual(anweisungen.gebunden("---\npaths: src/*.{ts,tsx}, 'lib/**'\n---\n"), ["src/*.{ts,tsx}", "lib/**"])
+        self.assertEqual(anweisungen.gebunden('---\npaths: ["a.py", "b.py"]\n---\n'), ["a.py", "b.py"])
+        for ohne in ("kein Kopf", "---\nname: x\n---\n", "---\npaths:\n---\n", "---\npaths: []\n---\n"):
+            with self.subTest(ohne=ohne):
+                self.assertIsNone(anweisungen.gebunden(ohne))
+
+    def test_muster_wie_in_der_doku(self):
+        """`*.md` meint nur den Projektordner, `**` geht über Ordner hinweg, `{a,b}` ist eine Auswahl."""
+        passt = lambda muster, pfad: bool(anweisungen.muster_regex(muster).match(pfad))
+        for muster, ja, nein in (("*.md", "README.md", "docs/README.md"), ("**/*.ts", "a/b/c.ts", "a/b/c.tsx"), ("**/*.ts", "c.ts", "c.js"),
+                                 ("src/**/*", "src/a/b.py", "lib/a.py"), ("src/components/*.tsx", "src/components/A.tsx", "src/components/x/A.tsx"),
+                                 ("src/**/*.{ts,tsx}", "src/a.tsx", "src/a.js"), ("server.py", "server.py", "x/server.py"),
+                                 ("docs/**", "docs/a/b.json", "docsx/a"), ("test_?.py", "test_a.py", "test_ab.py"), ("a.b", "a.b", "aXb"),
+                                 ("foto[12].png", "foto1.png", "foto3.png")):
+            with self.subTest(muster=muster):
+                self.assertTrue(passt(muster, ja), ja)
+                self.assertFalse(passt(muster, nein), nein)
+        self.assertIsNone(anweisungen.muster_regex("src/{a,b"))  # ohne schließende Klammer nicht prüfbar
+
+    def test_gebunden_und_verwaist(self):
+        p = self.tmp / "P"
+        self.schreibe(p / "server.py")
+        self.schreibe(p / "src/tief/a.ts")
+        self.schreibe(p / "node_modules/x/weg.py")
+        self.regel(p, "server.md", 'paths:\n  - "server.py"\n  - "test_server.py"')
+        self.regel(p, "ts.md", "paths: src/**/*.{ts,tsx}")
+        self.regel(p, "alt.md", 'paths:\n  - "umbenannt.py"\n  - "node_modules/**"')
+        self.regel(p, "immer.md", "name: x")
+        self.regel(p, "kaputt.md", 'paths:\n  - "src/{a,b"')
+        zeilen = {Path(z["pfad"]).name: z for z in self.claude(projekte=[p])}
+        self.assertEqual({n: (z["status"], z.get("gebunden"), z["marken"]) for n, z in zeilen.items()}, {
+            "server.md": ("bei Bedarf", ["server.py", "test_server.py"], []), "ts.md": ("bei Bedarf", ["src/**/*.{ts,tsx}"], []),
+            "alt.md": ("bei Bedarf", ["umbenannt.py", "node_modules/**"], ["verwaist"]), "immer.md": ("aktiv", None, []),
+            "kaputt.md": ("bei Bedarf", ["src/{a,b"], ["nicht geprüft"])})
+
+    def test_grosses_projekt_wird_nicht_als_verwaist_gemeldet(self):
+        """Nach SUCHGRENZE Dateien hört die Suche auf. Ohne Treffer bis dahin lässt sich nichts sagen."""
+        p = self.tmp / "P"
+        for n in range(5):
+            self.schreibe(p / f"a{n}.txt")
+        self.regel(p, "x.md", "paths: fehlt.py")
+        with mock.patch.object(anweisungen, "SUCHGRENZE", 3):
+            (z,) = self.claude(projekte=[p])
+        self.assertEqual(z["marken"], ["nicht geprüft"])
+        (z,) = self.claude(projekte=[p])
+        self.assertEqual(z["marken"], ["verwaist"])
+
+    def test_globale_und_abgeschaltete_regeln_bleiben_ohne_pruefung(self):
+        """Ein Muster in ~/.claude/rules gilt in jedem Projekt; eine abgeschaltete Regel lädt ohnehin nicht."""
+        self.schreibe(self.home / ".claude/rules/g.md", "---\npaths: fehlt.py\n---\n")
+        p = self.tmp / "P"
+        aus = self.regel(p, "aus.md", "paths: fehlt.py")
+        zeilen = self.claude({"claudeMdExcludes": [str(aus)]}, projekte=[p])
+        self.assertEqual([(z["status"], z["gebunden"], z["marken"]) for z in zeilen], [("bei Bedarf", ["fehlt.py"], []), ("aus", ["fehlt.py"], [])])
 
 
 class OutputStyles(Ordner):
