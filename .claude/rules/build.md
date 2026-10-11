@@ -2,6 +2,8 @@
 paths:
   - "build.py"
   - "test_build.py"
+  - "mcp_direkt.py"
+  - "test_mcp_direkt.py"
 ---
 
 # build.py
