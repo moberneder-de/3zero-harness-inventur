@@ -23,6 +23,7 @@ Tabellen in aufgeklappten Zeilen bekommen keinen Filter, und diese Filter merken
 Auch die Tabellenköpfe bleiben stehen, unter Seitenkopf und Filter (`--kopf` plus `--filter`, die Höhe des Filters, die ein `ResizeObserver` an das Element danach schreibt).
 Dafür hat `.tabelle` kein `overflow-x: auto` mehr, außer unter 900 Pixeln Breite: Mit `overflow` hinge der Kopf an diesem Kasten statt an der Seite.
 Schmal scrollt die Tabelle also weiter für sich, ohne festen Kopf.
+In der Meldungskarte (`.meldung`) steht der Kopf nicht fest: Ein langer Bericht scrollt dort in seinem eigenen Kasten (`.inhalt.gekuerzt`), und der feste Kopf hing um die Höhe des Seitenkopfs versetzt über der ersten Zeile der Tabelle.
 Die Navigation hat zwei Ebenen: sieben Einträge oben, davon drei Gruppen („Aufräumen“: Empfehlungen, Überschneidungen, Hinweise; „Bestand“: MCP-Server, Plugins, Skills, Hooks, Anweisungen; „Einstellungen“: Berechtigungen, Modelle, Versionen), deren Tabs in einer zweiten Zeile (`.unternav`) stehen.
 Jeder Tab bleibt ein eigener `<section>` mit seiner Adresse (`#mcp`, `#modelle`); `zeigeTab()` liest die Gruppe aus der zweiten Zeile ab, ein neuer Tab braucht also nur dort einen Link.
 Vierzehn Tabs nebeneinander waren nach vier Ordnungen gewachsen (Art, Ort, Thema, Aufgabe) und brachen in zwei Zeilen um.
