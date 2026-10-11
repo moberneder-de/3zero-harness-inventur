@@ -6,6 +6,19 @@ Hinweise für Claude Code beim Arbeiten in diesem Repository.
 
 Inventur der Claude-Code-Laufzeitumgebung: MCP-Server, Plugins, Skills, Befehle, Agenten und Hooks, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard, für Claude Code oder Codex. Die Skills aus `~/.agents` gelten auch für andere Agenten, das Inventar reicht also über Claude Code hinaus.
 
+## Befehle
+
+```bash
+python3 -m unittest                      # alle Tests
+python3 -m unittest test_build.Mods      # eine Testklasse
+python3 build.py                         # Bestand neu einlesen, schreibt in ~/.3zero-harness-inventur
+python3 server.py                        # Dashboard mit Knöpfen auf http://127.0.0.1:8765
+```
+
+- `build.py --harness codex` merkt sich Codex als Harness: Ein laufender Server zeigt danach das Codex-Dashboard. Zum Ausprobieren stattdessen `codex.inventar()` oder eine einzelne Funktion in einem Skript aufrufen.
+- Oberfläche prüfen, ohne den Datenordner zu ändern: `template.html` mit einem Inventar aus dem Datenordner füllen (`__DATEN__`, `__LOGO__`, `__ICON__`, `__APPICON__` ersetzen), in den Scratch-Ordner schreiben und mit Brave ohne Fenster aufnehmen (`--headless=new --screenshot`). Knöpfe erscheinen nur, wenn `<script id="token">` nicht `null` enthält.
+- Änderungen laufen über Branch und PR; gemergt wird, wenn alle vier Jobs bei GitHub grün sind (`gh pr merge --rebase --delete-branch`).
+
 ## Aufbau
 
 - Datenordner: Alles, was zum Rechner des Benutzers gehört, liegt in `~/.3zero-harness-inventur` (`harness.DATEN`): beide Bewertungen, beide Inventare, beide Dashboards, beide Verläufe und `harness.json`. Der Projektordner enthält nur das Werkzeug und ist deshalb veröffentlichungsfähig. `build.py` legt den Ordner beim ersten Lauf an; fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet“. In `server.py` ist `ordner` das Werkzeug und `daten` der Datenordner — wer beides verwechselt, lässt den Server wieder ins Repo schreiben.
