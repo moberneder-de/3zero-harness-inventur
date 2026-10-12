@@ -902,6 +902,18 @@ def aktionen(e):
     return a
 
 
+def umgesetzt(e):
+    """Gilt die eigene Empfehlung des Eintrags schon? Das Gegenstück zu aktionen(): Was schon abgeschaltet oder auf
+    „nur /“ gestellt ist, braucht keine Aktion mehr, steht nicht mehr unter den offenen Empfehlungen und spart nichts
+    mehr. Entferntes steht gar nicht mehr im Bestand. Ein Plugin lädt nur mit dem Status „aktiv“."""
+    b = e.get("bewertung")
+    empfehlung = b.get("empfehlung") if isinstance(b, dict) else None
+    if empfehlung == "abschalten":
+        return (e.get("override") == "off" or e.get("gesperrt") is True or e.get("status") == "deaktiviert"
+                or (e["id"].startswith("plugin:") and e.get("status") != "aktiv"))
+    return empfehlung == "nur manuell" and e.get("aufruf") == "nur /"
+
+
 def version(cli):
     try:
         return subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() or None
@@ -1051,6 +1063,34 @@ def aenderungen(reihe):
     return {"seit": reihe[-2]["datum"], "neu": neu, "entfernt": weg}
 
 
+BEWERTETE_ARTEN = ("mcp", "plugins", "skills", "projekt_skills", "projekt_mcp", "hooks")  # was bewerte() bewertet
+SPAREN = ("entfernen", "abschalten", "nur manuell")  # nicht „prüfen“: Dort fehlt noch die Entscheidung
+
+
+def empfehlungen_ableiten(inhalt):
+    """Für beide Harnesses, nach dem Leser: je Eintrag `wirksam`, die Empfehlung, die für ihn gilt, und oben `ersparnis`.
+    Bestandteile eines Plugins ohne eigene Empfehlung übernehmen die ihres Plugins (`geerbt`).
+    Die Ersparnis zählt jede Tokenzahl genau einmal: Die eines Plugins ist schon die Summe seiner Skills und Hooks.
+    Geht das Plugin ganz, zählt seine Summe und seine Teile zählen nicht mehr; bleibt es, zählen nur die einzeln
+    empfohlenen Teile. Was nur in einem Projekt lädt, zählt nicht zur Kontextlast und spart deshalb nichts; was schon
+    umgesetzt ist (`umgesetzt` vom Leser), kostet heute nichts mehr.
+    Das Template rechnete beides selbst, in der einzigen Datei ohne Tests."""
+    eigene = lambda e: e["bewertung"].get("empfehlung") if isinstance(e.get("bewertung"), dict) else None
+    plugins = {p["id"]: p for p in inhalt.get("plugins", [])}
+    for art in BEWERTETE_ARTEN:
+        for e in inhalt.get(art, []):
+            pid = e.get("plugin") or (e.get("quelle") if e["id"].startswith("mcp:") and e.get("art") == "Plugin" else None)
+            vom_plugin = eigene(plugins[f"plugin:{pid}"]) if isinstance(pid, str) and f"plugin:{pid}" in plugins else None
+            e["wirksam"] = ({"empfehlung": eigene(e), "geerbt": False} if eigene(e)
+                            else {"empfehlung": vom_plugin, "geerbt": True} if vom_plugin else None)
+    geht_weg = lambda e: eigene(e) in SPAREN and not e.get("projekt") and not e.get("umgesetzt")
+    ganz = [p for p in inhalt.get("plugins", []) if geht_weg(p)]
+    plugins_weg = {f"{p['name']}@{p['marktplatz']}" for p in ganz}
+    inhalt["ersparnis"] = (sum(p.get("tokens") or 0 for p in ganz)
+                           + sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, [])
+                                 if geht_weg(e) and e.get("plugin") not in plugins_weg))
+
+
 def ungenutzt_markieren(skills, plugins, heute):
     """Markiert, was in jede Sitzung lädt, aber seit UNGENUTZT_TAGE nicht genutzt wurde: die besten Kandidaten zum
     Aufräumen. Wer erst seit Kurzem da ist, hatte die Zeit nicht; für Plugin-Bestandteile zählt die Installation
@@ -1154,6 +1194,7 @@ def claude_inventar(cfg, settings, bewertung, lock):
     bewerte(alle, bewertung, befehl)
     for e in alle:
         e["aktionen"] = aktionen(e)
+        e["umgesetzt"] = umgesetzt(e)
 
     eingebaut = eingebaute(cfg, bewertung)
 
@@ -1200,6 +1241,7 @@ def main(argv=None):
         inhalt = claude_inventar(cfg, settings, lies_json(DATEN / angaben["bewertung"]),
                                  lies_json(AGENTS / ".skill-lock.json").get("skills", {}))
     inhalt = fuers_dashboard(inhalt)
+    empfehlungen_ableiten(inhalt)
     jetzt = datetime.now()
     ungenutzt_markieren(inhalt.get("skills", []), inhalt.get("plugins", []), jetzt)
     try:
@@ -1212,6 +1254,7 @@ def main(argv=None):
     except Exception as fehler:
         lesefehler("MCP-Server aus Quellcode", fehler)
         inhalt["quellcode"] = []
+    inhalt["versionen_offen"] = werkzeuge.offen(inhalt["werkzeuge"], inhalt["quellcode"])
     try:
         inhalt["berechtigungen"] = rechte(h, inhalt, cfg)
     except Exception as fehler:

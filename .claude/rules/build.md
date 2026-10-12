@@ -53,3 +53,8 @@ Gelesen wird einmal je Lauf: `main()` liest `~/.claude.json` (`cfg`) und `settin
 Vorher standen sie als Modulwerte (`CFG`, `SETTINGS`, `GESPERRT` und vier weitere): `import build` las vier Dateien vom Rechner, 13 Funktionen lasen heimlich mit, und ein Test, der nur `SETTINGS` ersetzte, bekam weiter das `GESPERRT` des echten Rechners.
 Sieben Tests riefen `projekt_skills()` oder `persoenliche_skills()` ganz ohne Ersatz auf und liefen so unbemerkt gegen die Overrides und Nutzungszahlen des Rechners, auf dem sie liefen.
 Die Pfade (`HOME`, `CLAUDE`, `AGENTS`, `PLUGINS`) bleiben Konstanten; ein Test, der `main()` aufruft, setzt sie auf ein leeres Home, sonst liest `main()` die echte Konfiguration.
+Was das Dashboard aus der Bewertung ableitet, rechnet Python und legt es fertig ins Inventar: je Eintrag `umgesetzt` und `wirksam`, oben `ersparnis` und `versionen_offen`.
+`umgesetzt()` steht in jedem Leser neben `aktionen()`, dessen Gegenstück es ist: Was schon abgeschaltet oder auf „nur manuell“ gestellt ist, braucht keine Aktion mehr; die Merkmale dafür sind je Harness verschieden, deshalb je Leser eine Funktion statt einer gemeinsamen mit Schaltern.
+`empfehlungen_ableiten()` gilt für beide: `wirksam` ist die eigene Empfehlung, bei Plugin-Bestandteilen ohne eigene die ihres Plugins (`geerbt`), und `ersparnis` zählt jede Tokenzahl einmal (geht ein Plugin ganz, zählen seine Teile nicht noch einmal).
+Vorher rechnete das Template alle vier selbst, in der einzigen Datei ohne Tests und mit einer eigenen Kopie von `LAEDT` aus `codex.py`.
+Welche Status im Tab „Versionen“ Handlungsbedarf bedeuten, steht einmal in `werkzeuge.ZU_TUN`; danach zählt `werkzeuge.offen()` und meldet der Wochenlauf.

@@ -20,6 +20,7 @@ from pathlib import Path
 import harness
 
 HOME = Path.home()
+ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status eines Werkzeugs, bei denen etwas zu tun ist
 RUHEND_TAGE = 180  # so lange ohne Commit upstream gilt ein Projekt als ruhend
 # Einstellungen aus der .git/config eines fremden Klons, die beim Lesen ein Programm starten könnten, abschalten
 GIT_SICHER = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
@@ -345,6 +346,13 @@ def pakete(wurzel, holen):
     werkzeug = next((w for datei, w in (("bun.lock", "bun update"), ("bun.lockb", "bun update"), ("pnpm-lock.yaml", "pnpm update"),
                                         ("yarn.lock", "yarn upgrade")) if (wurzel / datei).exists()), "npm update")
     return liste, f"cd {shlex.quote(str(wurzel))} && {werkzeug} {' '.join(shlex.quote(n) for n in zu_tun)}"
+
+
+def offen(werkzeuge, quellcode):
+    """Die Zahl am Tab „Versionen“: Werkzeuge mit einem Status aus ZU_TUN und MCP-Server aus Quellcode, für die es
+    einen Befehl zum Aktualisieren gibt (der eigene Stand oder upstream)."""
+    return (sum(1 for w in werkzeuge if w.get("status") in ZU_TUN)
+            + sum(1 for q in quellcode if q.get("befehl") or (q.get("upstream") or {}).get("befehl")))
 
 
 def quellcode_pruefen(inhalt, daten, heute):

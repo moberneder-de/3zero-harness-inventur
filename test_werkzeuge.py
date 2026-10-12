@@ -204,5 +204,15 @@ class Quellcode(unittest.TestCase):
         self.assertEqual(werkzeuge.pakete(self.klon, antworten.get), ([{"name": "a", "installiert": "1.0.0", "neueste": "1.0.0", "meldungen": []}], None))
 
 
+class Offen(unittest.TestCase):
+    def test_zaehlt_was_etwas_zu_tun_gibt(self):
+        """Die Zahl am Tab „Versionen“; nach denselben Status meldet der Wochenlauf."""
+        liste = [{"status": s} for s in ("aktuell", "veraltet", "ohne Pflege", "fehlt", "unbekannt")]
+        quellcode = [{"befehl": "bun update x", "upstream": {}}, {"befehl": None, "upstream": {"befehl": "git pull"}},
+                     {"befehl": None, "upstream": {"befehl": None}}, {"ruht": True}]
+        self.assertEqual(werkzeuge.offen(liste, quellcode), 3 + 2)
+        self.assertEqual(werkzeuge.offen([], []), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

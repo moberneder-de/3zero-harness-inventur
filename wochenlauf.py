@@ -19,11 +19,11 @@ import sys
 from pathlib import Path
 
 import harness
+import werkzeuge
 
 HIER = Path(__file__).resolve().parent
 KENNUNG = "de.3zero.harness-inventur.wochenlauf"  # launchd
 DIENST = "3zero-harness-inventur-wochenlauf"  # systemd
-ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status im Tab „Versionen“, bei denen etwas zu tun ist
 
 
 def bauen():
@@ -43,7 +43,7 @@ def offen(inv):
         if s.get("ungenutzt"):
             punkte[f"ungenutzt:{s['id']}"] = f"ungenutzt: {s['name']}"
     for w in inv.get("werkzeuge") or []:
-        if w.get("status") in ZU_TUN:
+        if w.get("status") in werkzeuge.ZU_TUN:
             punkte[f"werkzeug:{w['id']}:{w['status']}"] = f"{w['name']} {w['status']}"
     for q in inv.get("quellcode") or []:
         for p in q.get("pakete") or []:

@@ -733,3 +733,24 @@ class Aktionen(unittest.TestCase):
 
     def test_hooks_ohne_aktionen(self):
         self.assertEqual(codex.aktionen({"id": "hook:config:notify", "typ": "Hook"}), {})
+
+
+class Umgesetzt(unittest.TestCase):
+    def test_mit_den_merkmalen_von_codex(self):
+        """Wie build.umgesetzt, aber: „aus“ zählt als abgeschaltet, ein Plugin lädt auch „im Konto“, nur manuell heißt „nur $“."""
+        e = lambda id, empfehlung, **felder: {"id": id, "bewertung": {"empfehlung": empfehlung}, "override": None, "gesperrt": False, **felder}
+        faelle = [
+            (e("skill:a", "abschalten", status="aus"), True),
+            (e("mcp:a", "abschalten", status="deaktiviert"), True),
+            (e("skill:b", "abschalten", status="aktiv"), False),
+            (e("plugin:p@m", "abschalten", status="im Konto"), False),
+            (e("plugin:p@m", "abschalten", status="aktiv"), False),
+            (e("plugin:p@m", "abschalten", status="bei Bedarf"), True),
+            (e("skill:c", "nur manuell", aufruf="nur $"), True),
+            (e("skill:d", "nur manuell", aufruf="nur /"), False),
+            (e("skill:e", "entfernen", status="aus"), False),
+            ({"id": "skill:f", "bewertung": None, "status": "aus"}, False),
+        ]
+        for eintrag, erwartet in faelle:
+            with self.subTest(eintrag=eintrag):
+                self.assertIs(codex.umgesetzt(eintrag), erwartet)

@@ -54,3 +54,12 @@ Icons: `app-icon.svg` ist die eine Quelle für Favicon und das Zeichen im Seiten
 Fürs Dock kommt `app-icon.png` als `apple-touch-icon` dazu: volles Quadrat ohne Transparenz, weil Apple eine eigene Maske darüberlegt.
 Das PNG rendert `render-app-icon.py` von Hand aus denselben Formen (braucht Pillow, läuft nicht im Build); ändert sich `app-icon.svg`, muss das Skript mit.
 Die zwölf Entwürfe, aus denen Nummer 7 gewählt wurde, liegen in Commit `28eff5a` unter `icon-entwuerfe/`.
+
+## Was das Template nicht rechnet
+
+Urteile über den Bestand kommen fertig aus dem Inventar: `umgesetzt`, `wirksam`, `ersparnis`, `versionen_offen`, `kontextlast`.
+Eine neue Regel dieser Art gehört nach `build.py` oder in den Leser, wo sie einen Test bekommt; im Template gibt es keinen.
+Im Template bleibt, was von der Wahl im Browser abhängt (`gewaehlt()`, `abweichung`, die Zahl der offenen Aktionen), alle Texte und `befehlText()`: Der leitet die Anzeige bewusst aus genau dem Schritt ab, den der Server ausführt.
+Kein Rückfall auf eine eigene Rechnung, falls ein Feld fehlt: Inventar und Dashboard entstehen im selben Lauf.
+Einen Umbau am Template prüft man ohne JS-Tests so: das Template mit einem festen Inventar füllen, von Brave mit `--headless=new --dump-dom` rendern lassen und den sichtbaren Text vor und nach dem Umbau vergleichen, für beide Harnesses und je einmal mit `null` und mit einem Wert in `<script id="token">`.
+Dabei auch einen Datensatz nehmen, in dem etwas offen ist: Am echten Rechner war die Ersparnis 0, und der Vergleich hätte eine falsche Rechnung dort nicht bemerkt.

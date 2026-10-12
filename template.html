@@ -395,20 +395,17 @@ const EMPF = {
   "prüfen":      { icon: "?", cls: "e-pruefen" },
   "behalten":    { icon: "✓", cls: "e-behalten" },
 };
-/* Plugin-Bestandteile ohne eigene Empfehlung übernehmen die ihres Plugins */
-function wirksam(e) {
-  if (e.bewertung?.empfehlung) return { empfehlung: e.bewertung.empfehlung, geerbt: false };
-  const pid = e.plugin ? "plugin:" + e.plugin : (e.id?.startsWith("mcp:") && e.art === "Plugin") ? "plugin:" + e.quelle : null;
-  const p = pid && INDEX.get(pid);
-  return p?.bewertung?.empfehlung ? { empfehlung: p.bewertung.empfehlung, geerbt: true } : null;
+/* `w` ist `wirksam` eines Eintrags: die Empfehlung, die für ihn gilt. Plugin-Bestandteile ohne eigene übernehmen die
+   ihres Plugins (`geerbt`); das rechnet empfehlungen_ableiten() in build.py, hier wird nur angezeigt */
+function empfMarke(w) {
+  const k = w && EMPF[w.empfehlung];
+  if (!k) return '<span class="leer">–</span>';
+  return `<span class="badge ${k.cls}"><span aria-hidden="true">${k.icon}</span>${esc(w.empfehlung)}${w.geerbt ? '<span class="geerbt">· Plugin</span>' : ""}</span>`;
 }
 function empfBadge(e) {
   if (e.typ === "Harness") return '<span class="leer">–</span>';
   if (!e.bewertung) return '<span class="badge e-neu">neu · unbewertet</span>';
-  const w = wirksam(e);
-  const k = w && EMPF[w.empfehlung];
-  if (!k) return '<span class="leer">–</span>';
-  return `<span class="badge ${k.cls}"><span aria-hidden="true">${k.icon}</span>${esc(w.empfehlung)}${w.geerbt ? '<span class="geerbt">· Plugin</span>' : ""}</span>`;
+  return empfMarke(e.wirksam);
 }
 const STATUS = {
   "aktiv": ["●", "an"], "verbunden": ["●", "an"], "freigegeben": ["●", "an"], "eingetragen": ["●", "an"], "wartet auf Freigabe": ["◐", "teil"],
@@ -455,28 +452,15 @@ function typText(e) {
 }
 
 /* Kontextlast je Sitzung: automatisch geladene Beschreibungen und was SessionStart-Hooks einspielen.
-   Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Dazu, was wegfällt, wenn alle Empfehlungen außer „prüfen" umgesetzt sind */
-const SPAREN = ["entfernen", "abschalten", "nur manuell"];
-/* Abschalten und „nur manuell“ lassen sich schon an der Konfiguration ablesen; Entfernte stehen gar nicht mehr im Bestand.
-   Abgeschaltete Plugins und MCP-Server tragen den Status „deaktiviert“, gesperrte MCP-Server zusätzlich `gesperrt`. */
-/* Ein Plugin lädt nur mit diesen Status (build.py: „aktiv“, codex.py: LAEDT); sonst zählen seine Teile schon heute nicht */
-const PLUGIN_LAEDT = je(["aktiv"], ["aktiv", "im Konto"]);
-const umgesetzt = e => ({ "abschalten": e.override === "off" || e.gesperrt === true || e.status === "deaktiviert" || (CODEX && e.status === "aus")
-    || (e.id?.startsWith("plugin:") && !PLUGIN_LAEDT.includes(e.status)),
-  "nur manuell": e.aufruf === NUR_MANUELL })[e.bewertung?.empfehlung] || false;
-/* Wie kontextlast() in build.py: ohne die eingebauten Skills des Harness, damit die Zahl in beiden
-   Dashboards dasselbe bedeutet. Was sie unter Codex kosten, steht in ihrer Zeile im Tab „Skills“. */
+   Projekt-Skills laden nur in ihrem Projekt und zählen nicht mit. Wie kontextlast() in build.py: ohne die eingebauten
+   Skills des Harness, damit die Zahl in beiden Dashboards dasselbe bedeutet. Was sie unter Codex kosten, steht in ihrer
+   Zeile im Tab „Skills“. */
 const JE_SITZUNG = [...D.skills, ...D.hooks, ...D.mcp];
 /* Dazu die globalen Anweisungen (CLAUDE.md, Regeln, gewählter Output-Style): Text, der genauso in jede Sitzung lädt */
 const ANWEISUNGEN_GLOBAL = (D.anweisungen || []).filter(z => z.bereich === "global" && z.laedt);
 const tokensGesamt = D.kontextlast;
-/* Jede Tokenzahl genau einmal: Die eines Plugins ist schon die Summe seiner Skills und Hooks. Geht das Plugin
-   ganz, zählt seine Summe und seine Teile zählen nicht mehr; bleibt es, zählen nur die einzeln empfohlenen Teile.
-   Was schon umgesetzt ist, kostet heute keinen Kontext und spart deshalb nichts mehr. */
-const gehtWeg = e => SPAREN.includes(e.bewertung?.empfehlung) && !e.projekt && !umgesetzt(e);
-const PLUGINS_WEG = new Set(D.plugins.filter(gehtWeg).map(p => `${p.name}@${p.marktplatz}`));
-const tokensSparen = D.plugins.filter(gehtWeg).reduce((s, p) => s + (p.tokens || 0), 0)
-  + JE_SITZUNG.filter(e => gehtWeg(e) && !PLUGINS_WEG.has(e.plugin)).reduce((s, e) => s + (e.tokens || 0), 0);
+/* Ob eine Empfehlung schon umgesetzt ist (`umgesetzt` je Eintrag) und was die offenen sparen (`ersparnis`), rechnen
+   build.py und codex.py: Dort gibt es Tests dafür, und die Merkmale unterscheiden sich je Harness */
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
@@ -634,7 +618,7 @@ function renderUeberblick() {
   const mcpAn = D.mcp.filter(m => m.status === je("verbunden", "aktiv")).length;
   const plAn = D.plugins.filter(p => p.status === "aktiv").length;
   const skAn = D.skills.filter(s => s.status === "aktiv").length;
-  const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !umgesetzt(e)).length;
+  const zaehle = t => ALLE.filter(e => e.bewertung?.empfehlung === t && !e.umgesetzt).length;
   const ungenutzt = D.skills.filter(s => s.ungenutzt);
   const banner = [];
   /* Nach einem frischen Bestand sind das schnell über hundert IDs; ausgeschrieben füllen sie den halben Bildschirm */
@@ -665,7 +649,7 @@ function renderUeberblick() {
     ${kpi(`${skAn}<small> / ${D.skills.length}</small>`, "Skills, Befehle, Agenten", "aktiv / gesamt", GENAU.skills)}
     ${kpi(`≈ ${zahl(tokensGesamt)}`, "Kontextlast", "Tokens je Sitzung", GENAU.last)}
     ${kpi(zaehle("entfernen"), "zum Entfernen", `${zaehle("abschalten") + zaehle("nur manuell")} abschalten · ${zaehle("prüfen")} prüfen`, GENAU.empfehlungen)}
-    ${kpi(`− ${zahl(tokensSparen)}`, "Ersparnis", "Tokens nach Umsetzung", GENAU.sparen)}
+    ${kpi(`− ${zahl(D.ersparnis)}`, "Ersparnis", "Tokens nach Umsetzung", GENAU.sparen)}
     ${kpi(ungenutzt.length, "Skills ungenutzt", `seit ${D.ungenutzt_tage} Tagen · ≈ ${zahl(ungenutzt.reduce((s, e) => s + e.tokens, 0))} Tokens`, GENAU.ungenutzt)}
   </div>`;
 
@@ -733,7 +717,7 @@ function empfZeile(e) {
 function renderEmpfInhalt() {
   let html = "";
   const typen = ["entfernen", "abschalten", "nur manuell", "prüfen"];
-  const offen = e => typen.includes(e.bewertung?.empfehlung) && !umgesetzt(e);
+  const offen = e => typen.includes(e.bewertung?.empfehlung) && !e.umgesetzt;
   const gruppen = typen.map(typ => [typ, ALLE.filter(e => e.bewertung?.empfehlung === typ && offen(e))]);
   /* alles mit Aktion, das in keiner der Empfehlungsgruppen steht */
   gruppen.push(["selbst gewählt", ALLE.filter(e => gewaehlt(e) && !offen(e))]);
@@ -743,12 +727,12 @@ function renderEmpfInhalt() {
     const shell = liste.map(e => e.befehl).filter(b => !b.includes("→"));
     const alle = shell.length > 1 && (typ === "entfernen" || typ === "prüfen")
       ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
-    html += `<div class="empf-gruppe"><div class="kopf"><h3>${typ === "selbst gewählt" ? '<span class="badge e-neu">selbst gewählt</span>' : empfBadge({ bewertung: { empfehlung: typ } })} ${liste.length} Einträge</h3>${alle}</div>
+    html += `<div class="empf-gruppe"><div class="kopf"><h3>${typ === "selbst gewählt" ? '<span class="badge e-neu">selbst gewählt</span>' : empfMarke({ empfehlung: typ })} ${liste.length} Einträge</h3>${alle}</div>
       <p>${GRUPPEN_TEXT[typ]}</p>
       <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${AKTIONEN ? "Aktion" : "Befehl"}</th>${AKTIONEN ? "<th>Ausführen</th>" : ""}</tr></thead>
       <tbody>${liste.map(empfZeile).join("")}</tbody></table></div></div>`;
   }
-  const erledigt = ALLE.filter(umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
+  const erledigt = ALLE.filter(e => e.umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
   if (erledigt.length) html += `<p class="klein">Schon umgesetzt: ${erledigt.map(esc).join(", ")}.</p>`;
   document.getElementById("empf-inhalt").innerHTML = html || '<p class="leer">Keine offenen Empfehlungen.</p>';
   empfFiltern();
@@ -937,7 +921,7 @@ function skillsFiltern() {
   try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(F)); } catch (_) { /* dann gilt er nur für diese Seite */ }
   const q = F.suche.toLowerCase();
   const liste = SKILLS.filter(s => {
-    const empf = s.bewertung ? (wirksam(s)?.empfehlung || "keine") : "unbewertet";
+    const empf = s.bewertung ? (s.wirksam?.empfehlung || "keine") : "unbewertet";
     return (F.teile || !s.plugin)
       && (!q || `${s.name} ${s.beschreibung || ""} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
       && (!F.quelle || lieferweg(s) === F.quelle)
@@ -1584,7 +1568,7 @@ async function nachAktionen(paare) {
 }
 
 function renderHilfe() {
-  const badge = typ => empfBadge({ bewertung: { empfehlung: typ } });
+  const badge = typ => empfMarke({ empfehlung: typ });
   const datenordner = `<li>Dashboard, Inventar und Bewertung liegen in <code>~/.3zero-harness-inventur</code>, nicht im Projektordner: Sie gehören zu deinem Rechner, das Projekt enthält nur das Werkzeug.</li>`;
   /* für beide Harnesses gleich */
   const werkzeugeHilfe = `<li>Der Tab „Versionen“ (unter „Einstellungen“) zeigt, was die Inventur und deine MCP-Server und Hooks brauchen: installierte und neueste Version, Pflegeende der Versionslinie und den Befehl zum Aktualisieren. Darunter stehen MCP-Server aus Quellcode (meist ein Git-Klon unter ~): ob upstream Neueres vorliegt, ob das Projekt ruht, und Sicherheitsmeldungen zu ihren npm-Abhängigkeiten. Aktualisieren musst du selbst; nach einem Python-Update den Server neu starten.</li>`;
@@ -1783,8 +1767,7 @@ const filterHoehe = f => f.nextElementSibling.style.setProperty("--filter", f.of
 const filterHoehen = () => document.querySelectorAll("#app .filter").forEach(filterHoehe);
 document.querySelectorAll("#app .filter").forEach(f => new ResizeObserver(() => filterHoehe(f)).observe(f));
 {
-  const handeln = (D.werkzeuge || []).filter(w => ["veraltet", "ohne Pflege", "fehlt"].includes(w.status)).length
-    + (D.quellcode || []).filter(q => q.befehl || q.upstream.befehl).length;
+  const handeln = D.versionen_offen;  /* werkzeuge.offen(): dieselbe Liste von Status, nach der auch der Wochenlauf meldet */
   document.getElementById("zahl-versionen").textContent = handeln ? ` (${handeln})` : "";
   const breit = (D.berechtigungen || []).filter(z => z.marken.includes("breit")).length;
   document.getElementById("zahl-berechtigungen").textContent = breit ? ` (${breit})` : "";

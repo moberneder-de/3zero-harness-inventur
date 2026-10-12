@@ -1610,5 +1610,71 @@ class ProjektHooks(unittest.TestCase):
         self.assertIn("projekt_hooks", build.ID_ARTEN)
 
 
+class Empfehlungen(unittest.TestCase):
+    """Was das Dashboard aus der Bewertung ableitet. Das rechnete das Template selbst, ohne einen einzigen Test."""
+
+    def eintrag(self, id, empfehlung=None, **felder):
+        return {"id": id, "name": id.split(":", 1)[1], "bewertung": {"empfehlung": empfehlung} if empfehlung else None, **felder}
+
+    def test_umgesetzt_ist_das_gegenstueck_zu_den_aktionen(self):
+        e = self.eintrag
+        faelle = [
+            (e("skill:a", "abschalten", override="off"), True),
+            (e("mcp:a", "abschalten", gesperrt=True, status="deaktiviert"), True),
+            (e("mcp:b", "abschalten", gesperrt=False, status="deaktiviert"), True),
+            (e("plugin:p@m", "abschalten", status="nicht aktiviert"), True),
+            (e("plugin:p@m", "abschalten", status="aktiv"), False),
+            # der Skill eines abgeschalteten Plugins lädt nicht, seine eigene Empfehlung ist damit aber nicht umgesetzt
+            (e("skill:p:x", "abschalten", status="aus", override=None), False),
+            (e("skill:b", "nur manuell", aufruf="nur /"), True),
+            (e("skill:c", "nur manuell", aufruf="automatisch + /"), False),
+            (e("skill:d", "entfernen", override="off"), False),  # Entferntes stünde gar nicht mehr im Bestand
+            (e("skill:e", "prüfen", override="off"), False),
+            (e("skill:f", override="off"), False),
+        ]
+        for eintrag, erwartet in faelle:
+            with self.subTest(eintrag=eintrag):
+                self.assertIs(build.umgesetzt(eintrag), erwartet)
+
+    def test_umgesetzt_haelt_eine_kaputte_bewertung_aus(self):
+        """Die Bewertung schreibt ein Lauf; ein Absturz hier bräche build.py ab."""
+        for bewertung in ("abschalten", ["abschalten"], {"empfehlung": 3}, {}):
+            self.assertIs(build.umgesetzt({"id": "skill:x", "bewertung": bewertung, "override": "off"}), False)
+
+    def test_bestandteile_erben_die_empfehlung_ihres_plugins(self):
+        e = self.eintrag
+        inhalt = {"plugins": [e("plugin:p@m", "entfernen", marktplatz="m"), e("plugin:q@m", marktplatz="m")],
+                  "skills": [e("skill:p:eigen", "behalten", plugin="p@m"), e("skill:p:erbt", plugin="p@m"),
+                             e("skill:q:ohne", plugin="q@m"), e("skill:lose"), e("skill:fremd", plugin="weg@m")],
+                  "mcp": [e("mcp:plugin:p:s", art="Plugin", quelle="p@m"), e("mcp:user", art="User", quelle="~/.claude.json")]}
+        build.empfehlungen_ableiten(inhalt)
+        self.assertEqual({x["id"]: x["wirksam"] for art in ("plugins", "skills", "mcp") for x in inhalt[art]}, {
+            "plugin:p@m": {"empfehlung": "entfernen", "geerbt": False}, "plugin:q@m": None,
+            "skill:p:eigen": {"empfehlung": "behalten", "geerbt": False}, "skill:p:erbt": {"empfehlung": "entfernen", "geerbt": True},
+            "skill:q:ohne": None, "skill:lose": None, "skill:fremd": None,
+            "mcp:plugin:p:s": {"empfehlung": "entfernen", "geerbt": True}, "mcp:user": None})
+
+    def test_ersparnis_zaehlt_jede_tokenzahl_einmal(self):
+        """Die Tokens eines Plugins sind schon die Summe seiner Teile: Geht es ganz, zählen die Teile nicht noch einmal."""
+        e = self.eintrag
+        inhalt = {"plugins": [e("plugin:weg@m", "entfernen", name="weg", marktplatz="m", tokens=100),
+                              e("plugin:bleibt@m", "behalten", name="bleibt", marktplatz="m", tokens=80)],
+                  "skills": [e("skill:weg:a", "abschalten", plugin="weg@m", tokens=60),      # steckt in den 100
+                             e("skill:bleibt:b", "nur manuell", plugin="bleibt@m", tokens=30),  # zählt einzeln
+                             e("skill:erledigt", "abschalten", tokens=7, umgesetzt=True),      # kostet heute nichts mehr
+                             e("skill:offen", "prüfen", tokens=9),                             # noch keine Entscheidung
+                             e("skill:lose", "entfernen", tokens=4), e("skill:ohne", "entfernen")],
+                  "hooks": [e("hook:x:Stop", "entfernen", tokens=5)],
+                  "mcp": [e("mcp:a", "abschalten", tokens=2)],
+                  "projekt_skills": [e("skill:P/x", "entfernen", tokens=50, projekt="/P")]}  # lädt nur dort, nicht in der Kontextlast
+        build.empfehlungen_ableiten(inhalt)
+        self.assertEqual(inhalt["ersparnis"], 100 + 30 + 4 + 5 + 2)
+
+    def test_leeres_inventar(self):
+        inhalt = {}
+        build.empfehlungen_ableiten(inhalt)
+        self.assertEqual(inhalt, {"ersparnis": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

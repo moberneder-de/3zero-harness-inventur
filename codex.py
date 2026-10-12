@@ -662,6 +662,17 @@ def aktionen(e):
     return a
 
 
+def umgesetzt(e):
+    """Gilt die eigene Empfehlung des Eintrags schon? Das Gegenstück zu aktionen(), wie in build.py, mit den Merkmalen
+    von Codex: abgeschaltet heißt hier „deaktiviert“ oder „aus“, ein Plugin lädt mit jedem Status aus LAEDT, und
+    „nur manuell“ heißt „nur $“."""
+    b = e.get("bewertung")
+    empfehlung = b.get("empfehlung") if isinstance(b, dict) else None
+    if empfehlung == "abschalten":
+        return e.get("status") in ("deaktiviert", "aus") or (e["id"].startswith("plugin:") and e.get("status") not in LAEDT)
+    return empfehlung == "nur manuell" and e.get("aufruf") == "nur $"
+
+
 def inventar():
     """Der Codex-Bestand in der Form, die template.html erwartet. build.main ergänzt Zeitpunkt, Harness und Version."""
     cfg = lies_toml(CODEX / "config.toml")
@@ -691,6 +702,7 @@ def inventar():
     bewerte(alle, bewertung, befehl)
     for e in alle:
         e["aktionen"] = aktionen(e)
+        e["umgesetzt"] = umgesetzt(e)
     unbewertet, entfallen = abgleich(alle, bewertung)
     return {
         "live_status": None,
