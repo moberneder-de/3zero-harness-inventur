@@ -8,6 +8,7 @@ paths:
 
 `server.py` zeigt das Dashboard auf http://127.0.0.1:8765 und führt die dort gewählten Aktionen aus (deinstallieren, deaktivieren, nur manuell).
 Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `build.py` bzw. `codex.py` fest; der Server führt nur aus, was so in `inventar*.json` steht.
+Was davon eine Konfigurationsdatei ändert, führt `konfig.py` aus (`Konfig.ausfuehren`, siehe `.claude/rules/konfig.md`); der Server hält seine Sperre darum und führt selbst nur noch Papierkorb und Befehle aus.
 Die Seite nennt bei jeder Anfrage ihren Harness (`X-Harness`), und der Server antwortet mit 409, wenn inzwischen der andere gilt: Beide Inventare führen dieselben IDs mit denselben Aktionsnamen, ein Klick träfe sonst die Konfiguration des anderen Harness und meldete „erledigt“.
 Die Seite mit dem Token gibt es nur mit dem Token als Schlüssel in der Adresse (`/?k=…`), sonst 403: `127.0.0.1` erreicht jeder Benutzer des Rechners, und wer die Seite bekommt, kann Aktionen auslösen und eine Suche starten, die Dateien liest.
 Der Browser bekommt deshalb nicht die Adresse, sondern `start.html` im Datenordner (Modus 0600, leitet weiter, wird beim Beenden gelöscht — auch bei `kill` und geschlossenem Terminal, `bedienen()` fängt SIGTERM und SIGHUP ab).
@@ -76,13 +77,3 @@ Beide Codex-Läufe ohne eigene Plugins, MCP-Server, Regeln und Apps (`--ignore-u
 `codex exec` braucht leeres stdin, sonst wartet es.
 Mit VPN kommt der Codex-Proxy nicht durch.
 Installiert wird unter Codex mit `npx skills add … --agent codex` bzw. `codex plugin add`.
-
-## Unter Codex: Schreiben in config.toml
-
-Vor der ersten Änderung sichert er die Datei nach `<datei>.bak-<Zeitstempel>`, einmal je Datei und Serverlauf: Mit festem Namen überschrieb der nächste Lauf die Sicherung mit dem Stand, den der Server selbst schon geändert hatte.
-Je Datei bleiben die letzten `SICHERUNGEN` (10), erkannt am Zeitstempel im Namen.
-Er schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst oder der Wert fehlt.
-Tabellenköpfe vergleicht er über ihre Schlüssel (`toml_kopf()`), also auch mit Anführungszeichen oder Leerzeichen; steht die Stelle als Inline-Tabelle, mit gepunkteten Schlüsseln oder als Array, parst der neue Text nicht, und er schreibt nichts, sondern meldet „bitte von Hand“.
-Zeilenenden (CRLF) und eine BOM bleiben erhalten.
-Ist die Datei ein Symlink (Dotfiles-Repo), schreibt er ins Ziel: `os.replace` ersetzte sonst den Link selbst durch eine normale Datei.
-Dasselbe gilt für die Bewertung im Datenordner.

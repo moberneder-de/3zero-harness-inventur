@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import harness
+import konfig
 import mcp_direkt
 import werkzeuge
 from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text
@@ -71,10 +72,7 @@ def nur_manuell(ordner):
         text = (Path(ordner) / "agents" / "openai.yaml").read_text(encoding="utf-8-sig")
     except OSError:
         return False
-    # nur im policy-Block: Ein gleichnamiger Schlüssel unter defaults: oder interface: bedeutet etwas anderes
-    # Ein Kommentar oder eine Leerzeile auf Spalte 0 beendet den Block nicht, eine andere Zeile schon
-    block = re.search(r"^policy:[^\S\n]*(#.*)?\n((?:(?:[ \t]+.*|[ \t]*#.*|[ \t]*)\n?)*)", text, re.M)
-    return bool(block) and re.search(r"^\s+allow_implicit_invocation:\s*false\s*(#.*)?$", block.group(2), re.M) is not None
+    return konfig.nur_manuell_gesetzt(text)  # dieselbe Prüfung, mit der konfig.py nach dem Schreiben nachliest
 
 
 def yaml_beschreibung(ordner):
