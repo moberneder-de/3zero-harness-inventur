@@ -155,6 +155,44 @@ class GebundeneRegeln(Ordner):
         self.assertEqual([(z["status"], z["gebunden"], z["marken"]) for z in zeilen], [("bei Bedarf", ["fehlt.py"], []), ("aus", ["fehlt.py"], [])])
 
 
+class Limit(Ordner):
+    """Claude Code warnt, wenn die Anweisungsdateien einer Sitzung zusammen über 150.000 Zeichen haben („2 instruction
+    files add up to 151.0k chars, over the 150.0k-char total limit“). Gezählt wird, was im Projekt beim Start lädt,
+    samt der globalen Dateien."""
+
+    def marken(self, projekt_zeichen, global_zeichen=5_000, **extra):
+        self.schreibe(self.home / ".claude/CLAUDE.md", "g" * global_zeichen)
+        p = self.tmp / "P"
+        self.schreibe(p / "CLAUDE.md", "p" * projekt_zeichen)
+        for name, text in extra.items():
+            self.schreibe(p / ".claude/rules" / f"{name}.md", text)
+        return {(z["bereich"] == "global", Path(z["pfad"]).name): z for z in self.claude(projekte=[p])}
+
+    def test_ueber_dem_limit_zaehlt_projekt_und_global_zusammen(self):
+        z = self.marken(146_000, 5_100)[(False, "CLAUDE.md")]
+        self.assertEqual((z["zeichen"], z["limit_summe"]), (146_000, 151_100))
+        self.assertIn("über dem Limit", z["marken"])
+        self.assertNotIn("über dem Limit", self.marken(146_000, 5_100)[(True, "CLAUDE.md")]["marken"])  # die globale allein ist klein
+
+    def test_nahe_am_limit_und_darunter(self):
+        z = self.marken(116_000)[(False, "CLAUDE.md")]
+        self.assertEqual((z["limit_summe"], [m for m in z["marken"] if "Limit" in m]), (121_000, ["nahe am Limit"]))
+        z = self.marken(100_000)[(False, "CLAUDE.md")]
+        self.assertEqual(([m for m in z["marken"] if "Limit" in m], "limit_summe" in z), ([], False))
+
+    def test_die_marke_steht_an_der_groessten_datei_die_laedt(self):
+        """Regeln zählen mit, aber nur die, die beim Start laden; eine Regel mit `paths` und MEMORY.md nicht."""
+        zeilen = self.marken(60_000, 5_000, immer="i" * 90_000, bedarf="---\npaths: x.py\n---\n" + "b" * 90_000)
+        self.assertEqual({n: [m for m in z["marken"] if "Limit" in m] for (_, n), z in zeilen.items()},
+                         {"CLAUDE.md": [], "immer.md": ["über dem Limit"], "bedarf.md": []})
+        self.assertEqual(zeilen[(False, "immer.md")]["limit_summe"], 155_000)
+
+    def test_globale_dateien_allein(self):
+        self.schreibe(self.home / ".claude/CLAUDE.md", "g" * 151_000)
+        (z,) = self.claude()
+        self.assertEqual(([m for m in z["marken"] if "Limit" in m], z["limit_summe"]), (["über dem Limit"], 151_000))
+
+
 class OutputStyles(Ordner):
     def stil(self, datei, kopf, text="t" * 40):
         return self.schreibe(self.home / ".claude/output-styles" / datei, f"---\n{kopf}\n---\n{text}")

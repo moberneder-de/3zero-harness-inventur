@@ -18,6 +18,9 @@ EINGEBAUT = ("Proactive", "Concise", "Explanatory", "Learning")
 ANWEISUNG = ("CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
 ZAUN = re.compile(r"(?ms)^```.*?^```")
 IMPORT = re.compile(r"(?<![\w`@/])@((?:~|\.{1,2})?/?[\w.-][^\s`)]*)")
+# Ab hier warnt Claude Code beim Start („… instruction files add up to 151.0k chars, over the 150.0k-char total limit“).
+# Die Zahl steht in keiner Doku, sie stammt aus dieser Warnung (Claude Code 2.1.296). Darunter eine eigene Vorwarnung.
+LIMIT_ZEICHEN, LIMIT_NAHE = 150_000, 120_000
 GROSS_ZEILEN, GROSS_TOKENS = 200, 5_000  # darüber trägt eine CLAUDE.md die Marke „groß“
 SUCHGRENZE = 20_000  # so viele Dateien eines Projekts sieht die Prüfung „verwaist“ höchstens an
 AUSLASSEN = {".git", "node_modules", ".venv"}
@@ -154,7 +157,7 @@ def zeile(bereich, art, datei, home, text, status="aktiv", name=None, **extra):
         geaendert = datetime.fromtimestamp(Path(datei).stat().st_mtime).strftime("%Y-%m-%d")
     except OSError:
         geaendert = None
-    z = {"bereich": bereich, "art": art, "name": name or kurz(datei, home), "pfad": str(datei), "tokens": len(text) // 4,
+    z = {"bereich": bereich, "art": art, "name": name or kurz(datei, home), "pfad": str(datei), "tokens": len(text) // 4, "zeichen": len(text),
          "geaendert": geaendert, "status": status, "laedt": status == "aktiv", "marken": [], **extra}
     anzahl = importe(text, datei, home)
     if anzahl:
@@ -235,6 +238,26 @@ def memory(projekt, home, an):
     return z
 
 
+def limit_markieren(zeilen):
+    """„über dem Limit“ oder „nahe am Limit“: Die Anweisungsdateien, die in einem Projekt beim Start laden, haben mit
+    den globalen zusammen mehr als LIMIT_ZEICHEN bzw. LIMIT_NAHE Zeichen. So zählt Claude Code in seiner Warnung:
+    CLAUDE.md, Regeln ohne `paths` und AGENTS.md, nicht MEMORY.md und nicht der Output-Style. Die Marke steht an der
+    größten dieser Dateien im Projekt, mit der Summe in `limit_summe`; für die globalen Dateien allein an der größten
+    globalen."""
+    zaehlt = lambda z: z["laedt"] and z["art"] in ("CLAUDE.md", "Regel", "AGENTS.md")
+    je = {}
+    for z in zeilen:
+        if zaehlt(z):
+            je.setdefault(z["bereich"], []).append(z)
+    global_summe = sum(z["zeichen"] for z in je.get("global", []))
+    for bereich, dateien in je.items():
+        summe = sum(z["zeichen"] for z in dateien) + (0 if bereich == "global" else global_summe)
+        if summe > LIMIT_NAHE:
+            groesste = max(dateien, key=lambda z: z["zeichen"])
+            groesste["limit_summe"] = summe
+            groesste["marken"].append("über dem Limit" if summe > LIMIT_ZEICHEN else "nahe am Limit")
+
+
 def claude(home, settings, projekte, verwaltet=VERWALTET):
     home = Path(home)
     settings = settings if isinstance(settings, dict) else {}
@@ -283,6 +306,7 @@ def claude(home, settings, projekte, verwaltet=VERWALTET):
         if z:
             neu.append(z)
         zeilen += neu
+    limit_markieren(zeilen)
     return zeilen
 
 
