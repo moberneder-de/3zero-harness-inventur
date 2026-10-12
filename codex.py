@@ -17,7 +17,8 @@ import harness
 import konfig
 import mcp_direkt
 import werkzeuge
-from build import LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz, papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text
+from bestand import (LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
+                     papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text)
 
 HOME = Path.home()
 CODEX = HOME / ".codex"

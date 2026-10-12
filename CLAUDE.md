@@ -52,6 +52,7 @@ Die Einzelheiten zu jedem Modul stehen in `.claude/rules/<Modul>.md`: wie es arb
 - `build.py` liest den Bestand von Claude Code und schreibt Inventar, Verlauf und Dashboard; `mcp_direkt.py` fragt HTTP-MCP-Server selbst. → `.claude/rules/build.md`
 - `harness.py`: Datenordner (`DATEN`), gemerkter Harness (`harness.json`) und die feste Version in `SKILLS_CLI`; von `build.py`, `codex.py` und `server.py` importiert. Keine eigene Regel, die Vorgaben stehen oben unter „Was immer gilt“.
 - `codex.py` liest denselben Bestand aus `~/.codex` und `~/.agents`, in derselben Datenform. → `.claude/rules/codex.md`
+- `bestand.py`: was beide Leser brauchen (lesen ohne Absturz, IDs, Zugangsdaten verdecken, `bewerte()`); importiert weder `build` noch `codex`. → `.claude/rules/bestand.md`
 - `server.py` zeigt das Dashboard und führt die gewählten Aktionen aus, startet „neu bewerten“ und die Suche. → `.claude/rules/server.md`
 - `konfig.py` ändert für den Server die Konfigurationsdateien: ein Eingang, ein Schreibweg mit Sicherung und Rücknahme. → `.claude/rules/konfig.md`
 - `template.html` ist die Oberfläche, dazu Icons und Logo. → `.claude/rules/template.md`
