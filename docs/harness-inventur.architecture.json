@@ -434,10 +434,10 @@
       "dot": "cyan",
       "title": "Werkzeug im Repo",
       "items": [
-        "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex; mcp_direkt.py fragt HTTP-MCP-Server selbst",
+        "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; mcp_direkt.py fragt HTTP-MCP-Server selbst",
         "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief",
         "anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md",
-        "server.py liefert aus und führt Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
+        "server.py liefert aus und führt Aktionen aus, konfig.py ändert dafür die Konfigurationsdateien; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
         "wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt"
       ]
     },

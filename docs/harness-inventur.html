@@ -5543,10 +5543,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Werkzeug im Repo</h3>
         </div>
         <ul>
-          <li>build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex; mcp_direkt.py fragt HTTP-MCP-Server selbst</li>
+          <li>build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; mcp_direkt.py fragt HTTP-MCP-Server selbst</li>
           <li>werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief</li>
           <li>anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md</li>
-          <li>server.py liefert aus und führt Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers</li>
+          <li>server.py liefert aus und führt Aktionen aus, konfig.py ändert dafür die Konfigurationsdateien; die Seite gibt es nur mit dem Schlüssel des laufenden Servers</li>
           <li>wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt</li>
         </ul>
       </div>
