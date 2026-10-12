@@ -1550,6 +1550,17 @@ async function fuehreAus(e, aktion) {
   ERGEBNIS.set(e.id, await api("/api/ausfuehren", { id: e.id, aktion }));
 }
 
+/* Regeln und Anweisungen stehen nicht in ALLE und laufen nicht über die Warteschlange der Empfehlungen: ein Klick, eine
+   eigene Rückfrage mit dem, was sich ändert, dann genau dieser eine Schritt und danach neu einlesen */
+function schalte(id, aktion, misslungen) {
+  return mitSperre(async () => {
+    const r = await api("/api/ausfuehren", { id, aktion });
+    if (r.harnessWechsel) return harnessGewechselt(r);
+    if (!r.ok) return setMeldung(`${misslungen} fehlgeschlagen:\n\n` + r.ausgabe, "Fehler");
+    await neuEinlesen();
+  });
+}
+
 async function neuEinlesen() {
   setMeldung("Liest den Bestand neu ein …", "Inventar");
   const r = await api("/api/neu");
@@ -1909,12 +1920,7 @@ if (TOKEN) {
         : `Die Regel ${z.regel} (${RECHT_ART[z.art] || z.art}) wird aus ${z.quelle} genommen.` +
           (z.marken.includes("breit") ? `\n\nDanach fragt ${D.harness_name} bei solchen Befehlen wieder nach.` : "");
       if (!await frage(ordner ? "Vertrauten Ordner entfernen?" : "Regel entfernen?", text + "\n\nVorher legt der Server eine Sicherung neben die Datei (.bak-<Zeitstempel>).", "entfernen")) return;
-      mitSperre(async () => {
-        const r = await api("/api/ausfuehren", { id: z.id, aktion: "entfernen" });
-        if (r.harnessWechsel) return harnessGewechselt(r);
-        if (!r.ok) return setMeldung("Entfernen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
-        await neuEinlesen();
-      });
+      schalte(z.id, "entfernen", "Entfernen");
     } else if (knopf.dataset.pruefen !== undefined) {
       const z = (D.anweisungen || []).find(x => x.id === knopf.dataset.pruefen);
       if (!z?.pruefen) return;
@@ -1934,12 +1940,7 @@ if (TOKEN) {
         : (aus ? `${kurzPfad(z.pfad)} wird in claudeMdExcludes in ~/.claude/settings.json eingetragen. Claude Code lädt die Datei dann nicht mehr, in keinem Projekt. Die Datei selbst bleibt, wie sie ist.`
                : `${kurzPfad(z.pfad)} wird aus claudeMdExcludes in ~/.claude/settings.json genommen. Claude Code lädt die Datei dann wieder.`);
       if (!await frage(aus ? "Anweisung abschalten?" : "Anweisung einschalten?", text + "\n\nWirksam ab der nächsten Claude-Code-Sitzung. Vorher legt der Server eine Sicherung neben die Datei (.bak-<Zeitstempel>).", aktion)) return;
-      mitSperre(async () => {
-        const r = await api("/api/ausfuehren", { id: z.id, aktion });
-        if (r.harnessWechsel) return harnessGewechselt(r);
-        if (!r.ok) return setMeldung("Schalten fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
-        await neuEinlesen();
-      });
+      schalte(z.id, aktion, "Schalten");
     } else {
       const e = INDEX.get(knopf.dataset.ausfuehren), a = gewaehlt(e);
       mitSperre(async () => { await fuehreAus(e, a); await nachAktionen([[e, a]]); });

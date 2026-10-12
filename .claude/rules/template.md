@@ -63,3 +63,8 @@ Im Template bleibt, was von der Wahl im Browser abhängt (`gewaehlt()`, `abweich
 Kein Rückfall auf eine eigene Rechnung, falls ein Feld fehlt: Inventar und Dashboard entstehen im selben Lauf.
 Einen Umbau am Template prüft man ohne JS-Tests so: das Template mit einem festen Inventar füllen, von Brave mit `--headless=new --dump-dom` rendern lassen und den sichtbaren Text vor und nach dem Umbau vergleichen, für beide Harnesses und je einmal mit `null` und mit einem Wert in `<script id="token">`.
 Dabei auch einen Datensatz nehmen, in dem etwas offen ist: Am echten Rechner war die Ersparnis 0, und der Vergleich hätte eine falsche Rechnung dort nicht bemerkt.
+Regeln und Anweisungen stehen nicht in `ALLE` und laufen nicht über die Warteschlange der Empfehlungen: ein Klick, eine eigene Rückfrage in Worten, dann `schalte()`.
+Die Rückfragen bleiben getrennt, weil sie Verschiedenes erklären; der Weg danach (ausführen, anderer Harness, Fehlermeldung, neu einlesen) stand für beide wortgleich da und ist jetzt einer.
+`befehlText()` kennt deshalb nur die Schritte der Einträge aus `ALLE`; die fünf Schritte von Regeln und Anweisungen erreichen es nie, Zweige dafür wären toter Code.
+Klicks prüft man ohne JS-Tests mit einem angehängten Skript in der gefüllten Seite: `fetch` und `frage()` ersetzen, jeden Knopf klicken und mitschreiben, was die Rückfrage sagt, was an den Server ginge und welche Meldung danach steht, je einmal mit Erfolg, Fehler und anderem Harness; vor und nach dem Umbau vergleichen.
+Den `<dialog>` dabei nicht durchklicken: Sein `close` kommt in Brave ohne Fenster (`--virtual-time-budget`) verzögert an, und der Schritt landet beim nächsten Klick.
