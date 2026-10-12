@@ -38,7 +38,7 @@
           "lauf",
           "daten"
         ],
-        "note": "Der Lauf arbeitet abgeschirmt und lässt sich abbrechen; erst der geprüfte Stand geht in den Datenordner."
+        "note": "Abgeschirmt und abbrechbar; erst der geprüfte Stand geht in den Datenordner. Suche und „prüfen“ laufen ebenso, aber nur lesend."
       },
       {
         "id": "werkzeuge",
@@ -62,7 +62,7 @@
           "mcpdirekt",
           "mcpnetz"
         ],
-        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest, was ohne Rückfrage erlaubt ist und welches Modell lief."
+        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest Anweisungen, Rechte und gelaufene Modelle."
       }
     ],
     "viewBox": [
@@ -260,8 +260,8 @@
     {
       "id": "berechtigungen",
       "type": "security",
-      "label": "berechtigungen.py",
-      "sublabel": "und modelle.py, nur Anzeige",
+      "label": "Drei Lesemodule",
+      "sublabel": "Anweisungen, Rechte, Modelle",
       "pos": [
         580,
         0
@@ -393,7 +393,7 @@
       "id": "lauf-starten",
       "from": "server",
       "to": "lauf",
-      "label": "neu bewerten",
+      "label": "bewerten, suchen, prüfen",
       "variant": "dashed",
       "labelDy": 55
     },
@@ -414,7 +414,7 @@
       "id": "build-berechtigungen",
       "from": "build",
       "to": "berechtigungen",
-      "label": "Rechte, Modelle"
+      "label": "Texte, Rechte, Modelle"
     },
     {
       "id": "build-mcpdirekt",
@@ -435,7 +435,8 @@
       "title": "Werkzeug im Repo",
       "items": [
         "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex; mcp_direkt.py fragt HTTP-MCP-Server selbst",
-        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief; alle nur zur Anzeige",
+        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief",
+        "anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md",
         "server.py liefert aus und führt Aktionen aus; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
         "wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt"
       ]
@@ -447,6 +448,7 @@
         "Bewertung: Handarbeit, teuer neu zu erzeugen",
         "Inventar, Dashboard, Verlauf, werkzeuge.json und wochenlauf.json: erzeugt, jederzeit neu baubar",
         "harness.json merkt den zuletzt gestarteten Harness",
+        "pruefung-….md: der Bericht je Projekt, den der Knopf „prüfen“ zu einer CLAUDE.md ablegt",
         "start.html gibt es nur, solange der Server läuft: Sie trägt den Schlüssel und ist nur für dich lesbar"
       ]
     },

@@ -115,6 +115,7 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
   werkzeuge.json                 Antworten aus dem Netz (Versionen, MCP-Messungen), einmal am Tag
   wochenlauf.json                was der wöchentliche Lauf schon gemeldet hat
   wochenlauf.log                 Ausgabe des wöchentlichen Laufs (macOS)
+  pruefung-<Projekt>-<Kürzel>.md Bericht zur CLAUDE.md eines Projekts, vom Knopf „prüfen“
 ```
 
 Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". Das Werkzeug läuft also auch frisch geklont.
@@ -126,6 +127,8 @@ Drei Knöpfe starten einen Agenten im Hintergrund. Alle sind eng eingezäunt, we
 **Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (Einstellungen und MCP-Server des Benutzers bleiben draußen), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
 
 **Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten; Installationen, Sterne, letzter Push und Lizenz stehen als Zahlen am Kandidaten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
+
+**Prüfen** (nur Claude Code) bewertet die `CLAUDE.md` eines Projekts; der Knopf steht im Tab **Anweisungen** und ist dort beschrieben. Der Lauf liest nur, und nur im Projekt.
 
 Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-inventur`) und liegt in `skill/SKILL.md`.
 

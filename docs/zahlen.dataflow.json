@@ -84,8 +84,8 @@
     {
       "id": "skillmd",
       "type": "external",
-      "label": "SKILL.md",
-      "sublabel": "Name, Beschreibung",
+      "label": "SKILL.md, CLAUDE.md",
+      "sublabel": "Beschreibung, Text",
       "stage": 0,
       "row": 1,
       "height": 50,
@@ -344,6 +344,7 @@
       "title": "Was nur geschätzt ist",
       "items": [
         "Kontextkosten sind Zeichen geteilt durch vier, keine gezählten Tokens",
+        "Globale Anweisungen (CLAUDE.md, Regeln, Output-Style, MEMORY.md) zählen ganz mit, eingebundene Dateien nicht",
         "Bei MCP-Servern zählen Anweisungen und Werkzeugnamen, nicht die Schemata",
         "Die Schemata laden erst bei Bedarf und stehen nur in den Details"
       ]
