@@ -67,6 +67,9 @@ Die Seite hält dafür keine Sperre: Der Lauf ändert nichts, andere Aktionen m�
 Bewertung und Suche laufen im Hintergrund (`im_hintergrund()`); der Browser fragt den Stand über `/api/bewertung` und `/api/suche` ab, das Ergebnis bleibt auf dem Server, bis die Karte geschlossen wird.
 Eine minutenlang offene Anfrage riss beim Neuladen der Seite ab.
 Die Bewertung hält die Sperre nur für `build.py` davor und für Zurückschreiben und `build.py` danach, nicht für den Lauf selbst: Sonst hing jede Aktion bis zu 20 Minuten, und die Suche wurde abgelehnt.
+Jeder Lauf hat seine Befehlszeile als eigene Funktion, in der seine Grenzen wörtlich stehen (`bewerten_argv`, `suchen_argv`, `pruefen_argv`, `codex_bewerten`, `codex_suchen`): bewusst keine Tabelle, aus der sie entstünden, denn dann stünde nirgends mehr, was ein Lauf darf.
+`bewerten()` ist für beide Harnesses eine Methode, verschieden ist nur die Mitte (Einstellungen und Plugin für Claude Code, Berichtsdatei für Codex); vorher standen dieselben sieben Schritte zweimal da, und eine Änderung am Rückweg musste an beide Stellen.
+`build.py` startet nur `bauen()`, und wer es aufruft, hält die Sperre.
 `/api/abbrechen` beendet einen solchen Lauf: `lauf()` startet jeden Prozess in einer eigenen Prozessgruppe (`start_new_session`), `abbrechen()` beendet die ganze Gruppe, weil claude und codex ihre Werkzeuge als Kindprozesse starten.
 Ctrl+C im Terminal erreicht diese Gruppen nicht mehr, deshalb beendet `main()` sie beim Verlassen selbst.
 Kommt der Abbruch, während `build.py` davor noch läuft, stirbt der Lauf beim Start; ist claude schon durch, lehnt der Server ab, weil die Bewertung dann schon zurückgeschrieben ist.

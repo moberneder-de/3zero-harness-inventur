@@ -72,14 +72,14 @@ BEWERTEN_HINWEIS = (
 )
 
 
-def skill_plugin(skill, arbeitsordner):
+def skill_plugin(skill, arbeitsordner, name="inventur", als="3zero-harness-inventur"):
     """Der Skill als Plugin im Arbeitsordner, für --plugin-dir. Dort, weil --restricted die Datei-Werkzeuge auf den
     Arbeitsordner begrenzt und der Lauf den Skill sonst nicht lesen könnte; als Kopie, weil Edit über einen Symlink
-    den Skill im Projekt ändern könnte."""
-    plugin = Path(arbeitsordner) / "inventur-plugin"
+    den Skill im Projekt ändern könnte. Aufgerufen wird er als /<name>:<als>."""
+    plugin = Path(arbeitsordner) / f"{name}-plugin"
     (plugin / ".claude-plugin").mkdir(parents=True)
-    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "inventur"}), encoding="utf-8")
-    shutil.copytree(skill, plugin / "skills" / "3zero-harness-inventur")
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": name}), encoding="utf-8")
+    shutil.copytree(skill, plugin / "skills" / als)
     return plugin
 
 
@@ -218,6 +218,20 @@ SUCHEN_SCHEMA_CODEX = {
 }
 
 
+def suchen_argv(bedarf, einstellungen, plugin):
+    return ["claude", "-p", f"{SKILL_AUFRUF} suche {bedarf}", "--model", "opus", "--output-format", "json",
+            "--json-schema", json.dumps(SUCHEN_SCHEMA), "--tools", "Read,Glob,Grep,WebSearch,WebFetch,Bash",
+            "--allowedTools", *SUCHEN_WERKZEUGE, *CLAUDE_GRENZEN, "--append-system-prompt", SUCHEN_HINWEIS,
+            "--settings", str(einstellungen), "--plugin-dir", str(plugin)]
+
+
+def pruefen_argv(datei, projekt, einstellungen, plugin):
+    return ["claude", "-p", f"{PRUEFEN_AUFRUF}\n\nDatei: {datei}", "--model", "opus", "--output-format", "json",
+            "--json-schema", json.dumps(PRUEFEN_SCHEMA), "--tools", "Read,Glob,Grep", "--allowedTools", "Read", "Glob", "Grep",
+            *PRUEFEN_GRENZEN, "--add-dir", str(projekt), "--settings", str(einstellungen), "--plugin-dir", str(plugin),
+            "--append-system-prompt", PRUEFEN_HINWEIS.format(datei=datei, projekt=projekt)]
+
+
 def codex_modell(config):
     """Modell und Denktiefe aus ~/.codex/config.toml: --ignore-user-config ließe sie sonst weg."""
     try:
@@ -266,6 +280,12 @@ def claude_json(ausgabe):
         return json.loads(ausgabe[ausgabe.find("{"):ausgabe.rfind("}") + 1])
     except ValueError:
         return None
+
+
+def claude_meldung(r):
+    """Was ein Claude-Lauf dem Dashboard sagt: die Schlussmeldung aus dem JSON, sonst seine Rohausgabe. Nur aus stdout:
+    Eine geschweifte Klammer in einer Warnung auf stderr zerrisse den JSON-Ausschnitt."""
+    return claude_text(r["stdout"]) if claude_json(r["stdout"]) else r["ausgabe"]
 
 
 def gueltige_bewertung(kopie):
@@ -520,74 +540,57 @@ class Inventarserver(ThreadingHTTPServer):
                     return lauf(["npx", "--prefix", leer, *schritt["argv"][1:]], schritt.get("cwd"), 120)
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
+    def bauen(self):
+        """Liest den Bestand neu ein. Wer das aufruft, hält self.sperre: build.py schreibt Inventar und Dashboard."""
+        return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+
     def neu_einlesen(self):
         with self.sperre:
-            return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+            return self.bauen()
 
     def bewerten(self):
-        """Wie bei Codex: Der Lauf bekommt kein Bash und kein Write und arbeitet auf einer Kopie der Bewertung
-        in einem Temp-Ordner; nur ein gültiges JSON-Objekt geht zurück. build.py führt der Server davor und danach."""
-        if self.harness() == "codex":
-            return self.bewerten_codex()
+        """Der Lauf arbeitet in beiden Harnesses auf einer Kopie der Bewertung in einem Temp-Ordner, und nur ein gültiges
+        JSON-Objekt geht zurück: Er liest Skill-Texte, die Anweisungen an ihn enthalten können. build.py führt der Server
+        davor und danach selbst aus, weil es mit Netz einliest (claude mcp list, gh) und der Lauf keins hat. Die Sperre
+        liegt nur um build.py und das Zurückschreiben, nicht um den Lauf: Sonst hinge jede Aktion bis zu 20 Minuten.
+        Verschieden ist nur die Mitte: Claude Code bekommt kein Bash und kein Write, dazu eigene Einstellungen und den
+        Skill als Plugin; Codex läuft in der Sandbox und legt seinen Bericht in eine Datei."""
+        h = self.harness()
         with self.sperre:
-            r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+            r = self.bauen()
             if not r["ok"]:
                 return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
-        bewertung_datei = self.daten / harness.HARNESSE["claude-code"]["bewertung"]
+        bewertung_datei = self.daten / harness.HARNESSE[h]["bewertung"]
         with tempfile.TemporaryDirectory() as tmp:
             arbeitsordner = Path(tmp)
             kopie = arbeitsordner / bewertung_datei.name
             kopie.write_text(bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
-            einstellungen = arbeitsordner / "settings.json"
-            einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
-            plugin = skill_plugin(self.ordner / "skill", arbeitsordner)
-            c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"], plugin), arbeitsordner)
-            # nur stdout: eine geschweifte Klammer in einer Warnung auf stderr zerrisse den JSON-Ausschnitt
-            text = claude_text(c["stdout"]) if claude_json(c["stdout"]) else c["ausgabe"]
+            if h == "codex":
+                ergebnis = arbeitsordner / "ergebnis.md"
+                c = self.langer_lauf("bewertung", codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"],
+                                                                 codex_modell(self.konfig.codex_config)), arbeitsordner)
+                text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
+            else:
+                einstellungen = arbeitsordner / "settings.json"
+                einstellungen.write_text(json.dumps(BEWERTEN_SPERREN), encoding="utf-8")
+                plugin = skill_plugin(self.ordner / "skill", arbeitsordner)
+                c = self.langer_lauf("bewertung", bewerten_argv(arbeitsordner, self.daten, einstellungen, r["ausgabe"], plugin), arbeitsordner)
+                text = claude_meldung(c)
             if not c["ok"]:
                 return {"ok": False, "ausgabe": text}
             bewertung = gueltige_bewertung(kopie)
             if bewertung is None:
-                return {"ok": False, "ausgabe": "Der Lauf hat keine gültige bewertung-claude-code.json hinterlassen: " + text}
+                wer = "Codex" if h == "codex" else "Der Lauf"
+                return {"ok": False, "ausgabe": f"{wer} hat keine gültige {kopie.name} hinterlassen: " + text}
             with self.sperre:
                 zurueckschreiben(bewertung, bewertung_datei)
-                n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
-        return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
-
-    def bewerten_codex(self):
-        """build.py liest mit Netz ein (claude mcp list, gh); Codex läuft ohne Netz, deshalb baut der Server davor und danach.
-        Codex bekommt keinen Schreibzugriff auf den Projektordner (die Bewertung liest Skill-Texte, die Prompt-Injection enthalten
-        könnten), sondern arbeitet auf einer Arbeitskopie von bewertung-codex.json; nur ein gültiges JSON-Objekt geht zurück."""
-        with self.sperre:
-            r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
-            if not r["ok"]:
-                return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
-        bewertung_datei = self.daten / harness.HARNESSE["codex"]["bewertung"]
-        with tempfile.TemporaryDirectory() as tmp:
-            arbeitsordner = Path(tmp)
-            (arbeitsordner / "bewertung-codex.json").write_text(
-                bewertung_datei.read_text(encoding="utf-8") if bewertung_datei.is_file() else "{}", encoding="utf-8")
-            ergebnis = arbeitsordner / "ergebnis.md"
-            c = self.langer_lauf("bewertung", codex_bewerten(self.ordner, self.daten, arbeitsordner, ergebnis, r["ausgabe"],
-                                                             codex_modell(self.konfig.codex_config)), arbeitsordner)
-            text = ergebnis.read_text(encoding="utf-8").strip() if c["ok"] and ergebnis.is_file() else c["ausgabe"]
-            if not c["ok"]:
-                return {"ok": False, "ausgabe": text}
-            bewertung = gueltige_bewertung(arbeitsordner / "bewertung-codex.json")
-            if bewertung is None:
-                return {"ok": False, "ausgabe": "Codex hat keine gültige bewertung-codex.json hinterlassen: " + text}
-            with self.sperre:
-                zurueckschreiben(bewertung, bewertung_datei)
-                n = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+                n = self.bauen()
         return {"ok": n["ok"], "ausgabe": text if n["ok"] else text + "\n\nNeu bauen fehlgeschlagen:\n\n" + n["ausgabe"]}
 
     def suchen(self, bedarf):
         self.kandidaten = []
-        argv = ["claude", "-p", f"{SKILL_AUFRUF} suche {bedarf}", "--model", "opus", "--output-format", "json",
-                "--json-schema", json.dumps(SUCHEN_SCHEMA), "--tools", "Read,Glob,Grep,WebSearch,WebFetch,Bash",
-                "--allowedTools", *SUCHEN_WERKZEUGE, *CLAUDE_GRENZEN, "--append-system-prompt", SUCHEN_HINWEIS]
         with self.sperre:
-            r = lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+            r = self.bauen()
         if not r["ok"]:
             return {"ok": False, "ausgabe": "Bestand einlesen fehlgeschlagen:\n\n" + r["ausgabe"]}
         if self.harness() == "codex":
@@ -599,10 +602,10 @@ class Inventarserver(ThreadingHTTPServer):
             einstellungen = Path(tmp) / "settings.json"
             einstellungen.write_text(json.dumps(SUCHEN_SPERREN), encoding="utf-8")
             plugin = skill_plugin(self.ordner / "skill", tmp)
-            r = self.langer_lauf("suche", [*argv, "--settings", str(einstellungen), "--plugin-dir", str(plugin)], tmp)
+            r = self.langer_lauf("suche", suchen_argv(bedarf, einstellungen, plugin), tmp)
         ergebnis = (claude_json(r["stdout"]) or {}).get("structured_output")
         if not r["ok"] or not isinstance(ergebnis, dict):
-            return {"ok": False, "ausgabe": claude_text(r["stdout"]) if claude_json(r["stdout"]) else r["ausgabe"]}
+            return {"ok": False, "ausgabe": claude_meldung(r)}
         self.kandidaten = [geprueft(k) for k in ergebnis.get("kandidaten", []) if isinstance(k, dict)]
         return {"ok": True, "ausgabe": str(ergebnis.get("bericht", "")), "kandidaten": self.kandidaten}
 
@@ -647,18 +650,11 @@ class Inventarserver(ThreadingHTTPServer):
         with tempfile.TemporaryDirectory() as tmp:  # außerhalb von ~ und frisch, wie bei der Suche
             einstellungen = Path(tmp) / "settings.json"
             einstellungen.write_text(json.dumps(SUCHEN_SPERREN), encoding="utf-8")
-            plugin = Path(tmp) / "pruefung-plugin"
-            (plugin / ".claude-plugin").mkdir(parents=True)
-            (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "pruefung"}), encoding="utf-8")
-            shutil.copytree(skill, plugin / "skills" / "claude-md-improver")
-            argv = ["claude", "-p", f"{PRUEFEN_AUFRUF}\n\nDatei: {datei}", "--model", "opus", "--output-format", "json",
-                    "--json-schema", json.dumps(PRUEFEN_SCHEMA), "--tools", "Read,Glob,Grep", "--allowedTools", "Read", "Glob", "Grep",
-                    *PRUEFEN_GRENZEN, "--add-dir", str(projekt), "--settings", str(einstellungen), "--plugin-dir", str(plugin),
-                    "--append-system-prompt", PRUEFEN_HINWEIS.format(datei=datei, projekt=projekt)]
-            r = self.langer_lauf("pruefung", argv, tmp)
+            plugin = skill_plugin(skill, tmp, "pruefung", "claude-md-improver")
+            r = self.langer_lauf("pruefung", pruefen_argv(datei, projekt, einstellungen, plugin), tmp)
         bericht = pruefbericht((claude_json(r["stdout"]) or {}).get("structured_output"))
         if not r["ok"] or bericht is None:
-            return {"ok": False, "ausgabe": claude_text(r["stdout"]) if claude_json(r["stdout"]) else r["ausgabe"]}
+            return {"ok": False, "ausgabe": claude_meldung(r)}
         ergebnis = {"ok": True, "ausgabe": "", "bericht": bericht}
         try:  # ohne die Datei bleibt der Bericht in der Karte, nur der Befehl zum Umsetzen fehlt
             berichtsdatei = pruefdatei(self.daten, projekt)
