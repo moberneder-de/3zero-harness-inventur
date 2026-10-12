@@ -199,9 +199,8 @@ class PluginBestand(unittest.TestCase):
         (tmp / "gut").mkdir()
         (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {
             "leer@m": [], "ohnepfad@m": [{"scope": "user"}], "gut@m": [{"scope": "user", "installPath": str(tmp / "gut")}]}}))
-        with mock.patch.object(build, "PLUGINS", tmp), mock.patch.object(build, "SETTINGS", {}), \
-                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
-            liste, _, _ = build.plugins()
+        with mock.patch.object(build, "PLUGINS", tmp):
+            liste, _, _ = build.plugins({}, {}, {})
         self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
 
     def test_marktplatz_ohne_ort_liest_nichts_aus_dem_arbeitsordner(self):
@@ -252,9 +251,8 @@ class GleichnamigePlugins(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         datei = tmp / "SKILL.md"
         datei.write_text("---\ndescription: tut etwas\n---\n")
-        with mock.patch.object(build, "OVERRIDES", {"sites:foo": "off"}), \
-                mock.patch.object(build, "NUTZUNG", {"sites:foo": {"usageCount": 7, "lastUsedAt": 1789000000000}}):
-            e = build.skill_eintrag("sites@openai-bundled:foo", "Skill", datei, schluessel="sites:foo")
+        e = build.skill_eintrag({"skillUsage": {"sites:foo": {"usageCount": 7, "lastUsedAt": 1789000000000}}}, {"skillOverrides": {"sites:foo": "off"}},
+                                "sites@openai-bundled:foo", "Skill", datei, schluessel="sites:foo")
         self.assertEqual(e["id"], "skill:sites@openai-bundled:foo")  # eindeutig für Aktionen
         self.assertEqual((e["status"], e["override"], e["tokens"]), ("aus", "off", 0))
         self.assertEqual(e["nutzung"]["anzahl"], 7)
@@ -264,8 +262,7 @@ class GleichnamigePlugins(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         datei = tmp / "SKILL.md"
         datei.write_text("---\ndescription: x\n---\n")
-        with mock.patch.object(build, "OVERRIDES", {"einzeln": "off"}), mock.patch.object(build, "NUTZUNG", {}):
-            self.assertEqual(build.skill_eintrag("einzeln", "Skill", datei)["status"], "aus")
+        self.assertEqual(build.skill_eintrag({}, {"skillOverrides": {"einzeln": "off"}}, "einzeln", "Skill", datei)["status"], "aus")
 
 
 class ProjektSkills(unittest.TestCase):
@@ -285,7 +282,7 @@ class ProjektSkills(unittest.TestCase):
         self.schreibe(kit / ".claude/skills/q-lang/SKILL.md", "---\nname: q-lang\ndescription: Q schreiben\n---\n")
         self.schreibe(kit / ".claude/commands/bauen.md", "# Bauen\n")
         self.schreibe(kit / "skills-lock.json", json.dumps({"skills": {"seo-audit": {"source": "coreyhaines31/marketingskills"}}}))
-        eintraege = {e["id"]: e for e in build.projekt_skills([str(kit), str(self.tmp / "gibtsnicht")])}
+        eintraege = {e["id"]: e for e in build.projekt_skills({}, {}, {}, [str(kit), str(self.tmp / "gibtsnicht")])}
         self.assertEqual(sorted(eintraege), ["skill:Kit/bauen", "skill:Kit/q-lang", "skill:Kit/seo-audit"])
         seo = eintraege["skill:Kit/seo-audit"]
         self.assertEqual((seo["name"], seo["projekt"], seo["quelle"]["art"], seo["quelle"]["repo"]),
@@ -299,7 +296,7 @@ class ProjektSkills(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         with mock.patch.object(build, "CLAUDE", tmp / "fehlt"):
-            self.assertEqual(build.persoenliche_skills(), [])
+            self.assertEqual(build.persoenliche_skills({}, {}, {}, {}), [])
 
     def test_totes_transkript_bricht_nichts_ab(self):
         """Ein Symlink ins Leere unter ~/.claude/projects, etwa nach einem verschobenen Projektordner."""
@@ -318,8 +315,8 @@ class ProjektSkills(unittest.TestCase):
         (claude / "skills/eigen").symlink_to(repo / "skill")
         (claude / "commands").mkdir()
         (claude / "commands/start.md").symlink_to(repo / "commands/start.md")
-        with mock.patch.object(build, "CLAUDE", claude), mock.patch.object(build, "LOCK", {}):
-            arten = {e["name"]: e["quelle"]["art"] for e in build.persoenliche_skills()}
+        with mock.patch.object(build, "CLAUDE", claude):
+            arten = {e["name"]: e["quelle"]["art"] for e in build.persoenliche_skills({}, {}, {}, {})}
         self.assertEqual(arten, {"eigen": "Symlink", "kopie": "lokal", "start": "Symlink"})
 
     def test_skills_aus_agents_gelten_in_beiden_harnesses(self):
@@ -333,9 +330,8 @@ class ProjektSkills(unittest.TestCase):
         (claude / "skills/inventur").symlink_to(repo / "skill")
         (codex / "skills").mkdir(parents=True)
         (codex / "skills/inventur").symlink_to(repo / "skill")
-        with mock.patch.object(build, "CLAUDE", claude), mock.patch.object(build, "AGENTS", agents), \
-                mock.patch.object(build, "CODEX", codex), mock.patch.object(build, "LOCK", {}):
-            geteilt = {e["name"]: e.get("geteilt", False) for e in build.persoenliche_skills()}
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.object(build, "AGENTS", agents), mock.patch.object(build, "CODEX", codex):
+            geteilt = {e["name"]: e.get("geteilt", False) for e in build.persoenliche_skills({}, {}, {}, {})}
         self.assertEqual(geteilt, {"grilling": True, "inventur": True, "kopie": False})
 
     def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
@@ -345,7 +341,7 @@ class ProjektSkills(unittest.TestCase):
         for projekt in (a, b, kit):
             self.schreibe(projekt / ".claude/skills/x/SKILL.md", "---\nname: x\ndescription: X\n---\n")
         (self.tmp / "leer/Kit/.claude").mkdir(parents=True)
-        ids = [e["id"] for e in build.projekt_skills([str(a), str(b), str(kit), str(self.tmp / "leer/Kit")])]
+        ids = [e["id"] for e in build.projekt_skills({}, {}, {}, [str(a), str(b), str(kit), str(self.tmp / "leer/Kit")])]
         self.assertEqual(sorted(ids), sorted([f"skill:{a}/x", f"skill:{b}/x", "skill:Kit/x"]))
 
     def test_gleichnamige_projektordner_bei_mcp_servern(self):
@@ -354,12 +350,11 @@ class ProjektSkills(unittest.TestCase):
             projekt.mkdir(parents=True)
         projekte = {str(a): {"mcpServers": {"q": {"command": "x"}}}, str(b): {"mcpServers": {"q": {"command": "y"}}},
                     str(self.tmp / "Q"): {"mcpServers": {"q": {"command": "z"}}}}
-        with mock.patch.object(build, "GESPERRT", set()):
-            ids = [e["id"] for e in build.projekt_mcp(projekte)]
+        ids = [e["id"] for e in build.projekt_mcp(set(), projekte)]
         self.assertEqual(sorted(ids), sorted([f"mcp:{a}/q", f"mcp:{b}/q", "mcp:Q/q"]))
 
     def test_home_ist_kein_projekt(self):
-        self.assertEqual(build.projekt_skills([str(Path.home())]), [])
+        self.assertEqual(build.projekt_skills({}, {}, {}, [str(Path.home())]), [])
 
     def test_projekt_mcp_mit_status_aus_der_konfiguration(self):
         q = self.tmp / "Q"
@@ -371,8 +366,7 @@ class ProjektSkills(unittest.TestCase):
             str(self.tmp / "Alt"): {"mcpServers": {"upnote": {"command": "bun"}}},
             str(self.tmp / "Leer"): {},
         }
-        with mock.patch.object(build, "GESPERRT", set()):
-            eintraege = {e["id"]: e for e in build.projekt_mcp(projekte)}
+        eintraege = {e["id"]: e for e in build.projekt_mcp(set(), projekte)}
         self.assertEqual({i: (e["art"], e["status"]) for i, e in eintraege.items()}, {
             "mcp:Q/q": (".mcp.json", "freigegeben"),
             "mcp:Q/neu": (".mcp.json", "wartet auf Freigabe"),
@@ -554,14 +548,12 @@ class McpStatus(unittest.TestCase):
     def test_gesperrt_schlaegt_live_status(self):
         cfg = {"claudeAiMcpEverConnected": ["claude.ai Gmail", "claude.ai Google Drive"]}
         live = {n: {"ziel": "https://example.org/mcp", "zustand": "✔ Connected"} for n in cfg["claudeAiMcpEverConnected"]}
-        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", {"claude.ai Gmail"}):
-            status = {e["name"]: (e["status"], e["gesperrt"]) for e in build.mcp_server([], live)}
+        status = {e["name"]: (e["status"], e["gesperrt"]) for e in build.mcp_server(cfg, {"claude.ai Gmail"}, [], live)}
         self.assertEqual(status, {"claude.ai Gmail": ("deaktiviert", True), "claude.ai Google Drive": ("verbunden", False)})
 
     def test_projektserver_stehen_nicht_in_der_globalen_liste(self):
         cfg = {"mcpServers": {"upnote": {"command": "bun"}}, "projects": {"/x/Alt": {"mcpServers": {"upnote": {"command": "bun"}, "nur-hier": {"command": "x"}}}}}
-        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
-            eintraege = build.mcp_server([], None)
+        eintraege = build.mcp_server(cfg, set(), [], None)
         self.assertEqual([(e["name"], e["art"]) for e in eintraege], [("upnote", "User")])
         self.assertNotIn("projekte", eintraege[0])
 
@@ -571,9 +563,8 @@ class McpStatus(unittest.TestCase):
         def pl(markt):
             return {**plugin("aktiv"), "name": "sites", "marktplatz": markt, "mcp": {"web": {"command": markt}}}
         live = {"plugin:sites:web": {"ziel": "x", "zustand": "✔ Connected"}}
-        with mock.patch.object(build, "CFG", {}), mock.patch.object(build, "GESPERRT", set()):
-            eintraege = build.mcp_server([pl("a"), pl("b"), {**plugin("aktiv"), "mcp": {"s": {"command": "c"}}}], live,
-                                         {"plugin_sites_web": {"werkzeuge": 3, "tokens": 40, "nutzung": None}})
+        eintraege = build.mcp_server({}, set(), [pl("a"), pl("b"), {**plugin("aktiv"), "mcp": {"s": {"command": "c"}}}], live,
+                                     {"plugin_sites_web": {"werkzeuge": 3, "tokens": 40, "nutzung": None}})
         self.assertEqual([(e["id"], e.get("schluessel"), e["status"], e["werkzeuge"]) for e in eintraege], [
             ("mcp:plugin:sites@a:web", "plugin:sites:web", "verbunden", 3),
             ("mcp:plugin:sites@b:web", "plugin:sites:web", "verbunden", 3),
@@ -639,8 +630,7 @@ class McpMessungen(unittest.TestCase):
     def test_eintrag_ohne_messung_bleibt_ungemessen(self):
         cfg = {"mcpServers": {"upnote": {"command": "bun"}, "still": {"command": "x"}}}
         messungen = {"upnote": {"werkzeuge": 8, "tokens": 120, "nutzung": {"anzahl": 3, "zuletzt": "2026-09-13"}}}
-        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
-            eintraege = {e["name"]: e for e in build.mcp_server([], None, messungen)}
+        eintraege = {e["name"]: e for e in build.mcp_server(cfg, set(), [], None, messungen)}
         self.assertEqual([eintraege["upnote"][k] for k in ("werkzeuge", "tokens")], [8, 120])
         self.assertEqual(eintraege["upnote"]["nutzung"], {"anzahl": 3, "zuletzt": "2026-09-13"})
         self.assertEqual([eintraege["still"][k] for k in ("werkzeuge", "tokens", "nutzung")], [None, None, None])
@@ -660,8 +650,7 @@ class McpMessungen(unittest.TestCase):
                 return None
             gefragt.append(c["url"])
             return {"werkzeuge": 2, "anweisungen": 100, "namen_zeichen": 11, "schemata": 90, "am": "2026-09-28"}
-        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", {"gesperrt"}):
-            eintraege = {e["name"]: e for e in build.mcp_server([aus], None, messungen, direkt)}
+        eintraege = {e["name"]: e for e in build.mcp_server(cfg, {"gesperrt"}, [aus], None, messungen, direkt)}
         felder = ("werkzeuge", "tokens", "schemata", "messung", "gemessen_am", "nutzung")
         self.assertEqual({k: eintraege["arnie"][k] for k in felder}, {
             "werkzeuge": 2, "tokens": 100 + round((11 + 2 * len("mcp__arnie__")) / 4), "schemata": 90, "messung": "direkt",
@@ -674,8 +663,7 @@ class McpMessungen(unittest.TestCase):
     def test_verlangt_der_server_eine_anmeldung_bleiben_die_transkripte(self):
         cfg = {"mcpServers": {"raindrop": {"type": "http", "url": "https://api.raindrop.example/mcp"}}}
         messungen = {"raindrop": {"werkzeuge": 24, "tokens": 197, "nutzung": None}}
-        with mock.patch.object(build, "CFG", cfg), mock.patch.object(build, "GESPERRT", set()):
-            (e,) = build.mcp_server([], None, messungen, lambda c: {"anmeldung": "OAuth", "am": "2026-09-29"})
+        (e,) = build.mcp_server(cfg, set(), [], None, messungen, lambda c: {"anmeldung": "OAuth", "am": "2026-09-29"})
         self.assertEqual((e["werkzeuge"], e["tokens"], e["messung"], e["netz"]),
                          (24, 197, "Transkript", {"domain": "api.raindrop.example", "anmeldung": "OAuth"}))
         self.assertNotIn("anmeldung", e)
@@ -844,6 +832,9 @@ class HarnessWahl(unittest.TestCase):
         # werkzeuge.pruefen fragte sonst das Netz und startete echte Programme
         self.werkzeuge = mock.patch.object(build.werkzeuge, "pruefen", return_value=[{"id": "python3", "status": "aktuell"}])
         self.patches = [mock.patch.object(build, "HIER", self.tmp), mock.patch.object(build, "DATEN", self.daten),
+                        # main() liest ~/.claude.json und settings.json: hier aus einem leeren Home
+                        mock.patch.object(build, "HOME", self.tmp / "home"), mock.patch.object(build, "CLAUDE", self.tmp / "home/.claude"),
+                        mock.patch.object(build, "AGENTS", self.tmp / "home/.agents"),
                         mock.patch.object(build, "LOGO", self.tmp / "logo.svg"), self.werkzeuge,
                         mock.patch.object(build.werkzeuge, "quellcode_pruefen", return_value=[{"id": "/h/x", "ruht": True}]),
                         # sonst läsen die Tests die echten Einstellungen des Rechners
@@ -939,7 +930,7 @@ class HarnessWahl(unittest.TestCase):
         self.assertIsNone(json.loads((self.daten / "inventar.json").read_text())["bewertung_erstellt"])
 
     def test_lesefehler_und_ungenutzte_kommen_ins_inventar(self):
-        def inventar():
+        def inventar(*_):
             build.LESEFEHLER.append({"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"})
             return self.leeres_inventar(skills=[{"id": "skill:s", "name": "s", "im_kontext": True, "tokens": 5, "nutzung": None}])
         build.LESEFEHLER.append({"quelle": "vom letzten Lauf", "fehler": "…"})
@@ -1098,10 +1089,9 @@ class Eingebaute(unittest.TestCase):
         bewertung = {"eingebaut": [
             {"name": "design", "was": "Entwirft", "tokens": 5, "aktionen": {"<img src=x onerror=alert(1)>": {}}},
             {"was": "ohne Namen"}, "kein Objekt", {"name": "ohne-was"}]}
-        with mock.patch.object(build, "NUTZUNG", {}):
-            self.assertEqual(build.eingebaute(bewertung), [
-                {"name": "design", "was": "Entwirft", "tokens": 5, "nutzung": None},
-                {"name": "ohne-was", "was": "", "tokens": 0, "nutzung": None}])
+        self.assertEqual(build.eingebaute({}, bewertung), [
+            {"name": "design", "was": "Entwirft", "tokens": 5, "nutzung": None},
+            {"name": "ohne-was", "was": "", "tokens": 0, "nutzung": None}])
 
 
 class Lesefehler(unittest.TestCase):
@@ -1125,10 +1115,8 @@ class Lesefehler(unittest.TestCase):
             if wurzel.name == "kaputt":
                 raise RuntimeError("unerwartet")
             return echt(wurzel, *rest)
-        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "SETTINGS", {}), \
-                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}), \
-                mock.patch.object(build, "plugin_skill_dateien", side_effect=dateien):
-            liste, teile, hooks = build.plugins()
+        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "plugin_skill_dateien", side_effect=dateien):
+            liste, teile, hooks = build.plugins({}, {}, {})
         self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
         self.assertEqual(build.LESEFEHLER, [{"quelle": "Plugin kaputt@m", "fehler": "RuntimeError: unerwartet"}])
 
@@ -1138,12 +1126,12 @@ class Lesefehler(unittest.TestCase):
             (self.tmp / name / ".claude/skills/x/SKILL.md").write_text("---\nname: x\n---\n")
         echt = build.skill_eintrag
 
-        def eintrag(name, typ, datei, *rest):
+        def eintrag(cfg, settings, name, typ, datei, *rest):
             if "/A/" in str(datei):
                 raise RuntimeError("unerwartet")
-            return echt(name, typ, datei, *rest)
+            return echt(cfg, settings, name, typ, datei, *rest)
         with mock.patch.object(build, "skill_eintrag", side_effect=eintrag):
-            ids = [e["id"] for e in build.projekt_skills([str(self.tmp / "A"), str(self.tmp / "B")])]
+            ids = [e["id"] for e in build.projekt_skills({}, {}, {}, [str(self.tmp / "A"), str(self.tmp / "B")])]
         self.assertEqual(ids, ["skill:B/x"])
         self.assertEqual([f["quelle"] for f in build.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
 
@@ -1157,8 +1145,8 @@ class Lesefehler(unittest.TestCase):
                 raise RuntimeError("unerwartet")
             return echt(ordner, manifest)
         projekte = {str(self.tmp / n): {"mcpServers": {"q": {"command": "x"}}} for n in ("A", "B")}
-        with mock.patch.object(build, "GESPERRT", set()), mock.patch.object(build, "mcp_definitionen", side_effect=definitionen):
-            ids = [e["id"] for e in build.projekt_mcp(projekte)]
+        with mock.patch.object(build, "mcp_definitionen", side_effect=definitionen):
+            ids = [e["id"] for e in build.projekt_mcp(set(), projekte)]
         self.assertEqual(ids, ["mcp:B/q"])
         self.assertEqual([f["quelle"] for f in build.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
 
@@ -1182,8 +1170,7 @@ class Ungenutzt(unittest.TestCase):
 
 class Autoren(unittest.TestCase):
     def test_autoren_kein_objekt_bricht_nichts_ab(self):
-        with mock.patch.object(build, "BEWERTUNG", {"autoren": ["x"]}):
-            self.assertEqual(build.cli_quelle("mattpocock/skills")["autor"], "mattpocock")
+        self.assertEqual(build.cli_quelle("mattpocock/skills", build.autoren({"autoren": ["x"]}))["autor"], "mattpocock")
 
 
 class EindeutigeIds(unittest.TestCase):
@@ -1198,8 +1185,7 @@ class EindeutigeIds(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         (tmp / "Q").mkdir()
         (tmp / "Q/.mcp.json").write_text(json.dumps({"mcpServers": {"db": {"command": "a"}}}))
-        with mock.patch.object(build, "GESPERRT", set()):
-            alle = build.projekt_mcp({str(tmp / "Q"): {"mcpServers": {"db": {"command": "b"}}}})
+        alle = build.projekt_mcp(set(), {str(tmp / "Q"): {"mcpServers": {"db": {"command": "b"}}}})
         build.eindeutige_ids(alle)
         self.assertEqual({e["id"]: e["art"] for e in alle}, {"mcp:Q/db": ".mcp.json", "mcp:Q/db~lokal": "lokal"})
         self.assertEqual(build.aktionen(alle[1])["deinstallieren"]["argv"][-1], "local")
@@ -1228,9 +1214,8 @@ class FremdeDateien(unittest.TestCase):
         (wurzel / "hooks").mkdir(parents=True)
         (wurzel / "hooks/hooks.json").write_text(json.dumps({"hooks": ["echo"]}))
         (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
-        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "SETTINGS", {}), \
-                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
-            liste, _, hooks = build.plugins()
+        with mock.patch.object(build, "PLUGINS", self.tmp):
+            liste, _, hooks = build.plugins({}, {}, {})
         self.assertEqual((liste[0]["hooks"], hooks), ([], []))
 
     def test_unlesbares_projekt_wird_uebersprungen(self):
@@ -1241,15 +1226,14 @@ class FremdeDateien(unittest.TestCase):
             (projekt / ".claude/skills/x/SKILL.md").write_text("---\ndescription: X\n---\n")
         (gesperrt / ".claude/skills").chmod(0)
         self.addCleanup((gesperrt / ".claude/skills").chmod, 0o755)
-        self.assertEqual([e["id"] for e in build.projekt_skills([str(gut), str(gesperrt)])], ["skill:Gut/x"])
+        self.assertEqual([e["id"] for e in build.projekt_skills({}, {}, {}, [str(gut), str(gesperrt)])], ["skill:Gut/x"])
 
     def test_projekt_mcp_mit_fremden_einstellungen(self):
         q = self.tmp / "Q"
         (q / ".claude").mkdir(parents=True)
         (q / ".mcp.json").write_text("[]")
         (q / ".claude/settings.json").write_text("null")
-        with mock.patch.object(build, "GESPERRT", set()):
-            self.assertEqual([e["id"] for e in build.projekt_mcp({str(q): {"mcpServers": {"a": {"command": "x"}}}})], ["mcp:Q/a"])
+        self.assertEqual([e["id"] for e in build.projekt_mcp(set(), {str(q): {"mcpServers": {"a": {"command": "x"}}}})], ["mcp:Q/a"])
 
     def test_verlauf_mit_eintraegen_ohne_datum(self):
         pfad = self.tmp / "verlauf.json"
@@ -1430,9 +1414,8 @@ class PluginCommit(unittest.TestCase):
         (tmp / "p").mkdir()
         (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [
             {"scope": "user", "installPath": str(tmp / "p"), "version": "1.0", "gitCommitSha": "abc"}]}}))
-        with mock.patch.object(build, "PLUGINS", tmp), mock.patch.object(build, "SETTINGS", {}), \
-                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
-            liste, _, _ = build.plugins()
+        with mock.patch.object(build, "PLUGINS", tmp):
+            liste, _, _ = build.plugins({}, {}, {})
         self.assertEqual(liste[0]["commit"], "abc")
 
 
@@ -1496,9 +1479,8 @@ class Mods(unittest.TestCase):
     def test_plugin_bringt_mod_mit(self):
         wurzel = self.ordner("p", hooks={"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]})
         (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
-        with mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "SETTINGS", {"enabledPlugins": {"p@m": True}}), \
-                mock.patch.object(build, "CFG", {}), mock.patch.object(build, "BEWERTUNG", {}):
-            liste, _, hooks = build.plugins()
+        with mock.patch.object(build, "PLUGINS", self.tmp):
+            liste, _, hooks = build.plugins({}, {"enabledPlugins": {"p@m": True}}, {})
         self.assertEqual((liste[0]["hooks"], liste[0]["mods"]), (["Stop"], ["tool.call", "ui.render"]))
         self.assertEqual([(h["id"], h["plugin"], h["status"]) for h in hooks], [
             ("hook:p@m:Stop", "p@m", "aktiv"), ("hook:p@m:mod:tool.call", "p@m", "aktiv"), ("hook:p@m:mod:ui.render", "p@m", "aktiv")])
@@ -1514,9 +1496,8 @@ class Mods(unittest.TestCase):
         sitzung = self.ordner(".claude/dev-mods/abc/zaehler")
         umgebung, einstellung = self.ordner("u"), self.ordner("e")
         dirs = os.pathsep.join([str(umgebung), str(skill), str(self.tmp / "fehlt")])
-        with mock.patch.object(build, "CLAUDE", claude), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": dirs}), \
-                mock.patch.object(build, "SETTINGS", {"env": {"CLAUDE_CODE_PLUGIN_DIRS": str(einstellung)}}):
-            hooks = build.ordner_plugins()
+        with mock.patch.object(build, "CLAUDE", claude), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": dirs}):
+            hooks = build.ordner_plugins({"env": {"CLAUDE_CODE_PLUGIN_DIRS": str(einstellung)}})
         self.assertEqual(build.LESEFEHLER, [])
         je_ordner = {}
         for h in hooks:
@@ -1551,8 +1532,8 @@ class Mods(unittest.TestCase):
                 raise RuntimeError("unerwartet")
             return echt(datei, wurzel, *rest)
         with mock.patch.object(build, "CLAUDE", claude), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}), \
-                mock.patch.object(build, "SETTINGS", {}), mock.patch.object(build, "mod_eintraege", side_effect=eintraege):
-            hooks = build.ordner_plugins()
+                mock.patch.object(build, "mod_eintraege", side_effect=eintraege):
+            hooks = build.ordner_plugins({})
         self.assertEqual({Path(h["ordner"]).name for h in hooks}, {"gut"})
         self.assertEqual(build.LESEFEHLER, [{"quelle": f"Skill-Ordner {claude / 'skills/kaputt'}", "fehler": "RuntimeError: unerwartet"}])
 
@@ -1619,12 +1600,9 @@ class ProjektHooks(unittest.TestCase):
 
     def test_im_inventar_ohne_aktion_und_ohne_kontextlast(self):
         a = self.projekt("A", hooks={"SessionStart": self.STOP["Stop"]})
-        with mock.patch.object(build, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(build, "CFG", {"projects": {str(a): {}}}), \
-                mock.patch.object(build, "SETTINGS", {}), mock.patch.object(build, "BEWERTUNG", {}), \
-                mock.patch.object(build, "PLUGINS", self.tmp), mock.patch.object(build, "mcp_live", return_value=None), \
-                mock.patch.object(build, "transkripte", return_value=[]), mock.patch.object(build, "DATEN", self.tmp), \
-                mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
-            inventar = build.claude_inventar()
+        with mock.patch.object(build, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(build, "PLUGINS", self.tmp), \
+                mock.patch.object(build, "mcp_live", return_value=None), mock.patch.object(build, "transkripte", return_value=[]), mock.patch.object(build, "DATEN", self.tmp), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
+            inventar = build.claude_inventar({"projects": {str(a): {}}}, {}, {}, {})
         (h,) = inventar["projekt_hooks"]
         self.assertEqual((h["befehl"], inventar["hooks"]), (f'{a}/.claude/settings.json → "hooks" → "SessionStart" entfernen', []))
         self.assertNotIn("aktionen", h)
