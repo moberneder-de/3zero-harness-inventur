@@ -1164,7 +1164,8 @@ const ANWEISUNG = (() => {
   const strich = '<span class="leer">–</span>';
   const beimStart = zeilen => zeilen.filter(z => z.laedt).reduce((s, z) => s + z.tokens, 0);
   const beiBedarf = zeilen => zeilen.filter(z => z.status === "bei Bedarf").reduce((s, z) => s + z.tokens, 0);
-  const marken = z => [z.verwaltet && "verwaltet", z.geerbt && "aus dem Ordner darüber", ...z.marken.map(m => m === "Importe" ? `${z.importe} ${z.importe === 1 ? "Import" : "Importe"}, nicht mitgezählt` : m)]
+  const marken = z => [z.verwaltet && "verwaltet", z.geerbt && "aus dem Ordner darüber", ...z.marken.map(m => m === "Importe" ? `${z.importe} ${z.importe === 1 ? "Import" : "Importe"}, nicht mitgezählt`
+      : m.endsWith("am Limit") || m.endsWith("dem Limit") ? `${m}: ${zahl(z.limit_summe)} von ${zahl(150000)} Zeichen beim Start` : m)]
     .filter(Boolean).map(m => `<span class="tag">${esc(m)}</span>`).join("");
   /* „prüfen“ gibt es nur, wo build.py der Zeile einen Auftrag mitgibt: die CLAUDE.md eines Projekts, wenn der Skill dafür installiert ist */
   const knopf = z => { const a = Object.keys(z.aktionen || {})[0];
@@ -1176,7 +1177,10 @@ const ANWEISUNG = (() => {
       <td class="nowrap">${esc(z.art)}</td><td class="nowrap">${statusBadge(z.status)}</td>
       <td class="zahl">${z.pfad ? "≈ " + zahl(z.tokens) : strich}</td><td class="nowrap klein">${z.geaendert ? datum(z.geaendert) : strich}</td>
       ${TOKEN && !CODEX ? `<td class="nowrap">${knopf(z)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
-  return { beimStart, beiBedarf, tabelle };
+  /* am Projekt selbst zu sehen, ohne aufzuklappen: was Claude Code beim Start bemängelt oder bald bemängeln wird */
+  const limit = zeilen => { const z = zeilen.find(x => x.limit_summe); const m = z?.marken.find(x => x.endsWith("Limit"));
+    return m ? ` <span class="tag">${esc(m)}: ${zahl(z.limit_summe)} Zeichen</span>` : ""; };
+  return { beimStart, beiBedarf, limit, tabelle };
 })();
 function renderAnweisungen() {
   const liste = D.anweisungen || [];
@@ -1194,7 +1198,7 @@ function renderAnweisungen() {
     ? `<p class="klein" style="margin:14px 0 10px">Lädt in jede Sitzung: ≈ ${zahl(ANWEISUNG.beimStart(global))} Tokens.</p>` + ANWEISUNG.tabelle(global)
     : `<p class="leer">Keine globalen Anweisungen gefunden.</p>`;
   const jeProjekt = bereiche.length ? `<div class="tabelle"><table><thead><tr><th>Projekt</th><th class="zahl">Dateien</th><th class="zahl">Tokens beim Start</th><th class="zahl">bei Bedarf</th><th>Arten</th></tr></thead><tbody>${
-    bereiche.map(([b, z]) => `<tr class="haupt"><td class="name">${aufklapp(ordnerName(b))}<div class="klein">${esc(kurzPfad(b))}</div></td><td class="zahl">${z.length}</td>
+    bereiche.map(([b, z]) => `<tr class="haupt"><td class="name">${aufklapp(ordnerName(b))}${ANWEISUNG.limit(z)}<div class="klein">${esc(kurzPfad(b))}</div></td><td class="zahl">${z.length}</td>
       <td class="zahl">${ANWEISUNG.beimStart(z) ? "≈ " + zahl(ANWEISUNG.beimStart(z)) : strich}</td><td class="zahl">${ANWEISUNG.beiBedarf(z) ? "≈ " + zahl(ANWEISUNG.beiBedarf(z)) : strich}</td><td class="klein">${[...new Set(z.map(x => x.art))].map(esc).join(", ")}</td></tr>` +
       inhaltZeile(5, ANWEISUNG.tabelle(z))).join("")}</tbody></table></div>` +
       (weggelassen.length ? `<p class="klein">Nicht gezeigt, weil darin andere Projekte liegen: ${weggelassen.map(b => `<code>${esc(kurzPfad(b))}</code>`).join(", ")}. Was dort liegt, lädt nur in einer Sitzung direkt in diesem Ordner.</p>` : "")
@@ -1209,6 +1213,7 @@ function renderAnweisungen() {
         ["Memory", "<code>MEMORY.md</code> des Projekts, die Claude selbst schreibt. Geladen werden nur die ersten 200 Zeilen oder 25 KB."],
         ["AGENTS.md", "Liest Claude Code nur, wenn es im Projekt und darüber keine CLAUDE.md gibt. Sonst steht sie als „wirkungslos“ da."],
         ["groß", "Eine CLAUDE.md mit mehr als 200 Zeilen oder mehr als 5.000 Tokens. Die Doku von Claude Code rät zu unter 200 Zeilen: Längere Dateien kosten Kontext, und Claude hält sich schlechter daran. Was nur einen Teil des Codes betrifft, kann in eine Regel mit <code>paths</code> wandern und lädt dann erst bei Bedarf."],
+        ["über dem Limit", "Die Anweisungsdateien, die im Projekt beim Start laden, haben zusammen mit den globalen mehr als 150.000 Zeichen. Ab dieser Grenze warnt Claude Code beim Start einer Sitzung. Gezählt werden CLAUDE.md, Regeln ohne <code>paths</code> und AGENTS.md. „nahe am Limit“ steht ab 120.000 Zeichen da, bevor Claude Code warnt."],
         ["zwei CLAUDE.md", "Im Projekt liegen <code>CLAUDE.md</code> und <code>.claude/CLAUDE.md</code>. Claude Code lädt beide. Wer nur eine öffnet, hält sie leicht für die ganze Anleitung."],
         ["Tokens", "Geschätzt: Zeichen ÷ 4. Dateien, die eine Anweisung mit <code>@pfad</code> einbindet, zählen nicht mit."]],
       [TOKEN ? "„prüfen“ lässt Claude die CLAUDE.md eines Projekts mit dem Skill <code>claude-md-improver</code> bewerten: Note, Befunde und Vorschläge. Der Lauf liest nur, und nur im Projekt, dauert einige Minuten und verbraucht Kontingent. Den Knopf gibt es, wenn das Plugin <code>claude-md-management</code> installiert ist. Umgesetzt wird in einer Sitzung im Projekt, nicht hier: Der Bericht liegt dafür als Datei bereit, und der Befehl unter der Karte lässt Claude ihn nur noch umsetzen, ohne neu zu prüfen." : null,
