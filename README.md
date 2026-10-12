@@ -155,6 +155,7 @@ Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods ga
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
 - Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
+- Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium)
 
 Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst und dem Home-Verzeichnis.
 
@@ -165,6 +166,8 @@ python3 -m unittest
 ```
 
 Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`); den Mac-Weg (Papierkorb, Browser) prüft der lokale Lauf.
+
+Für das JavaScript in `template.html` gibt es keine Tests. Nach einem Umbau dort vergleicht `python3 seitenvergleich.py` das Dashboard mit dem aus dem letzten Commit: den sichtbaren Text aller Tabs und was die Knöpfe an Regeln und Anweisungen auslösen.
 
 ## Diagramme
 

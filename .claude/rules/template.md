@@ -1,6 +1,7 @@
 ---
 paths:
   - "template.html"
+  - "seitenvergleich.py"
   - "app-icon.svg"
   - "app-icon.png"
   - "render-app-icon.py"
@@ -61,10 +62,10 @@ Urteile über den Bestand kommen fertig aus dem Inventar: `umgesetzt`, `wirksam`
 Eine neue Regel dieser Art gehört nach `build.py` oder in den Leser, wo sie einen Test bekommt; im Template gibt es keinen.
 Im Template bleibt, was von der Wahl im Browser abhängt (`gewaehlt()`, `abweichung`, die Zahl der offenen Aktionen), alle Texte und `befehlText()`: Der leitet die Anzeige bewusst aus genau dem Schritt ab, den der Server ausführt.
 Kein Rückfall auf eine eigene Rechnung, falls ein Feld fehlt: Inventar und Dashboard entstehen im selben Lauf.
-Einen Umbau am Template prüft man ohne JS-Tests so: das Template mit einem festen Inventar füllen, von Brave mit `--headless=new --dump-dom` rendern lassen und den sichtbaren Text vor und nach dem Umbau vergleichen, für beide Harnesses und je einmal mit `null` und mit einem Wert in `<script id="token">`.
-Dabei auch einen Datensatz nehmen, in dem etwas offen ist: Am echten Rechner war die Ersparnis 0, und der Vergleich hätte eine falsche Rechnung dort nicht bemerkt.
+Einen Umbau am Template prüft `python3 seitenvergleich.py` ohne JS-Tests: Es füllt die Vorlage aus dem Arbeitsordner und die aus `HEAD` mit demselben Inventar, lässt beide von Brave ohne Fenster rendern (`--dump-dom`) und vergleicht den sichtbaren Text aller Tabs, als Datei und mit Aktionsknöpfen, für beide Inventare im Datenordner.
+Dabei auch ein Inventar mitgeben, in dem etwas offen ist (`python3 seitenvergleich.py <datei>`): Am echten Rechner war die Ersparnis 0, und der Vergleich hätte eine falsche Rechnung dort nicht bemerkt.
 Regeln und Anweisungen stehen nicht in `ALLE` und laufen nicht über die Warteschlange der Empfehlungen: ein Klick, eine eigene Rückfrage in Worten, dann `schalte()`.
 Die Rückfragen bleiben getrennt, weil sie Verschiedenes erklären; der Weg danach (ausführen, anderer Harness, Fehlermeldung, neu einlesen) stand für beide wortgleich da und ist jetzt einer.
 `befehlText()` kennt deshalb nur die Schritte der Einträge aus `ALLE`; die fünf Schritte von Regeln und Anweisungen erreichen es nie, Zweige dafür wären toter Code.
-Klicks prüft man ohne JS-Tests mit einem angehängten Skript in der gefüllten Seite: `fetch` und `frage()` ersetzen, jeden Knopf klicken und mitschreiben, was die Rückfrage sagt, was an den Server ginge und welche Meldung danach steht, je einmal mit Erfolg, Fehler und anderem Harness; vor und nach dem Umbau vergleichen.
+Dasselbe Skript prüft die Klicks an Regeln und Anweisungen: Es hängt ein Skript an die gefüllte Seite, das `fetch` und `frage()` ersetzt, jeden Knopf klickt und mitschreibt, was die Rückfrage sagt, was an den Server ginge und welche Meldung danach steht, je einmal mit Erfolg, Fehler und anderem Harness.
 Den `<dialog>` dabei nicht durchklicken: Sein `close` kommt in Brave ohne Fenster (`--virtual-time-budget`) verzögert an, und der Schritt landet beim nächsten Klick.

@@ -1222,6 +1222,17 @@ def claude_inventar(cfg, settings, bewertung, lock):
     }
 
 
+def seite(vorlage, daten):
+    """Das Dashboard: die Vorlage mit Logo, Icons und dem Inventar gefüllt. Die Daten zuletzt, damit ein Platzhalter in
+    einem Namen nicht ersetzt wird."""
+    # jedes < escapen, nicht nur </: Mit <!--<script aus einem Namen beendete das folgende </script> das Skript nicht mehr
+    einbettung = json.dumps(daten, ensure_ascii=False).replace("<", "\\u003c")
+    return (vorlage.replace("__LOGO__", data_uri(LOGO.read_bytes(), "image/svg+xml"))
+            .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
+            .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png"))
+            .replace("__DATEN__", einbettung))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Harness-Inventur für Claude Code oder Codex")
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
@@ -1286,13 +1297,7 @@ def main(argv=None):
              "bewertung_erstellt": datei_stand(DATEN / angaben["bewertung"]), **inhalt}
     harness.schreiben(DATEN / angaben["inventar"], json.dumps(daten, ensure_ascii=False, indent=1))
 
-    # jedes < escapen, nicht nur </: Mit <!--<script aus einem Namen beendete das folgende </script> das Skript nicht mehr
-    einbettung = json.dumps(daten, ensure_ascii=False).replace("<", "\\u003c")
-    vorlage = ((HIER / "template.html").read_text(encoding="utf-8")
-               .replace("__LOGO__", data_uri(LOGO.read_bytes(), "image/svg+xml"))
-               .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
-               .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png")))
-    harness.schreiben(DATEN / angaben["dashboard"], vorlage.replace("__DATEN__", einbettung))
+    harness.schreiben(DATEN / angaben["dashboard"], seite((HIER / "template.html").read_text(encoding="utf-8"), daten))
 
     print(f"{angaben['dashboard']} geschrieben ({angaben['name']}): {len(daten['mcp'])} MCP-Server, {len(daten['plugins'])} Plugins, "
           f"{len(daten['skills'])} Skills/Befehle/Agenten, {len(daten['projekt_skills'])} Projekt-Skills, "

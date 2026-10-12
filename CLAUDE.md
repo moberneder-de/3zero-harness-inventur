@@ -13,11 +13,12 @@ python3 -m unittest                      # alle Tests
 python3 -m unittest test_build.Mods      # eine Testklasse
 python3 build.py                         # Bestand neu einlesen, schreibt in ~/.3zero-harness-inventur
 python3 server.py                        # Dashboard mit Knöpfen auf http://127.0.0.1:8765
+python3 seitenvergleich.py               # nach einem Umbau an template.html: gleicher Text, gleiche Klicks wie in HEAD?
 python3 wochenlauf.py einrichten         # wöchentlicher Lauf, montags 9 Uhr; nur nach Bestätigung
 python3 wochenlauf.py entfernen
 ```
 
-- Voraussetzung: Python 3.11 oder neuer (`tomllib`), keine fremden Pakete. Ausnahme: `render-app-icon.py` braucht Pillow und `qlmanage` (nur macOS).
+- Voraussetzung: Python 3.11 oder neuer (`tomllib`), keine fremden Pakete. Ausnahmen: `render-app-icon.py` braucht Pillow und `qlmanage` (nur macOS), `seitenvergleich.py` einen Chromium-Browser.
 - `build.py --harness codex` merkt sich Codex als Harness: Ein laufender Server zeigt danach das Codex-Dashboard. Zum Ausprobieren stattdessen `codex.inventar()` oder eine einzelne Funktion in einem Skript aufrufen.
 - Oberfläche prüfen, ohne den Datenordner zu ändern: `template.html` mit einem Inventar aus dem Datenordner füllen (`__DATEN__`, `__LOGO__`, `__ICON__`, `__APPICON__` ersetzen), als `$TMPDIR/vorschau.html` schreiben und aufnehmen:
 
