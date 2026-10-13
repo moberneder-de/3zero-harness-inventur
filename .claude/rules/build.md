@@ -7,7 +7,7 @@ paths:
 # build.py
 
 `build.py` ist der Startbefehl: Es lässt den Bestand lesen (`claude.inventar()` für Claude Code, `codex.inventar()` für Codex), ergänzt, was für beide Harnesses gilt, und schreibt `dashboard.html` und `inventar.json` in den Datenordner.
-Wie Claude Code gelesen wird, steht in `claude.md`, für Codex in `codex.md`; hier steht nur, was nach dem Leser kommt.
+Wie Claude Code gelesen wird, steht in `claude-py.md`, für Codex in `codex.md`; hier steht nur, was nach dem Leser kommt.
 Beide sind erzeugt: nicht von Hand bearbeiten.
 Geschrieben wird über `harness.schreiben()` (erst eine eigene Zwischendatei je Aufruf per `mkstemp`, dann ein Tausch; ein fester Name `<datei>.neu` kollidierte bei zwei gleichzeitigen Läufen), ebenso Verlauf, `harness.json` und die zurückgeschriebene Bewertung: Der Server liest diese Dateien bei jedem Klick und Seitenaufruf, auch während `build.py` läuft.
 Mit `--harness codex` schreibt es stattdessen über `codex.py` `inventar-codex.json` und `dashboard-codex.html`.

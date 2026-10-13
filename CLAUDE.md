@@ -51,7 +51,7 @@ Diese Vorgaben stehen auch in den Regeln der Module, mit ihrem Grund. Hier stehe
 Die Einzelheiten zu jedem Modul stehen in `.claude/rules/<Modul>.md`: wie es arbeitet und warum es so gebaut ist, meist mit dem Fehler, der dazu führte. Claude Code lädt eine Regel, sobald es eine ihrer Dateien mit Read, Edit oder Write anfasst (nachgemessen mit `claude -p`), aber nicht über die Shell (`grep`, `sed`, ein Skript). Vor einer Änderung an einem Modul deshalb seine Regel lesen, wenn sie nicht schon im Kontext steht. Neues Wissen zu einem Modul gehört in seine Regel, ein Satz je Zeile; hierher nur, was für jede Sitzung gilt.
 
 - `build.py` ist der Startbefehl: lässt den Bestand lesen und schreibt Inventar, Verlauf und Dashboard, für beide Harnesses. → `.claude/rules/build.md`
-- `claude.py` liest den Bestand von Claude Code, das Gegenstück zu `codex.py`; `mcp_direkt.py` fragt HTTP-MCP-Server selbst. → `.claude/rules/claude.md`
+- `claude.py` liest den Bestand von Claude Code, das Gegenstück zu `codex.py`; `mcp_direkt.py` fragt HTTP-MCP-Server selbst. → `.claude/rules/claude-py.md` (nicht `claude.md`: Auf dem Mac gälte die Datei als `CLAUDE.md` und lüde bei jeder Regel mit)
 - `harness.py`: Datenordner (`DATEN`), gemerkter Harness (`harness.json`) und die feste Version in `SKILLS_CLI`; von `build.py`, `claude.py`, `codex.py` und `server.py` importiert. Keine eigene Regel, die Vorgaben stehen oben unter „Was immer gilt“.
 - `codex.py` liest denselben Bestand aus `~/.codex` und `~/.agents`, in derselben Datenform. → `.claude/rules/codex.md`
 - `bestand.py`: was beide Leser brauchen (lesen ohne Absturz, IDs, Zugangsdaten verdecken, `bewerte()`); importiert weder `build` noch `claude` noch `codex`. → `.claude/rules/bestand.md`
