@@ -448,7 +448,7 @@ class Mcp(CodexOrdner):
 
 class Befehle(unittest.TestCase):
     def test_jeder_befehl_zum_kopieren_behandelt_namen_als_text(self):
-        """Wie in build.py: Namen kommen von außen und dürfen beim Einfügen ins Terminal nichts ausführen."""
+        """Wie in claude.py: Namen kommen von außen und dürfen beim Einfügen ins Terminal nichts ausführen."""
         import subprocess
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -551,7 +551,7 @@ class HooksUndProjekte(CodexOrdner):
         self.assertNotIn(GEHEIM, json.dumps(mcp))
 
     def test_kaputtes_projekt_kostet_nur_sich(self):
-        """Wie in build.py: Ein unerwarteter Fehler kostet nur dieses Projekt und steht im Dashboard."""
+        """Wie in claude.py: Ein unerwarteter Fehler kostet nur dieses Projekt und steht im Dashboard."""
         for name in ("A", "B"):
             self.skill(self.tmp / name / ".agents/skills", "x")
         echt = codex.skill_eintrag
@@ -616,7 +616,7 @@ class HooksUndProjekte(CodexOrdner):
         self.assertEqual([f["quelle"] for f in codex.LESEFEHLER], [f"Projekt {self.tmp / 'A'}"])
 
     def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
-        """Wie in build.py: Zwei Projekte namens „app“ teilten sich sonst eine ID, und eine Aktion träfe das erste."""
+        """Wie in claude.py: Zwei Projekte namens „app“ teilten sich sonst eine ID, und eine Aktion träfe das erste."""
         a, b = self.tmp / "a/app", self.tmp / "b/app"
         for projekt in (a, b):
             self.skill(projekt / ".agents/skills", "x")
@@ -737,7 +737,7 @@ class Aktionen(unittest.TestCase):
 
 class Umgesetzt(unittest.TestCase):
     def test_mit_den_merkmalen_von_codex(self):
-        """Wie build.umgesetzt, aber: „aus“ zählt als abgeschaltet, ein Plugin lädt auch „im Konto“, nur manuell heißt „nur $“."""
+        """Wie claude.umgesetzt, aber: „aus“ zählt als abgeschaltet, ein Plugin lädt auch „im Konto“, nur manuell heißt „nur $“."""
         e = lambda id, empfehlung, **felder: {"id": id, "bewertung": {"empfehlung": empfehlung}, "override": None, "gesperrt": False, **felder}
         faelle = [
             (e("skill:a", "abschalten", status="aus"), True),

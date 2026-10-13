@@ -1,6 +1,6 @@
 """Harness-Inventur für Codex.
 
-Liest ~/.codex und ~/.agents in dieselbe Datenform, die build.py für Claude Code erzeugt, und wird von
+Liest ~/.codex und ~/.agents in dieselbe Datenform, die claude.py für Claude Code erzeugt, und wird von
 build.py mit `--harness codex` aufgerufen. Umgebungswerte von MCP-Servern (env, Tokens, Header) übernimmt
 es nie. Codex führt keine Nutzungszähler; die Nutzung stammt aus den Sitzungsprotokollen in ~/.codex/sessions.
 """
@@ -663,7 +663,7 @@ def aktionen(e):
 
 
 def umgesetzt(e):
-    """Gilt die eigene Empfehlung des Eintrags schon? Das Gegenstück zu aktionen(), wie in build.py, mit den Merkmalen
+    """Gilt die eigene Empfehlung des Eintrags schon? Das Gegenstück zu aktionen(), wie in claude.py, mit den Merkmalen
     von Codex: abgeschaltet heißt hier „deaktiviert“ oder „aus“, ein Plugin lädt mit jedem Status aus LAEDT, und
     „nur manuell“ heißt „nur $“."""
     b = e.get("bewertung")

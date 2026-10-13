@@ -460,7 +460,7 @@ const JE_SITZUNG = [...D.skills, ...D.hooks, ...D.mcp];
 const ANWEISUNGEN_GLOBAL = (D.anweisungen || []).filter(z => z.bereich === "global" && z.laedt);
 const tokensGesamt = D.kontextlast;
 /* Ob eine Empfehlung schon umgesetzt ist (`umgesetzt` je Eintrag) und was die offenen sparen (`ersparnis`), rechnen
-   build.py und codex.py: Dort gibt es Tests dafür, und die Merkmale unterscheiden sich je Harness */
+   claude.py und codex.py: Dort gibt es Tests dafür, und die Merkmale unterscheiden sich je Harness */
 
 /* Auswahl der Aktionen (nur mit server.py): vorbelegt aus der eigenen Empfehlung, Abweichungen merkt sich der Browser */
 const STANDARD = { "entfernen": "deinstallieren", "abschalten": "deaktivieren", "nur manuell": "nur manuell" };
@@ -494,7 +494,7 @@ function befehlText(e, a) {
   if (s.nur_manuell) return `${s.nur_manuell}/agents/openai.yaml → policy: allow_implicit_invocation: false`;
   if (s.papierkorb) return `${s.papierkorb} → Papierkorb`;
   if (s.hook_entfernen) return `~/.claude/settings.json → ${s.hook_entfernen === "statusLine" ? '"statusLine"' : `"hooks" → "${s.hook_entfernen}"`} entfernen`;
-  /* Einfache Anführungszeichen wie shellwort() in build.py: in doppelten blieben `, $ und \ wirksam,
+  /* Einfache Anführungszeichen wie shellwort() in bestand.py: in doppelten blieben `, $ und \ wirksam,
      ein Projektpfad mit $(…) führte beim Einfügen ins Terminal etwas anderes aus, als dasteht. */
   const wort = x => /^[\w@%+=:,./-]+$/.test(x) ? x : "'" + String(x).replaceAll("'", "'\\''") + "'";
   const argv = s.argv.map(wort).join(" ");
@@ -1011,10 +1011,10 @@ function renderProjekte() {
   const strich = '<span class="leer">–</span>';
   const teil = (titel, html) => html ? `<p class="label">${titel}</p>${html}` : "";
   const spalten = je(9, 6);
-  /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner). Lädt dort aber etwas, bleibt er stehen:
+  /* ~ oder ein Ordner voller Projekte ist selbst keins (claude.sammelordner). Lädt dort aber etwas, bleibt er stehen:
      Projekt-Skills und Projekt-Server zeigt nur dieser Tab. */
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));
-  /* Ein gelöschtes Projekt bleibt stehen, solange dort Tokens gemessen sind (build.fehlende_ordner): mit Marke statt unsichtbar */
+  /* Ein gelöschtes Projekt bleibt stehen, solange dort Tokens gemessen sind (claude.fehlende_ordner): mit Marke statt unsichtbar */
   const ordnerFehlt = new Set((D.ordner_fehlt || []).map(kurzPfad));
   const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.hooks.length && !p.aus.length).map(([pfad]) => pfad);
   weggelassen.forEach(pfad => projekte.delete(pfad));
@@ -1170,7 +1170,7 @@ function renderAnweisungen() {
   const liste = D.anweisungen || [];
   const strich = '<span class="leer">–</span>';
   const global = liste.filter(z => z.bereich === "global");
-  /* ~ oder ein Ordner voller Projekte ist selbst keins (build.sammelordner), wie im Tab „Projekte“. Dort lief einmal eine
+  /* ~ oder ein Ordner voller Projekte ist selbst keins (claude.sammelordner), wie im Tab „Projekte“. Dort lief einmal eine
      Sitzung, und seither liegt für ihn eine MEMORY.md da, die in keinem der Projekte darunter lädt. Eine CLAUDE.md von
      dort steht in jedem dieser Projekte als geerbt. */
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));

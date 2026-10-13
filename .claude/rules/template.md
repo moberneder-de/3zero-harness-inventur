@@ -34,7 +34,7 @@ Die Navigation hat zwei Ebenen: sieben Einträge oben, davon drei Gruppen („Au
 Jeder Tab bleibt ein eigener `<section>` mit seiner Adresse (`#mcp`, `#modelle`); `zeigeTab()` liest die Gruppe aus der zweiten Zeile ab, ein neuer Tab braucht also nur dort einen Link.
 Vierzehn Tabs nebeneinander waren nach vier Ordnungen gewachsen (Art, Ort, Thema, Aufgabe) und brachen in zwei Zeilen um.
 Der Tab „Projekte“ zeigt je Projekt auch dessen Regeln und Modelle, mit denselben Tabellen wie die Tabs „Berechtigungen“ und „Modelle“ (`RECHT`, `MESSUNG`): zwei Sichten auf dieselben Daten, je Projekt und über alle Projekte.
-Sammelordner lässt der Tab weg (`sammelordner()` in `build.py`, Feld `sammelordner`): eingetragene Ordner, in denen andere eingetragene Projekte liegen und die selbst kein Git-Repo sind, also `~` oder ein Ordner voller Projekte.
+Sammelordner lässt der Tab weg (`sammelordner()` in `claude.py`, Feld `sammelordner`): eingetragene Ordner, in denen andere eingetragene Projekte liegen und die selbst kein Git-Repo sind, also `~` oder ein Ordner voller Projekte.
 Claude Code trägt jeden Ordner ein, in dem einmal eine Sitzung lief.
 Lädt dort ein Projekt-Skill oder Projekt-Server, bleibt der Ordner stehen, denn die zeigt nur dieser Tab; seine Regeln und Tokens stehen weiter in „Berechtigungen“ und „Modelle“.
 Wo je Projekt etwas steht (Tab „Projekte“, „Alle Regeln je Projekt“, Modelle „Je Projekt“), ist es eine Tabelle mit einer Zeile je Projekt, die sich per Klick aufklappt, wie bei Skills und MCP-Servern; lose `<details>` untereinander zeigten den Namen groß und die Zahlen klein dahinter.

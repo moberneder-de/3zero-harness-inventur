@@ -11,6 +11,7 @@
         "label": "Vom Bestand zum Dashboard",
         "focus": [
           "claudecfg",
+          "claudepy",
           "build",
           "daten",
           "server",
@@ -25,6 +26,7 @@
           "claudecfg",
           "codexcfg",
           "agents",
+          "claudepy",
           "build",
           "codexpy"
         ],
@@ -57,17 +59,18 @@
         "label": "Messen und melden",
         "focus": [
           "wochenlauf",
+          "claudepy",
           "build",
           "berechtigungen",
           "mcpdirekt",
           "mcpnetz"
         ],
-        "note": "wochenlauf.py startet build.py; das fragt HTTP-MCP-Server selbst und liest Anweisungen, Rechte und gelaufene Modelle."
+        "note": "wochenlauf.py startet build.py; der Leser fragt HTTP-MCP-Server selbst, build.py liest Anweisungen, Rechte und gelaufene Modelle."
       }
     ],
     "viewBox": [
       1240,
-      560
+      600
     ]
   },
   "components": [
@@ -78,7 +81,7 @@
       "sublabel": "~/.claude, ~/.claude.json",
       "pos": [
         40,
-        70
+        110
       ],
       "size": [
         170,
@@ -92,7 +95,7 @@
       "sublabel": "~/.agents",
       "pos": [
         40,
-        216
+        256
       ],
       "size": [
         170,
@@ -107,7 +110,7 @@
       "sublabel": "~/.codex",
       "pos": [
         40,
-        362
+        402
       ],
       "size": [
         170,
@@ -121,7 +124,21 @@
       "sublabel": "MCP-Server aus Quellcode",
       "pos": [
         200,
-        470
+        510
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "claudepy",
+      "type": "backend",
+      "label": "claude.py",
+      "sublabel": "liest den Bestand",
+      "pos": [
+        390,
+        110
       ],
       "size": [
         170,
@@ -132,10 +149,10 @@
       "id": "build",
       "type": "backend",
       "label": "build.py",
-      "sublabel": "liest den Bestand",
+      "sublabel": "startet, ergänzt, schreibt",
       "pos": [
         390,
-        120
+        256
       ],
       "size": [
         170,
@@ -149,7 +166,7 @@
       "sublabel": "derselbe Bestand aus Codex",
       "pos": [
         390,
-        332
+        402
       ],
       "size": [
         170,
@@ -163,7 +180,7 @@
       "sublabel": "Laufzeiten, MCP-Quellcode",
       "pos": [
         550,
-        470
+        510
       ],
       "size": [
         170,
@@ -176,8 +193,8 @@
       "label": "~/.3zero-harness-inventur",
       "sublabel": "Bewertung, Inventar, Verlauf",
       "pos": [
-        730,
-        216
+        770,
+        256
       ],
       "size": [
         190,
@@ -191,8 +208,8 @@
       "label": "Dashboard",
       "sublabel": "127.0.0.1:8765, mit Schlüssel",
       "pos": [
-        1030,
-        106
+        1060,
+        146
       ],
       "size": [
         170,
@@ -205,8 +222,8 @@
       "label": "server.py",
       "sublabel": "Ausliefern und Aktionen",
       "pos": [
-        1030,
-        216
+        1060,
+        256
       ],
       "size": [
         170,
@@ -219,8 +236,8 @@
       "label": "Hintergrundlauf",
       "sublabel": "claude -p bzw. codex exec",
       "pos": [
-        1030,
-        382
+        1060,
+        422
       ],
       "size": [
         170,
@@ -235,7 +252,7 @@
       "sublabel": "endoflife.date, npm, GitHub",
       "pos": [
         870,
-        470
+        510
       ],
       "size": [
         170,
@@ -249,7 +266,7 @@
       "label": "wochenlauf.py",
       "sublabel": "montags, meldet nur Neues",
       "pos": [
-        390,
+        580,
         0
       ],
       "size": [
@@ -263,7 +280,7 @@
       "label": "Drei Lesemodule",
       "sublabel": "Anweisungen, Rechte, Modelle",
       "pos": [
-        580,
+        790,
         0
       ],
       "size": [
@@ -277,7 +294,7 @@
       "label": "mcp_direkt.py",
       "sublabel": "initialize, tools/list",
       "pos": [
-        790,
+        390,
         0
       ],
       "size": [
@@ -291,8 +308,8 @@
       "label": "MCP im Netz",
       "sublabel": "nur HTTP, ohne Zugang",
       "pos": [
-        1030,
-        0
+        130,
+        8
       ],
       "size": [
         170,
@@ -304,14 +321,14 @@
     {
       "id": "claude-lesen",
       "from": "claudecfg",
-      "to": "build",
+      "to": "claudepy",
       "label": "Plugins, Skills, Hooks",
       "variant": "emphasis"
     },
     {
-      "id": "agents-build",
+      "id": "agents-claude",
       "from": "agents",
-      "to": "build",
+      "to": "claudepy",
       "label": "auch in Claude Code"
     },
     {
@@ -327,12 +344,18 @@
       "label": "Plugins, Skills, Apps"
     },
     {
-      "id": "build-codex",
-      "from": "build",
-      "to": "codexpy",
+      "id": "claude-build",
+      "from": "claudepy",
+      "to": "build",
+      "label": "Bestand",
+      "variant": "emphasis"
+    },
+    {
+      "id": "codex-build",
+      "from": "codexpy",
+      "to": "build",
       "label": "bei --harness codex",
-      "variant": "dashed",
-      "labelDy": 70
+      "variant": "dashed"
     },
     {
       "id": "build-daten",
@@ -340,10 +363,8 @@
       "to": "daten",
       "label": "schreibt Inventar und Dashboard",
       "variant": "emphasis",
-      "labelAt": [
-        646,
-        138
-      ]
+      "fromSide": "right",
+      "toSide": "left"
     },
     {
       "id": "build-werkzeuge",
@@ -408,7 +429,9 @@
       "id": "wochenlauf-build",
       "from": "wochenlauf",
       "to": "build",
-      "label": "startet"
+      "label": "startet",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "build-berechtigungen",
@@ -417,8 +440,8 @@
       "label": "Texte, Rechte, Modelle"
     },
     {
-      "id": "build-mcpdirekt",
-      "from": "build",
+      "id": "claude-mcpdirekt",
+      "from": "claudepy",
       "to": "mcpdirekt",
       "label": "MCP-Server"
     },
@@ -434,7 +457,7 @@
       "dot": "cyan",
       "title": "Werkzeug im Repo",
       "items": [
-        "build.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; mcp_direkt.py fragt HTTP-MCP-Server selbst",
+        "claude.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; build.py startet den Leser und schreibt; mcp_direkt.py fragt HTTP-MCP-Server selbst",
         "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief",
         "anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md",
         "server.py liefert aus und führt Aktionen aus, konfig.py ändert dafür die Konfigurationsdateien; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",

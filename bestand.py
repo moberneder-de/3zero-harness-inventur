@@ -1,4 +1,4 @@
-"""Was beide Leser des Bestands brauchen: build.py für Claude Code und codex.py für Codex.
+"""Was beide Leser des Bestands brauchen: claude.py für Claude Code und codex.py für Codex.
 
 Lesen ohne Absturz, IDs, Hooks, Ziele von MCP-Servern ohne Zugangsdaten, Wörter für Befehle zum Kopieren,
 der Update-Vergleich für Skills aus `npx skills` und das Anhängen der Bewertung. Nichts hier weiß, welcher
@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -23,6 +24,16 @@ def lies_json(pfad):
     except (OSError, ValueError):
         return {}
     return daten if isinstance(daten, dict) else {}
+
+
+HOOK_TAGE = 14  # so weit zurück zählen Transkripte und Sitzungen: Hook-Ausgaben, MCP-Messung und der Tab „Modelle“
+
+
+def zeitgrenze():
+    """Ab wann ein Ereignis zählt, als ISO-Zeitstempel in UTC wie die Transkripte. Die Dateiauswahl in
+    `transkripte()` reicht nicht: Wird eine alte Sitzung fortgesetzt, ist ihre Datei frisch, ihre Ereignisse nicht.
+    Steht hier und nicht in claude.py, weil build.py das Fenster auch für die Modelle unter Codex braucht."""
+    return (datetime.now(timezone.utc) - timedelta(days=HOOK_TAGE)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 # Unerwartete Fehler je Plugin oder Projekt: Sie kosten nur diese Quelle und stehen im Dashboard. Ein Absturz
