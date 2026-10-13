@@ -17,7 +17,8 @@ Der Schritt kommt aus dem Inventar, einer Datei, die auch andere schreiben könn
 Die Antwort ist immer `{"ok", "ausgabe"}`; den Text zeigt das Dashboard, wie er ist.
 Eine `settings.json`, die kein JSON ist, fängt das Modul nicht ab: `json.loads` wirft, bevor etwas geschrieben ist, und der Handler in `server.py` macht daraus die Fehlantwort.
 `nur_manuell_gesetzt()` nutzt auch `codex.py` beim Einlesen: Läsen Leser und Schreiber `allow_implicit_invocation` verschieden, meldete das Dashboard „erledigt“, und der Bestand zeigte es nicht.
-`codex.py` importiert von hier und nicht umgekehrt, weil `codex.py` `build.py` nachzieht und das beim Laden Dateien vom Rechner liest.
+`codex.py` importiert von hier und nicht umgekehrt: Als das entstand, zog `codex.py` noch `build.py` nach, und das las beim Laden Dateien vom Rechner.
+Beides gilt nicht mehr (`codex.py` holt seine Funktionen aus `bestand.py`, gelesen wird erst in `main()`), die Richtung ist geblieben: `konfig.py` importiert nur `harness`.
 Eine neue Schritt-Art braucht einen Zweig in `Konfig.ausfuehren`; `server.py` muss von ihr nichts wissen.
 `test_konfig.py` ruft das Modul direkt auf Temp-Dateien auf; in `test_server.py` beweist ein Test je Schritt-Art nur noch den Weg vom Inventar zur Datei.
 
