@@ -27,7 +27,7 @@ import codex
 import harness
 import modelle
 import werkzeuge
-from bestand import HOOK_TAGE, LESEFEHLER, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
+from bestand import MESS_TAGE, LESEFEHLER, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
 
 HIER = Path(__file__).resolve().parent
 DATEN = harness.DATEN  # Bewertung, Inventar, Dashboard und harness.json: alles außerhalb des Repos
@@ -100,14 +100,14 @@ def rechte_aktionen(zeilen):
 def modelle_lesen(h, inhalt, cfg):
     """Der Tab „Modelle“ des jeweiligen Harness: was eingestellt ist und was lief, im selben Zeitfenster wie die Hooks."""
     if h == "codex":
-        grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
+        grenze = datetime.now().timestamp() - MESS_TAGE * 86400
         frisch = [d for d in codex.sitzungen() if d.is_file() and d.stat().st_mtime >= grenze]
         ergebnis = modelle.codex(codex.lies_toml(codex.CODEX / "config.toml"), frisch, zeitgrenze(), codex.HOME)
     else:
         dateien = [{"bereich": e.get("projekt") or "global", "eintrag": f"{e.get('typ', 'Skill')} {e['name']}", "pfad": e["pfad"],
                     "kopf": frontmatter(e["pfad"])} for e in inhalt.get("skills", []) + inhalt.get("projekt_skills", []) if e.get("pfad")]
         ergebnis = modelle.claude(claude.HOME, (cfg.get("projects") or {}).keys(), dateien, claude.transkripte(), zeitgrenze())
-    return {**ergebnis, "tage": HOOK_TAGE}
+    return {**ergebnis, "tage": MESS_TAGE}
 
 
 
@@ -304,7 +304,7 @@ def main(argv=None):
         inhalt["modelle"] = modelle_lesen(h, inhalt, cfg)
     except Exception as fehler:
         lesefehler("Modelle", fehler)
-        inhalt["modelle"] = {"eingestellt": [], "gemessen": [], "tage": HOOK_TAGE}
+        inhalt["modelle"] = {"eingestellt": [], "gemessen": [], "tage": MESS_TAGE}
     if h != "codex":  # unter Codex sind gemessene Ordner oft keine Projekte, und [projects] ohne Ordner fällt schon in codex.py weg
         inhalt["ordner_fehlt"] = claude.fehlende_ordner(inhalt, (cfg.get("projects") or {}).keys())
     try:

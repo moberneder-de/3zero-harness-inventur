@@ -26,14 +26,14 @@ def lies_json(pfad):
     return daten if isinstance(daten, dict) else {}
 
 
-HOOK_TAGE = 14  # so weit zurück zählen Transkripte und Sitzungen: Hook-Ausgaben, MCP-Messung und der Tab „Modelle“
+MESS_TAGE = 14  # so weit zurück zählen Transkripte und Sitzungen: Hook-Ausgaben, MCP-Messung und der Tab „Modelle“
 
 
 def zeitgrenze():
     """Ab wann ein Ereignis zählt, als ISO-Zeitstempel in UTC wie die Transkripte. Die Dateiauswahl in
     `transkripte()` reicht nicht: Wird eine alte Sitzung fortgesetzt, ist ihre Datei frisch, ihre Ereignisse nicht.
     Steht hier und nicht in claude.py, weil build.py das Fenster auch für die Modelle unter Codex braucht."""
-    return (datetime.now(timezone.utc) - timedelta(days=HOOK_TAGE)).strftime("%Y-%m-%dT%H:%M:%S")
+    return (datetime.now(timezone.utc) - timedelta(days=MESS_TAGE)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 # Unerwartete Fehler je Plugin oder Projekt: Sie kosten nur diese Quelle und stehen im Dashboard. Ein Absturz

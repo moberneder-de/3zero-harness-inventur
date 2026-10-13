@@ -10,7 +10,7 @@ paths:
 
 `claude.py` liest den Bestand von Claude Code aus `~/.claude`, `~/.claude.json` und `~/.agents`, in die Datenform, die `template.html` erwartet; `build.py` ruft `claude.inventar()` auf und schreibt das Ergebnis.
 Es ist das Gegenstück zu `codex.py` und war bis Oktober 2026 der vordere Teil von `build.py`: Der Leser für Codex hatte eine eigene Datei, der für Claude Code steckte im Startbefehl.
-`claude.py` importiert `build` nicht, sonst entstünde wieder der Kreis, den `bestand.md` beschreibt; was Leser und `build.py` beide brauchen (`HOOK_TAGE`, `zeitgrenze()`), liegt deshalb in `bestand.py`.
+`claude.py` importiert `build` nicht, sonst entstünde wieder der Kreis, den `bestand.md` beschreibt; was Leser und `build.py` beide brauchen (`MESS_TAGE`, `zeitgrenze()`), liegt deshalb in `bestand.py`.
 `HOME`, `CLAUDE`, `AGENTS`, `PLUGINS` und `CODEX` gibt es nur hier, `build.py` schreibt `claude.HOME`: Mit einer zweiten Kopie ersetzte ein Test nur eine, und die andere läse den echten Rechner.
 Aus demselben Grund schreibt `build.py` `import claude` und nicht `from claude import …`: Ein Test, der am falschen Modul ersetzt, schlägt dann mit `AttributeError` fehl, statt still nichts zu ersetzen.
 Der Datenordner ist wie in `codex.py` `harness.DATEN`; ein Test, der `claude.inventar()` aufruft, ersetzt `claude.harness.DATEN`, sonst schriebe der `Zwischenspeicher` in den echten Datenordner.
@@ -33,7 +33,7 @@ Codex kennt keine Mods, aber Hooks je Projekt: `projekt_hooks()` in `codex.py` l
 Belegt an der Doku und an `codex-rs/hooks/src/engine/discovery.rs`, nicht am laufenden Codex ausprobiert.
 Der Status folgt dem Vertrauen in das Projekt („aktiv“ oder „nicht vertraut“), wie bei den Projekt-Servern.
 Codex führt einen Hook außerdem erst aus, wenn der Benutzer ihn mit `/hooks` geprüft hat; das hängt an einem Hash je Hook in `hooks.state` und steht nicht im Inventar, auch bei den globalen Hooks nicht: „aktiv“ heißt dort nur „würde laden“.
-Was Hooks an Claude zurückgeben, misst `claude.py` in den Transkripten der letzten `HOOK_TAGE` Tage unter `~/.claude/projects`.
+Was Hooks an Claude zurückgeben, misst `claude.py` in den Transkripten der letzten `MESS_TAGE` Tage unter `~/.claude/projects`.
 Aus denselben Transkripten kommen die Laufzeiten der Hooks (`durationMs` in jeder Hook-Ausgabe und in der Zusammenfassung am Turn-Ende, die auch Stop-Hooks ohne Ausgabe erfasst) und je MCP-Server die Zahl seiner Werkzeuge, seine Aufrufe und sein Anweisungsblock in Tokens.
 Codex protokolliert weder Werkzeuglisten noch Hook-Laufzeiten: dort bleiben diese Felder `null` und das Dashboard schreibt „nicht gemessen“.
 HTTP-Server ohne Zugangsdaten fragt `mcp_direkt.py` deshalb selbst, in beiden Harnesses (`initialize`, `tools/list`, einmal am Tag über den `Zwischenspeicher` der Werkzeuge, Schlüssel ist ein Hash der URL, weil in der Query ein Geheimnis stehen kann); seine Werte gehen denen aus den Transkripten vor (`messung`: `direkt` oder `Transkript`).

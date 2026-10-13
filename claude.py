@@ -21,7 +21,7 @@ from pathlib import Path
 import harness
 import mcp_direkt
 import werkzeuge
-from bestand import (HOOK_TAGE, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
+from bestand import (MESS_TAGE, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
                      papierkorb_befehl, projekt_ids, shellwort, updates_markieren, verdecken, werkzeug_praefix, zeitgrenze, ziel_text)
 
 HOME = Path.home()
@@ -415,7 +415,7 @@ def an_claude(ereignis, stdout):
 
 
 def transkripte():
-    grenze = datetime.now().timestamp() - HOOK_TAGE * 86400
+    grenze = datetime.now().timestamp() - MESS_TAGE * 86400
     # rglob: Hooks laufen auch in Subagenten, deren Transkripte liegen eine Ebene tiefer
     def frisch(d):
         try:
@@ -1036,7 +1036,7 @@ def inventar(cfg, settings, bewertung, lock):
         "projekt_mcp": mcp_projekte,
         "projekt_hooks": hooks_projekte,
         "hooks": hooks,
-        "hook_tage": HOOK_TAGE,
+        "mess_tage": MESS_TAGE,
         "sammelordner": sammelordner(eingetragen.keys()),
         "eingebaut": eingebaut,
         "gruppen": bewertung.get("gruppen", []),

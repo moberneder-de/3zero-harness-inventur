@@ -509,8 +509,8 @@ class Inventar(CodexOrdner):
             "skill:grilling": {"was": "Fragt nach.", "empfehlung": "behalten"}, "skill:weg": {"was": "alt"}}}))
         with mock.patch.object(codex, "updates_markieren"):
             daten = codex.inventar()
-        self.assertEqual(sorted(daten), ["bewertung_stand", "config_lesbar", "eingebaut", "entfallen", "gruppen", "hinweise", "hook_tage", "hooks",
-                                         "live_status", "mcp", "overrides_verwaist", "plugins", "projekt_hooks", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
+        self.assertEqual(sorted(daten), ["bewertung_stand", "config_lesbar", "eingebaut", "entfallen", "gruppen", "hinweise", "hooks",
+                                         "live_status", "mcp", "mess_tage", "overrides_verwaist", "plugins", "projekt_hooks", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
         self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
                          (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))
         g = daten["skills"][0]

@@ -814,7 +814,7 @@ function renderMcp() {
       ["Ziel", m.ziel ? `<code>${esc(m.ziel)}</code>` : ""],
       ["Quelle", esc(m.quelle)],
       ["Im Netz", netzDetails(m)],
-      ["Gemessen", m.messung === "direkt" ? `direkt beim Server, am ${datum(m.gemessen_am)}` : m.messung === "Transkript" ? `aus den Transkripten der letzten ${D.hook_tage} Tage` : ""],
+      ["Gemessen", m.messung === "direkt" ? `direkt beim Server, am ${datum(m.gemessen_am)}` : m.messung === "Transkript" ? `aus den Transkripten der letzten ${D.mess_tage} Tage` : ""],
       ["Schemata", typeof m.schemata === "number" ? `≈ ${zahl(m.schemata)} Tokens, laden erst bei Bedarf und zählen deshalb nicht zum Kontext je Sitzung` : ""],
       ["Abgeschaltet in", m.aus_in_projekten.length ? m.aus_in_projekten.map(esc).join("<br>") : ""],
       ["Begründung", txt(m.bewertung?.grund || "")],
@@ -826,7 +826,7 @@ function renderMcp() {
         ["Status", "Laut <code>claude mcp list</code>, abgefragt aus einem Ordner ohne Projekt-Abschaltungen."],
         ["Werkzeuge", "HTTP-Server ohne Anmeldung fragt die Inventur einmal am Tag selbst nach Anweisungen und Werkzeugen. Alle anderen misst sie in den Transkripten; wer dort nie geladen wurde, steht als „nicht gemessen“."],
         ["Kontext je Sitzung", "Anweisungsblock und Werkzeugnamen. Die Schemata laden erst bei Bedarf; bei direkt gefragten Servern stehen sie in den Details."],
-        ["Genutzt", `Aufrufe aus den Transkripten der letzten ${D.hook_tage} Tage.`],
+        ["Genutzt", `Aufrufe aus den Transkripten der letzten ${D.mess_tage} Tage.`],
         ["↗ unter dem Namen", "Server im Netz, mit der Domain aus der Konfiguration und der Art der Anmeldung. Ihr Anweisungsblock ist fremder Text in jeder Sitzung."],
         ["nur lesend", "Eine Angabe des Servers, keine Prüfung."]],
       ["„deaktivieren“ sperrt einen Server per <code>deniedMcpServers</code> in <code>~/.claude/settings.json</code> für alle Projekte.",
@@ -1073,8 +1073,8 @@ function renderHooks() {
       <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
     detailZeile(9 + SP, [
       [h.mod ? "Greift ein in" : "Befehle", befehle(h)],
-      ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.hook_tage} Tagen` : ""],
-      ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.hook_tage} Tagen` : ""],
+      ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.mess_tage} Tagen` : ""],
+      ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.mess_tage} Tagen` : ""],
       ["Begründung", txt(h.bewertung?.grund || "")],
       ["Datei", `<code>${esc(h.pfad)}</code>`],
       ["Entfernen", befehlZeile(h.befehl)],
@@ -1084,7 +1084,7 @@ function renderHooks() {
     je(erklaert("Was Claude Code bei Ereignissen ausführt: aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile.", [
         ["Art", "„Befehl“ ist ein Programm. „Mod“ ist Code, der in der Sitzung mitläuft (ein Modul unter <code>modules</code> in <code>hooks/hooks.json</code>): Er kann Werkzeug-Aufrufe sperren oder umschreiben und Prompt und System-Prompt ändern."],
         ["Kontext je Sitzung", "Zählt nur SessionStart-Hooks. Ihr Anteil steckt auch in der Kontextlast im Überblick."],
-        ["Ausgabe an Claude", `Was der Hook laut den Transkripten der letzten ${D.hook_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben.`],
+        ["Ausgabe an Claude", `Was der Hook laut den Transkripten der letzten ${D.mess_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben.`],
         ["Dauer", "Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen. Hooks laufen, während du wartest."]],
       ["Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.",
         "Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl. Solche Läufe fehlen bei der Ausgabe.",
@@ -1684,7 +1684,7 @@ function renderHilfe() {
     </ul>`], ["Woher die Zahlen kommen", `<ul>
       <li>Nutzung: Zähler <code>skillUsage</code> in ~/.claude.json, erfasst jeden Skill-Aufruf durch dich oder Claude. Die Aufrufe der MCP-Server zählt <code>build.py</code> selbst in den Transkripten. Für Agenten und Hooks gibt es keine Zähler.</li>
       <li>Kontext: Länge von Name und Beschreibung ÷ 4, nur für Einträge, die Claude Code automatisch lädt. Grobe Schätzung, reicht für Größenordnungen.</li>
-      <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.hook_tage} Tage, ebenfalls Zeichen ÷ 4. Aus denselben Transkripten kommt ihre Laufzeit: Hooks laufen, während du wartest.</li>
+      <li>Hooks: Was sie an Claude zurückgeben, gemessen in den Transkripten unter ~/.claude/projects der letzten ${D.mess_tage} Tage, ebenfalls Zeichen ÷ 4. Aus denselben Transkripten kommt ihre Laufzeit: Hooks laufen, während du wartest.</li>
       <li>MCP-Server: Aufrufe aus den Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen) fragt die Inventur bei HTTP-Servern ohne Anmeldung einmal am Tag direkt ab, ohne Netz gilt der letzte Stand; bei allen anderen kommen sie aus den Transkripten. Die Schemata laden erst bei Bedarf und zählen nicht. Kam ein Server weder so noch so vor, steht „nicht gemessen“.</li>
       <li>MCP-Status: global laut <code>claude mcp list</code>, in Projekten nur aus der Konfiguration (Freigaben und Abschaltungen in den Projekteinstellungen und ~/.claude.json), ohne Verbindungstest.</li>
       <li>Herkunft: plugin.json und Marktplatz der Plugins, ~/.agents/.skill-lock.json für per <code>npx skills</code> installierte Skills, <code>skills-lock.json</code> im Projekt für Projekt-Skills. Klarnamen der GitHub-Besitzer und belegte Quellen von Kopien stehen in bewertung-claude-code.json; „eigen“ erkennt <code>build.py</code> am Symlink.</li>

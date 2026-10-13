@@ -163,7 +163,7 @@ class HarnessWahl(unittest.TestCase):
 
     def leeres_inventar(self, **extra):
         return {"live_status": None, "bewertung_stand": None, "overrides_verwaist": [], "mcp": [], "plugins": [], "skills": [],
-                "projekt_skills": [], "projekt_mcp": [], "hooks": [], "hook_tage": None, "eingebaut": [], "gruppen": [],
+                "projekt_skills": [], "projekt_mcp": [], "hooks": [], "mess_tage": None, "eingebaut": [], "gruppen": [],
                 "hinweise": [], "unbewertet": [], "entfallen": [], **extra}
 
     def test_codex_schreibt_eigene_dateien_und_merkt_sich_den_harness(self):
@@ -324,7 +324,7 @@ class HarnessWahl(unittest.TestCase):
                 mock.patch.object(claude, "transkripte", return_value=["t.jsonl"]), \
                 mock.patch.object(build.modelle, "claude", return_value=ergebnis) as gelesen:
             build.main(["--harness", "claude-code"])
-        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["modelle"], {**ergebnis, "tage": build.HOOK_TAGE})
+        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["modelle"], {**ergebnis, "tage": build.MESS_TAGE})
         self.assertEqual(gelesen.call_args.args[2], [
             {"bereich": "global", "eintrag": "Agent pruefer", "pfad": str(agent), "kopf": {"name": "pruefer", "model": "haiku"}},
             {"bereich": "/x/P", "eintrag": "Skill bauen", "pfad": str(skill), "kopf": {"name": "bauen", "effort": "low"}}])
@@ -334,7 +334,7 @@ class HarnessWahl(unittest.TestCase):
             build.main(["--harness", "claude-code"])
         daten = json.loads((self.daten / "inventar.json").read_text())
         self.assertEqual((daten["modelle"], daten["lesefehler"]),
-                         ({"eingestellt": [], "gemessen": [], "tage": build.HOOK_TAGE}, [{"quelle": "Modelle", "fehler": "RuntimeError: kaputt"}]))
+                         ({"eingestellt": [], "gemessen": [], "tage": build.MESS_TAGE}, [{"quelle": "Modelle", "fehler": "RuntimeError: kaputt"}]))
 
     def test_modelle_unter_codex_lesen_nur_frische_sitzungen(self):
         import codex
@@ -348,7 +348,7 @@ class HarnessWahl(unittest.TestCase):
                 mock.patch.object(build.modelle, "codex", return_value={"eingestellt": [], "gemessen": []}) as lesen:
             build.main(["--harness", "codex"])
         self.assertEqual(lesen.call_args.args[:2], ({"model": "gpt-6"}, [frisch]))
-        self.assertEqual(json.loads((self.daten / "inventar-codex.json").read_text())["modelle"]["tage"], build.HOOK_TAGE)
+        self.assertEqual(json.loads((self.daten / "inventar-codex.json").read_text())["modelle"]["tage"], build.MESS_TAGE)
 
     def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):

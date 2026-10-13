@@ -716,7 +716,7 @@ def inventar():
         "projekt_mcp": projekt_mcp,
         "projekt_hooks": projekt_hooks(cfg),
         "hooks": hooks,
-        "hook_tage": None,
+        "mess_tage": None,
         "eingebaut": eingebaut,
         "gruppen": bewertung.get("gruppen", []),
         "hinweise": bewertung.get("hinweise", []),
