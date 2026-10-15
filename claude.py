@@ -21,7 +21,7 @@ from pathlib import Path
 import harness
 import mcp_direkt
 import werkzeuge
-from bestand import (MESS_TAGE, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
+from bestand import (MESS_TAGE, abgleich, bewerte, frisch, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
                      papierkorb_befehl, projekt_ids, shellwort, updates_markieren, verdecken, werkzeug_praefix, zeitgrenze, ziel_text)
 
 HOME = Path.home()
@@ -31,7 +31,7 @@ CODEX = HOME / ".codex"  # nur für die Frage, ob ein Skill auch in Codex lädt
 PLUGINS = CLAUDE / "plugins"
 HIER = Path(__file__).resolve().parent
 
-# Hier steht bewusst nichts Gelesenes: main() liest ~/.claude.json (`cfg`), settings.json (`settings`), die Bewertung
+# Hier steht bewusst nichts Gelesenes: main() in build.py liest ~/.claude.json (`cfg`), settings.json (`settings`), die Bewertung
 # und das Lock von npx skills einmal je Lauf und gibt sie weiter. Als Modulwerte lasen 13 Funktionen sie heimlich mit,
 # und ein Test, der nur SETTINGS ersetzte, bekam weiter das GESPERRT des echten Rechners.
 
@@ -41,10 +41,8 @@ def gesperrte_namen(settings):
     return {e.get("serverName") for e in settings.get("deniedMcpServers", []) if isinstance(e, dict)} - {None}
 
 
-
 def datum_ms(ms):
     return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d") if ms else None
-
 
 
 def nutzung(cfg, anzeige):
@@ -52,7 +50,6 @@ def nutzung(cfg, anzeige):
     if not n:
         return None
     return {"anzahl": n.get("usageCount", 0), "zuletzt": datum_ms(n.get("lastUsedAt"))}
-
 
 
 def skill_eintrag(cfg, settings, anzeige, typ, datei, plugin_aktiv=True, schluessel=None):
@@ -96,12 +93,10 @@ def skill_eintrag(cfg, settings, anzeige, typ, datei, plugin_aktiv=True, schlues
     }
 
 
-
 def autoren(bewertung):
     """Anzeigenamen aus der Bewertung; sie stammt aus einem Lauf und kann alles Mögliche enthalten."""
     a = bewertung.get("autoren")
     return a if isinstance(a, dict) else {}
-
 
 
 def cli_quelle(repo, autoren):
@@ -112,7 +107,6 @@ def cli_quelle(repo, autoren):
         "repo": repo,
         "url": f"https://github.com/{repo}",
     }
-
 
 
 def gh_json(pfad):
@@ -127,7 +121,6 @@ def gh_json(pfad):
         return None
 
 
-
 # Repos, Pfade und Stände kommen aus fremden Marktplatz-Dateien und gehen an gh api: nur in harmloser Form
 GH_REPO = re.compile(r"[\w][\w.-]*/[\w.-]+")
 
@@ -136,7 +129,6 @@ GH_PFAD = re.compile(r"[\w.-]+(?:/[\w.-]+)*|")
 GH_REF = re.compile(r"[\w][\w./-]*")
 
 GITHUB_URL = re.compile(r"https://github\.com/([\w][\w.-]*/[\w.-]+?)(?:\.git)?/?")
-
 
 
 def gh_datei(repo, pfad, ref=None):
@@ -149,7 +141,6 @@ def gh_datei(repo, pfad, ref=None):
     return inhalt if isinstance(inhalt, dict) else None
 
 
-
 def ordner_geaendert(repo, ordner, stand, ref):
     """Liegt der letzte Commit am Ordner nicht im installierten Stand, gibt es Neues. None ohne Antwort."""
     letzte = gh_json(f"repos/{repo}/commits?per_page=1" + (f"&path={ordner}" if ordner else "") + (f"&sha={ref}" if ref else ""))
@@ -160,7 +151,6 @@ def ordner_geaendert(repo, ordner, stand, ref):
     vergleich = gh_json(f"repos/{repo}/compare/{stand}...{sha}")
     return {"ahead": True, "diverged": True, "behind": False, "identical": False}.get(
         vergleich.get("status") if isinstance(vergleich, dict) else None)
-
 
 
 def plugin_update(pl, eintrag):
@@ -197,7 +187,6 @@ def plugin_update(pl, eintrag):
     return True if True in geaendert else False if all(g is False for g in geaendert) else None
 
 
-
 def plugin_updates_markieren(plugins):
     """Setzt `update` bei Plugins aus einem Marktplatz auf GitHub; `claude plugin list` zeigt das nicht. Die Marktplatz-Datei
     einmal je Marktplatz. Ohne gh, ohne Netz oder bei einer unerwarteten Antwort bleibt das Feld weg."""
@@ -213,7 +202,6 @@ def plugin_updates_markieren(plugins):
         for pl, update in zip(plugins, pool.map(eins, plugins)):
             if update is not None:
                 pl["update"] = update
-
 
 
 def persoenliche_skills(cfg, settings, lock, autoren):
@@ -249,7 +237,6 @@ def persoenliche_skills(cfg, settings, lock, autoren):
     return ergebnis
 
 
-
 def projekt_skills(cfg, settings, autoren, projekte):
     """Skills und Befehle unter <Projekt>/.claude aller Projekte, die Claude Code kennt. Sie laden nur in ihrem Projekt."""
     ergebnis, gesehen = [], {CLAUDE.resolve()}
@@ -282,9 +269,7 @@ def projekt_skills(cfg, settings, autoren, projekte):
     return ergebnis
 
 
-
 MOD_AUFRUF = re.compile(r"""\bon\(\s*(['"`])([\w.*-]+)\1\s*(?:,\s*(\{[^{}]{0,200}\}))?""")
-
 
 
 def mod_eintraege(hooks_datei, wurzel, schluessel, quelle, status="aktiv"):
@@ -311,9 +296,7 @@ def mod_eintraege(hooks_datei, wurzel, schluessel, quelle, status="aktiv"):
     return [ergebnis[k] for k in sorted(ergebnis)]
 
 
-
 PLUGIN_ORDNER = "CLAUDE_CODE_PLUGIN_DIRS"
-
 
 
 def unterordner(pfad):
@@ -321,7 +304,6 @@ def unterordner(pfad):
         return sorted(p for p in pfad.iterdir() if p.is_dir())
     except OSError:
         return []
-
 
 
 def ordner_hooks(art, wurzel, status):
@@ -333,7 +315,6 @@ def ordner_hooks(art, wurzel, status):
     eintraege = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
     eintraege += mod_eintraege(datei, wurzel, wurzel, quelle, status)
     return [{**e, "ordner": str(wurzel)} for e in eintraege]
-
 
 
 def ordner_plugins(settings):
@@ -357,7 +338,6 @@ def ordner_plugins(settings):
         except Exception as fehler:
             lesefehler(f"{art} {wurzel}", fehler)
     return ergebnis
-
 
 
 def projekt_hooks(projekte):
@@ -387,7 +367,6 @@ def projekt_hooks(projekte):
     return ergebnis
 
 
-
 def eigene_hooks(settings, pfad):
     quelle = {"art": "Einstellungen", "autor": "eigene Einstellungen"}
     hooks = hook_eintraege(settings.get("hooks"), "einstellungen", quelle, pfad)
@@ -396,7 +375,6 @@ def eigene_hooks(settings, pfad):
         (status,) = hook_eintraege({"statusLine": [{"hooks": [zeile]}]}, "einstellungen", quelle, pfad)
         hooks.append({**status, "name": "Statuszeile", "ereignis": "Statuszeile"})
     return hooks
-
 
 
 def an_claude(ereignis, stdout):
@@ -413,17 +391,9 @@ def an_claude(ereignis, stdout):
     return "".join(t for t in teile if isinstance(t, str))
 
 
-
 def transkripte():
-    grenze = datetime.now().timestamp() - MESS_TAGE * 86400
     # rglob: Hooks laufen auch in Subagenten, deren Transkripte liegen eine Ebene tiefer
-    def frisch(d):
-        try:
-            return d.stat().st_mtime >= grenze
-        except OSError:  # toter Symlink, etwa nach einem verschobenen Projektordner
-            return False
     return [d for d in (CLAUDE / "projects").rglob("*.jsonl") if frisch(d)]
-
 
 
 def hook_ausgaben(dateien):
@@ -473,7 +443,6 @@ def hook_ausgaben(dateien):
     return ausgaben, dauern
 
 
-
 def messen(hooks, ausgaben, dauern):
     """Trägt die gemessenen Ausgaben und Laufzeiten ein. Kontext in jeder Sitzung kosten nur aktive SessionStart-Hooks."""
     for h in hooks:
@@ -491,7 +460,6 @@ def messen(hooks, ausgaben, dauern):
                         "max": max(f["max"] for f in funde), "laeufe": sum(f["laeufe"] for f in funde)}
         if h["ereignis"] == "SessionStart" and h["status"] == "aktiv":
             h["tokens"] = sum(f["tokens"] for f in funde)
-
 
 
 def mcp_messungen(dateien, praefixe=()):
@@ -539,7 +507,6 @@ def mcp_messungen(dateien, praefixe=()):
             for s in set(werkzeuge) | set(tokens) | set(aufrufe)}
 
 
-
 def mcp_definitionen(wurzel, manifest):
     roh = lies_json(wurzel / ".mcp.json")
     # Ohne `mcpServers` gilt die Datei nur dann als Servertabelle, wenn jeder Wert wie eine Serverangabe aussieht:
@@ -554,12 +521,10 @@ def mcp_definitionen(wurzel, manifest):
     return {n: c for n, c in server.items() if isinstance(c, dict)}
 
 
-
 def marktplatz_datei(mkt_info):
     """Die marketplace.json eines Marktplatzes. Ohne Ortsangabe nichts lesen: `Path("")` wäre der Arbeitsordner."""
     ort = mkt_info.get("installLocation")
     return lies_json(Path(ort) / ".claude-plugin" / "marketplace.json") if ort else {}
-
 
 
 def plugin_skill_dateien(wurzel, mkt_eintrag, manifest):
@@ -570,7 +535,6 @@ def plugin_skill_dateien(wurzel, mkt_eintrag, manifest):
         pfade = mkt_eintrag["skills"]
         return [wurzel / p / "SKILL.md" for p in ([pfade] if isinstance(pfade, str) else pfade) if isinstance(p, str)]
     return sorted(wurzel.glob("skills/*/SKILL.md")) if manifest else []
-
 
 
 def plugins(cfg, settings, autoren):
@@ -662,7 +626,6 @@ def plugins(cfg, settings, autoren):
     return liste, bestandteile, hooks
 
 
-
 def mcp_live():
     """Status laut `claude mcp list`, aus diesem Ordner heraus, also ohne Projekt-Abschaltungen."""
     try:
@@ -679,7 +642,6 @@ def mcp_live():
     return status
 
 
-
 def zustand_deutsch(roh):
     if "Connected" in roh:
         return "verbunden"
@@ -690,7 +652,6 @@ def zustand_deutsch(roh):
     if "Failed" in roh:
         return "Fehler"
     return roh
-
 
 
 def mcp_server(cfg, gesperrt, plugin_liste, live, messungen=None, direkt=None):
@@ -747,7 +708,6 @@ def mcp_server(cfg, gesperrt, plugin_liste, live, messungen=None, direkt=None):
     return ergebnis
 
 
-
 def projekt_mcp(gesperrt, projekte):
     """MCP-Server, die nur in einem Projekt gelten: aus <Projekt>/.mcp.json und lokal in ~/.claude.json eingetragen.
     Status nur aus der Konfiguration; ein Verbindungstest bräuchte `claude mcp list` in jedem Projekt."""
@@ -783,7 +743,6 @@ def projekt_mcp(gesperrt, projekte):
         ergebnis += eintraege
     projekt_ids(ergebnis, "mcp")
     return ergebnis
-
 
 
 def befehl(e, empfehlung):
@@ -836,7 +795,6 @@ def befehl(e, empfehlung):
     if e["typ"] == "Befehl":
         return papierkorb_befehl(f"~/.claude/commands/{shellwort(e['name'] + '.md')}")
     return papierkorb_befehl(f"~/.claude/skills/{shellwort(e['name'])}")  # ~ bleibt ungequotet, sonst löst die Shell es nicht auf
-
 
 
 def aktionen(e):
@@ -909,7 +867,6 @@ def aktionen(e):
     return a
 
 
-
 def umgesetzt(e):
     """Gilt die eigene Empfehlung des Eintrags schon? Das Gegenstück zu aktionen(): Was schon abgeschaltet oder auf
     „nur /“ gestellt ist, braucht keine Aktion mehr, steht nicht mehr unter den offenen Empfehlungen und spart nichts
@@ -922,9 +879,7 @@ def umgesetzt(e):
     return empfehlung == "nur manuell" and e.get("aufruf") == "nur /"
 
 
-
 PRUEF_SKILL = "claude-md-management:claude-md-improver"
-
 
 
 def pruefskill(inhalt):
@@ -934,7 +889,6 @@ def pruefskill(inhalt):
         if e.get("name") == PRUEF_SKILL and e.get("status") == "aktiv" and e.get("pfad"):
             return str(Path(e["pfad"]).parent)
     return None
-
 
 
 def eindeutige_ids(alle):
@@ -948,14 +902,12 @@ def eindeutige_ids(alle):
             e["id"] += "~" + (e.get("art") or e["typ"]).lower()
 
 
-
 def eingebaute(cfg, bewertung):
     """Die eingebauten Skills aus der Bewertung, nur mit den Feldern, die das Dashboard braucht. Die Bewertung stammt
     aus einem Lauf, der fremde Skill-Texte liest; alles Weitere landete sonst ungeprüft auf der Seite mit dem Token."""
     return [{"name": b["name"], "was": b.get("was") if isinstance(b.get("was"), str) else "",
              "tokens": b["tokens"] if isinstance(b.get("tokens"), int) else 0, "nutzung": nutzung(cfg, b["name"])}
             for b in bewertung.get("eingebaut") or [] if isinstance(b, dict) and isinstance(b.get("name"), str)]
-
 
 
 def fehlende_ordner(inhalt, projekte):
@@ -978,7 +930,6 @@ def fehlende_ordner(inhalt, projekte):
     return fehlt
 
 
-
 def sammelordner(projekte):
     """Eingetragene Ordner, in denen andere eingetragene Projekte liegen und die selbst kein Git-Repo sind: ~ oder ein
     Ordner voller Projekte. Claude Code trägt jeden Ordner ein, in dem einmal eine Sitzung lief; der Tab „Projekte“
@@ -988,10 +939,9 @@ def sammelordner(projekte):
                   and any(q.startswith(p.rstrip("/") + "/") for q in projekte))
 
 
-
 def inventar(cfg, settings, bewertung, lock):
     """Der Bestand von Claude Code. `cfg` ist ~/.claude.json, `settings` ~/.claude/settings.json, `bewertung` die Datei
-    aus dem Datenordner, `lock` die Skills aus ~/.agents/.skill-lock.json: main() liest sie einmal und gibt sie mit."""
+    aus dem Datenordner, `lock` die Skills aus ~/.agents/.skill-lock.json: build.main() liest sie einmal und gibt sie mit."""
     namen, gesperrt, eingetragen = autoren(bewertung), gesperrte_namen(settings), cfg.get("projects") or {}
     plugin_liste, plugin_teile, plugin_hooks = plugins(cfg, settings, namen)
     plugin_updates_markieren(plugin_liste)

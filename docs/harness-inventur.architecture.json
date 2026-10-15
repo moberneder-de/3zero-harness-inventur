@@ -326,6 +326,13 @@
       "variant": "emphasis"
     },
     {
+      "id": "claude-einstellungen",
+      "from": "claudecfg",
+      "to": "build",
+      "label": "Einstellungen, einmal je Lauf",
+      "variant": "dashed"
+    },
+    {
       "id": "agents-claude",
       "from": "agents",
       "to": "claudepy",

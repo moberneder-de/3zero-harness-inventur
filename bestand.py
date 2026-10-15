@@ -36,6 +36,14 @@ def zeitgrenze():
     return (datetime.now(timezone.utc) - timedelta(days=MESS_TAGE)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def frisch(pfad):
+    """Wurde die Datei innerhalb von MESS_TAGE geschrieben? Wählt Transkripte und Codex-Sitzungen aus."""
+    try:
+        return pfad.stat().st_mtime >= datetime.now().timestamp() - MESS_TAGE * 86400
+    except OSError:  # toter Symlink, etwa nach einem verschobenen Projektordner
+        return False
+
+
 # Unerwartete Fehler je Plugin oder Projekt: Sie kosten nur diese Quelle und stehen im Dashboard. Ein Absturz
 # bräche build.py ab, und ohne gelungenen Lauf startet der Server nicht.
 LESEFEHLER = []

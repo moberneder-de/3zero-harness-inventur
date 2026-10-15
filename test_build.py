@@ -81,6 +81,13 @@ class Verlauf(unittest.TestCase):
                  {"datum": "2026-09-28", "ids": {"mcp": ["mcp:a"], "projekt_mcp": ["mcp:P/q"]}}]
         self.assertEqual(build.aenderungen(reihe), {"seit": "2026-09-27", "neu": {}, "entfernt": {}})
 
+    def test_verlauf_mit_eintraegen_ohne_datum(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        pfad = tmp / "verlauf.json"
+        pfad.write_text(json.dumps([{"kontextlast": 1}, {"datum": 5}, {"datum": None}, {"datum": "2026-09-17"}]))
+        self.assertEqual(build.verlauf_fortschreiben(pfad, {"datum": "2026-09-18"}), [{"datum": "2026-09-17"}, {"datum": "2026-09-18"}])
+
 
 class AnweisungenAktionen(unittest.TestCase):
     """Abschalten heißt hier nie, die Datei anzufassen: Sie liegt oft in einem Repo. Geschaltet wird in ~/.claude/settings.json."""
@@ -116,12 +123,6 @@ class AnweisungenAktionen(unittest.TestCase):
             with self.subTest(zeile=zeile):
                 self.assertNotIn("pruefen", build.anweisungen_aktionen([zeile], True)[0])
         self.assertNotIn("pruefen", build.anweisungen_aktionen([self.zeile()])[0])  # ohne den Skill kein Knopf
-
-    def test_pruefskill_ist_der_ordner_des_installierten_skills(self):
-        skill = {"name": "claude-md-management:claude-md-improver", "status": "aktiv", "pfad": "/c/skills/claude-md-improver/SKILL.md"}
-        self.assertEqual(claude.pruefskill({"skills": [{"name": "anderer", "status": "aktiv", "pfad": "/x/SKILL.md"}, skill]}), "/c/skills/claude-md-improver")
-        self.assertIsNone(claude.pruefskill({"skills": [{**skill, "status": "aus"}]}))  # abgeschaltet lädt er nicht
-        self.assertIsNone(claude.pruefskill({}))
 
     def test_id_nennt_bereich_und_datei(self):
         """Dieselbe geerbte CLAUDE.md steht in jedem Projekt darunter: Mit dem Pfad allein teilten sich die Zeilen eine ID."""
@@ -426,31 +427,6 @@ class Empfehlungen(unittest.TestCase):
 
     def eintrag(self, id, empfehlung=None, **felder):
         return {"id": id, "name": id.split(":", 1)[1], "bewertung": {"empfehlung": empfehlung} if empfehlung else None, **felder}
-
-    def test_umgesetzt_ist_das_gegenstueck_zu_den_aktionen(self):
-        e = self.eintrag
-        faelle = [
-            (e("skill:a", "abschalten", override="off"), True),
-            (e("mcp:a", "abschalten", gesperrt=True, status="deaktiviert"), True),
-            (e("mcp:b", "abschalten", gesperrt=False, status="deaktiviert"), True),
-            (e("plugin:p@m", "abschalten", status="nicht aktiviert"), True),
-            (e("plugin:p@m", "abschalten", status="aktiv"), False),
-            # der Skill eines abgeschalteten Plugins lädt nicht, seine eigene Empfehlung ist damit aber nicht umgesetzt
-            (e("skill:p:x", "abschalten", status="aus", override=None), False),
-            (e("skill:b", "nur manuell", aufruf="nur /"), True),
-            (e("skill:c", "nur manuell", aufruf="automatisch + /"), False),
-            (e("skill:d", "entfernen", override="off"), False),  # Entferntes stünde gar nicht mehr im Bestand
-            (e("skill:e", "prüfen", override="off"), False),
-            (e("skill:f", override="off"), False),
-        ]
-        for eintrag, erwartet in faelle:
-            with self.subTest(eintrag=eintrag):
-                self.assertIs(claude.umgesetzt(eintrag), erwartet)
-
-    def test_umgesetzt_haelt_eine_kaputte_bewertung_aus(self):
-        """Die Bewertung schreibt ein Lauf; ein Absturz hier bräche build.py ab."""
-        for bewertung in ("abschalten", ["abschalten"], {"empfehlung": 3}, {}):
-            self.assertIs(claude.umgesetzt({"id": "skill:x", "bewertung": bewertung, "override": "off"}), False)
 
     def test_bestandteile_erben_die_empfehlung_ihres_plugins(self):
         e = self.eintrag

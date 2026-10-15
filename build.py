@@ -27,7 +27,7 @@ import codex
 import harness
 import modelle
 import werkzeuge
-from bestand import MESS_TAGE, LESEFEHLER, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
+from bestand import LESEFEHLER, MESS_TAGE, frisch, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
 
 HIER = Path(__file__).resolve().parent
 DATEN = harness.DATEN  # Bewertung, Inventar, Dashboard und harness.json: alles außerhalb des Repos
@@ -42,13 +42,11 @@ def data_uri(inhalt, mime):
     return f"data:{mime};base64," + base64.b64encode(inhalt).decode()
 
 
-
 def version(cli):
     try:
         return subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() or None
     except (OSError, subprocess.TimeoutExpired):
         return None
-
 
 
 def datei_stand(pfad):
@@ -57,7 +55,6 @@ def datei_stand(pfad):
         return datetime.fromtimestamp(Path(pfad).stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     except OSError:
         return None
-
 
 
 def kontextlast(inhalt):
@@ -70,14 +67,12 @@ def kontextlast(inhalt):
             + sum(z["tokens"] for z in inhalt.get("anweisungen", []) if z["bereich"] == "global" and z["laedt"]))
 
 
-
 def rechte(h, inhalt, cfg):
     """Der Tab „Berechtigungen“ des jeweiligen Harness. Verwaist ist eine MCP-Regel, deren Server nicht mehr eingetragen ist."""
     if h == "codex":
         return rechte_aktionen(berechtigungen.codex(codex.lies_toml(codex.CODEX / "config.toml"), codex.CODEX / "rules", codex.HOME))
     praefixe = {werkzeug_praefix(e.get("schluessel", e["name"])) for e in inhalt.get("mcp", []) + inhalt.get("projekt_mcp", [])}
     return rechte_aktionen(berechtigungen.claude(claude.HOME, (cfg.get("projects") or {}).keys(), praefixe))
-
 
 
 def rechte_aktionen(zeilen):
@@ -96,13 +91,11 @@ def rechte_aktionen(zeilen):
     return zeilen
 
 
-
 def modelle_lesen(h, inhalt, cfg):
     """Der Tab „Modelle“ des jeweiligen Harness: was eingestellt ist und was lief, im selben Zeitfenster wie die Hooks."""
     if h == "codex":
-        grenze = datetime.now().timestamp() - MESS_TAGE * 86400
-        frisch = [d for d in codex.sitzungen() if d.is_file() and d.stat().st_mtime >= grenze]
-        ergebnis = modelle.codex(codex.lies_toml(codex.CODEX / "config.toml"), frisch, zeitgrenze(), codex.HOME)
+        sitzungen = [d for d in codex.sitzungen() if d.is_file() and frisch(d)]
+        ergebnis = modelle.codex(codex.lies_toml(codex.CODEX / "config.toml"), sitzungen, zeitgrenze(), codex.HOME)
     else:
         dateien = [{"bereich": e.get("projekt") or "global", "eintrag": f"{e.get('typ', 'Skill')} {e['name']}", "pfad": e["pfad"],
                     "kopf": frontmatter(e["pfad"])} for e in inhalt.get("skills", []) + inhalt.get("projekt_skills", []) if e.get("pfad")]
@@ -110,13 +103,11 @@ def modelle_lesen(h, inhalt, cfg):
     return {**ergebnis, "tage": MESS_TAGE}
 
 
-
 def anweisungen_lesen(h, inhalt, cfg, settings):
     """Der Tab „Anweisungen“ des jeweiligen Harness: was als Text in die Sitzung lädt."""
     if h == "codex":
         return anweisungen_aktionen(anweisungen.codex(codex.HOME))
     return anweisungen_aktionen(anweisungen.claude(claude.HOME, settings, (cfg.get("projects") or {}).keys()), bool(inhalt.get("pruefskill")))
-
 
 
 def anweisungen_aktionen(zeilen, pruefbar=False):
@@ -148,7 +139,6 @@ def anweisungen_aktionen(zeilen, pruefbar=False):
     return zeilen
 
 
-
 def verlauf_fortschreiben(pfad, eintrag):
     """Eine Zeile je Tag: Mehrere Läufe am selben Tag überschreiben sich, sonst wüchse die Datei bei jedem Öffnen.
     Die IDs (`ids`) bleiben nur heute und beim letzten Lauf davor: Mehr braucht aenderungen() nicht."""
@@ -166,9 +156,7 @@ def verlauf_fortschreiben(pfad, eintrag):
     return reihe
 
 
-
 ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "projekt_skills", "projekt_mcp", "projekt_hooks")
-
 
 
 def aenderungen(reihe):
@@ -190,11 +178,9 @@ def aenderungen(reihe):
     return {"seit": reihe[-2]["datum"], "neu": neu, "entfernt": weg}
 
 
-
 BEWERTETE_ARTEN = ("mcp", "plugins", "skills", "projekt_skills", "projekt_mcp", "hooks")  # was bewerte() bewertet
 
 SPAREN = ("entfernen", "abschalten", "nur manuell")  # nicht „prüfen“: Dort fehlt noch die Entscheidung
-
 
 
 def empfehlungen_ableiten(inhalt):
@@ -221,7 +207,6 @@ def empfehlungen_ableiten(inhalt):
                                  if geht_weg(e) and e.get("plugin") not in plugins_weg))
 
 
-
 def ungenutzt_markieren(skills, plugins, heute):
     """Markiert, was in jede Sitzung lädt, aber seit UNGENUTZT_TAGE nicht genutzt wurde: die besten Kandidaten zum
     Aufräumen. Wer erst seit Kurzem da ist, hatte die Zeit nicht; für Plugin-Bestandteile zählt die Installation
@@ -233,7 +218,6 @@ def ungenutzt_markieren(skills, plugins, heute):
         da_seit = (seit.get(e["plugin"]) if e.get("plugin") else e.get("installiert")) or ""
         if e.get("im_kontext") and e.get("tokens") and genutzt < grenze and da_seit < grenze:
             e["ungenutzt"] = True
-
 
 
 def fuers_dashboard(inhalt):
@@ -249,7 +233,6 @@ def fuers_dashboard(inhalt):
             "bewertung_stand": stand if isinstance(stand, str) else None}
 
 
-
 def seite(vorlage, daten):
     """Das Dashboard: die Vorlage mit Logo, Icons und dem Inventar gefüllt. Die Daten zuletzt, damit ein Platzhalter in
     einem Namen nicht ersetzt wird."""
@@ -259,7 +242,6 @@ def seite(vorlage, daten):
             .replace("__ICON__", data_uri(ICON.read_bytes(), "image/svg+xml"))
             .replace("__APPICON__", data_uri(APP_ICON.read_bytes(), "image/png"))
             .replace("__DATEN__", einbettung))
-
 
 
 def main(argv=None):
@@ -342,7 +324,6 @@ def main(argv=None):
     updates = [e["name"] for e in daten["plugins"] + daten["skills"] if e.get("update")]
     if updates:
         print(f"Update verfügbar ({len(updates)}): " + ", ".join(updates))
-
 
 
 if __name__ == "__main__":

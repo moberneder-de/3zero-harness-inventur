@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -166,6 +167,20 @@ class FremdeDateien(unittest.TestCase):
                 self.assertEqual(bestand.lies_json(self.tmp / "datei.json"), {})
         (self.tmp / "datei.json").write_text('{"a": 1}')
         self.assertEqual(bestand.lies_json(self.tmp / "datei.json"), {"a": 1})
+
+
+class Messfenster(unittest.TestCase):
+    def test_frisch_nur_im_fenster_und_ohne_absturz(self):
+        """Transkripte und Codex-Sitzungen zählen nur, wenn sie innerhalb von MESS_TAGE geschrieben wurden.
+        Ein toter Symlink (verschobener Projektordner) zählt nicht, statt den Lauf abzubrechen."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        neu, alt, tot = tmp / "neu.jsonl", tmp / "alt.jsonl", tmp / "tot.jsonl"
+        neu.write_text("")
+        alt.write_text("")
+        os.utime(alt, (0, 0))
+        tot.symlink_to(tmp / "fehlt.jsonl")
+        self.assertEqual([bestand.frisch(d) for d in (neu, alt, tot)], [True, False, False])
 
 
 class Bewerten(unittest.TestCase):
