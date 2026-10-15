@@ -336,6 +336,7 @@ try {
   <a href="#plugins">Plugins</a>
   <a href="#skills">Skills</a>
   <a href="#hooks">Hooks</a>
+  <a href="#mods">Mods</a>
   <a href="#anweisungen">Anweisungen</a>
 </div>
 <div class="wrap unternav" data-gruppe="einstellungen" hidden>
@@ -381,7 +382,7 @@ const link = (url, text) => /^https:\/\//.test(url || "") ? `<a href="${esc(url)
 const kopierKnopf = text => `<button type="button" class="kopieren" data-copy="${esc(text)}">kopieren</button>`;
 const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopierKnopf(text)}</div>`;
 
-const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks];
+const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks, ...(D.mods || [])];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
 const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "Harness", status: "aktiv", bewertung: { was: b.was }, tokens: b.tokens || 0, quelle: { art: "eingebaut", autor: je("Anthropic", "OpenAI") } }));
 EINGEBAUT.forEach(e => INDEX.set(e.id, e));
@@ -589,8 +590,9 @@ function abschnitt(id, titel, inhalt, intro) {
 
 /* Was seit dem letzten Lauf vor heute dazukam oder wegfiel, aus build.py (aenderungen). Ein Status zählt nicht,
    nur ob der Eintrag da ist. Neues verlinkt auf seinen Tab; Entferntes gibt es dort nicht mehr. */
-const ARTEN = { mcp: ["MCP-Server", "mcp"], plugins: ["Plugins", "plugins"], skills: ["Skills", "skills"], hooks: ["Hooks", "hooks"],
-  projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"], projekt_hooks: ["Projekt-Hooks", "projekte"] };
+const ARTEN = { mcp: ["MCP-Server", "mcp"], plugins: ["Plugins", "plugins"], skills: ["Skills", "skills"], hooks: ["Hooks", "hooks"], mods: ["Mods", "mods"],
+  projekt_skills: ["Projekt-Skills", "projekte"], projekt_mcp: ["Projekt-MCP-Server", "projekte"], projekt_hooks: ["Projekt-Hooks", "projekte"],
+  projekt_mods: ["Projekt-Mods", "projekte"] };
 /* Die Karte steht den ganzen Tag da, bei jedem Öffnen: Verglichen wird mit dem Lauf vor heute. Wer sie gelesen hat,
    klickt sie weg; der Browser merkt sich genau diesen Stand, und mit einer weiteren Änderung kommt sie wieder. */
 const GELESEN_SPEICHER = `3zero-harness-inventur:aenderungen:${D.harness}`;
@@ -857,7 +859,7 @@ function renderPlugins() {
         ["Begründung", txt(p.bewertung?.grund || "")],
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
         ["Apps", namen(p.apps || [])],
-        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")], ["Mod greift ein in", (p.mods || []).map(esc).join(", ")],
+        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")], ["Mod hört auf", (p.mods || []).map(esc).join(", ")],
         ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}${p.update === true ? " · <strong>Update verfügbar</strong>" : p.update === false ? " · aktuell" : ""}`],
         ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
         ["Homepage", p.homepage ? link(p.homepage) : ""],
@@ -965,10 +967,11 @@ function skillsFiltern() {
 /* Alles, was nur in einem Projekt gilt, je Projekt: zusätzliche Skills, Befehle und MCP-Server, dazu dort abgeschaltete globale Server */
 function renderProjekte() {
   const projekte = new Map();
-  const zu = pfad => projekte.get(pfad) || projekte.set(pfad, { skills: [], mcp: [], hooks: [], anweisungen: [], aus: [], regeln: [], gemessen: [] }).get(pfad);
+  const zu = pfad => projekte.get(pfad) || projekte.set(pfad, { skills: [], mcp: [], hooks: [], mods: [], anweisungen: [], aus: [], regeln: [], gemessen: [] }).get(pfad);
   D.projekt_skills.forEach(s => zu(s.projekt).skills.push(s));
   D.projekt_mcp.forEach(m => zu(m.projekt).mcp.push(m));
   (D.projekt_hooks || []).forEach(h => zu(h.projekt).hooks.push(h));
+  (D.projekt_mods || []).forEach(m => zu(m.projekt).mods.push(m));
   (D.anweisungen || []).filter(z => z.bereich !== "global").forEach(z => zu(z.bereich).anweisungen.push(z));
   D.mcp.filter(m => !m.gesperrt).forEach(m => m.aus_in_projekten.forEach(p => zu(p).aus.push(m.name)));
   /* Regeln und Tokens stehen auch in ihren eigenen Tabs, dort über alle Projekte; hier je Projekt beisammen.
@@ -1003,7 +1006,7 @@ function renderProjekte() {
     ]);
 
   /* Nur Anzeige: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo, entfernt wird er dort. */
-  const hookZeile = h => `<tr><td class="name"><strong>${esc(h.name)}</strong></td><td class="nowrap">${h.mod ? "Mod" : "Befehl"}</td><td>${esc(h.quelle.autor)}</td><td>${statusBadge(h.status)}</td>
+  const hookZeile = h => `<tr><td class="name"><strong>${esc(h.name)}</strong></td><td>${esc(h.quelle.autor)}</td><td>${statusBadge(h.status)}</td>
       <td>${h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("")}</td>
       <td>${befehlZeile(h.befehl)}</td></tr>`;
   const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
@@ -1016,7 +1019,7 @@ function renderProjekte() {
   const sammel = new Set((D.sammelordner || []).map(kurzPfad));
   /* Ein gelöschtes Projekt bleibt stehen, solange dort Tokens gemessen sind (claude.fehlende_ordner): mit Marke statt unsichtbar */
   const ordnerFehlt = new Set((D.ordner_fehlt || []).map(kurzPfad));
-  const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.hooks.length && !p.aus.length).map(([pfad]) => pfad);
+  const weggelassen = [...projekte.entries()].filter(([pfad, p]) => sammel.has(kurzPfad(pfad)) && !p.skills.length && !p.mcp.length && !p.hooks.length && !p.mods.length && !p.aus.length).map(([pfad]) => pfad);
   weggelassen.forEach(pfad => projekte.delete(pfad));
   const zeilen = [...projekte.entries()].sort(([a], [b]) => a.split("/").pop().localeCompare(b.split("/").pop())).map(([pfad, p]) => {
     const tokens = p.skills.reduce((s, e) => s + e.tokens, 0);
@@ -1024,6 +1027,7 @@ function renderProjekte() {
     if (p.skills.length) extra.push(anzahl(p.skills.length, "Skill oder Befehl", "Skills und Befehle") + (tokens ? ` (≈ ${zahl(tokens)} Tokens je Sitzung)` : ""));
     if (p.mcp.length) extra.push(`${p.mcp.length} MCP-Server`);
     if (p.hooks.length) extra.push(anzahl(p.hooks.length, "Hook", "Hooks"));
+    if (p.mods.length) extra.push(anzahl(p.mods.length, "Mod", "Mods"));
     const ohneOrdner = p.mcp.some(m => m.status === "Ordner fehlt");
     const zeile = [extra.length && `${ohneOrdner ? "Eingetragen, aber nie geladen" : "Lädt zusätzlich"}: ${extra.join(", ")}.`,
       p.aus.length && `Abgeschaltet: ${p.aus.map(esc).join(", ")}.`].filter(Boolean).join(" ");
@@ -1036,7 +1040,9 @@ function renderProjekte() {
       <td class="zahl">${p.gemessen.length ? zahl(MESSUNG.summe(p.gemessen)) : strich}</td><td class="klein">${MESSUNG.jeModell(p.gemessen).map(m => esc(m.modell)).join(", ") || strich}</td></tr>` +
       inhaltZeile(spalten, (zeile ? `<p class="klein" style="margin:12px 0 0">${zeile}</p>` : "") +
         teil("Skills und MCP-Server", eintraege && `<div class="tabelle"><table><thead><tr><th>Name</th><th>Art</th><th>Herkunft</th><th>Status</th><th class="zahl">Kontext</th><th class="zahl">Genutzt</th><th>Was es macht</th><th>Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${eintraege}</tbody></table></div>`) +
-        teil("Hooks", p.hooks.length && `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Art</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th>Entfernen</th></tr></thead><tbody>${p.hooks.map(hookZeile).join("")}</tbody></table></div>`) +
+        teil("Hooks", p.hooks.length && `<div class="tabelle"><table><thead><tr><th>Ereignis</th><th>Herkunft</th><th>Status</th><th>Befehle</th><th>Entfernen</th></tr></thead><tbody>${p.hooks.map(hookZeile).join("")}</tbody></table></div>`) +
+        teil("Mods", p.mods.length && `<div class="tabelle"><table><thead><tr><th>Mod</th><th>Herkunft</th><th>Status</th><th>Zeigt</th><th>Greift ein in</th><th>Darf</th><th>Entfernen</th></tr></thead><tbody>${p.mods.map(m => `<tr><td class="name"><strong>${esc(m.name)}</strong></td><td>${esc(m.quelle.autor)}</td><td>${statusBadge(m.status)}</td>
+          <td>${MOD.liste(m.zeigt)}</td><td>${MOD.liste(m.greift_ein)}</td><td>${MOD.liste(m.darf)}</td><td>${befehlZeile(m.befehl)}</td></tr>`).join("")}</tbody></table></div>`) +
         teil("Anweisungen", p.anweisungen.length && ANWEISUNG.tabelle(p.anweisungen)) +
         teil("Regeln ohne Rückfrage", p.regeln.length && RECHT.gebuendelt(p.regeln)) +
         teil(`Modelle, letzte ${esc((D.modelle || {}).tage)} Tage`, p.gemessen.length && MESSUNG.messung(p.gemessen)));
@@ -1049,7 +1055,8 @@ function renderProjekte() {
         ["Skills", "Was dort zusätzlich lädt, aus <code>.claude/skills</code> und <code>.claude/commands</code>. Zählt nicht zur Kontextlast je Sitzung."],
         ["MCP-Server", "Aus <code>.mcp.json</code> und lokal eingetragen, dazu die globalen Server, die dort abgeschaltet sind. Der Status stammt aus der Konfiguration, ohne Verbindungstest."],
         ["Anweisungen", "Tokens, die <code>CLAUDE.md</code>, Regeln und <code>MEMORY.md</code> dort beim Start laden. Über alle Projekte steht es unter „Bestand → Anweisungen“."],
-        ["Hooks", "Laufen nur dort: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>, auch Mods. Nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo."],
+        ["Hooks", "Laufen nur dort: aus <code>.claude/settings.json</code> und <code>.claude/settings.local.json</code> des Projekts und aus Skill-Ordnern mit eigener <code>plugin.json</code>. Nur angezeigt, ohne Bewertung, Messung und Knopf: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo."],
+        ["Mods", "Code aus Skill-Ordnern des Projekts mit eigener <code>plugin.json</code>, der in Sitzungen dort mitläuft. Nur angezeigt, wie die Hooks; was die Spalten heißen, steht im Tab „Mods“."],
         ["Regeln", "Was dort ohne Rückfrage erlaubt ist. Über alle Projekte steht es unter „Berechtigungen“."],
         ["Ausgabe-Tokens, Modelle", "Was dort lief. Über alle Projekte steht es unter „Modelle“."],
         ["Genutzt", "Zählt nach Namen und kann Aufrufe gleichnamiger Skills anderswo enthalten."],
@@ -1068,11 +1075,11 @@ function renderHooks() {
   const dauer = h => h.dauer ? `${zahl(h.dauer.median)} ms <span class="klein">· ${zahl(h.dauer.messungen)}×</span>` : ungemessen;
   const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
   const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name">${aufklapp(h.name)}</td>
-      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="nowrap">${h.mod ? "Mod" : "Befehl"} <span class="klein">· ${h.befehle.length}</span></td>
+      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="zahl">${h.befehle.length}</td>
       <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
       <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
     detailZeile(9 + SP, [
-      [h.mod ? "Greift ein in" : "Befehle", befehle(h)],
+      ["Befehle", befehle(h)],
       ["Ausgabe an " + je("Claude", "Codex"), h.ausgabe ? `zuletzt ≈ ${zahl(h.ausgabe.tokens)} Tokens am ${datum(h.ausgabe.zuletzt)}, höchstens ≈ ${zahl(h.ausgabe.max)}, ${zahl(h.ausgabe.laeufe)} Läufe mit Ausgabe in ${D.mess_tage} Tagen` : ""],
       ["Laufzeit", h.dauer ? `im Mittel ${zahl(h.dauer.median)} ms, höchstens ${zahl(h.dauer.max)} ms, aus ${zahl(h.dauer.messungen)} Messungen in ${D.mess_tage} Tagen` : ""],
       ["Begründung", txt(h.bewertung?.grund || "")],
@@ -1080,19 +1087,54 @@ function renderHooks() {
       ["Entfernen", befehlZeile(h.befehl)],
     ])).join("");
   return abschnitt("hooks", "Was bei Ereignissen automatisch läuft",
-    `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th data-filter="jede Art">Art</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
+    `<div class="tabelle"><table><thead><tr><th data-filter="jedes Ereignis">Ereignis</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th class="zahl">Befehle</th><th class="zahl">Kontext je Sitzung</th><th class="zahl">Ausgabe an ${je("Claude", "Codex")}</th><th class="zahl">Dauer</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`,
     je(erklaert("Was Claude Code bei Ereignissen ausführt: aus ~/.claude/settings.json und den Plugins, dazu die Statuszeile.", [
-        ["Art", "„Befehl“ ist ein Programm. „Mod“ ist Code, der in der Sitzung mitläuft (ein Modul unter <code>modules</code> in <code>hooks/hooks.json</code>): Er kann Werkzeug-Aufrufe sperren oder umschreiben und Prompt und System-Prompt ändern."],
+        ["Befehle", "Wie viele Programme bei dem Ereignis laufen. Code, der in der Sitzung mitläuft, steht im Tab „Mods“."],
         ["Kontext je Sitzung", "Zählt nur SessionStart-Hooks. Ihr Anteil steckt auch in der Kontextlast im Überblick."],
         ["Ausgabe an Claude", `Was der Hook laut den Transkripten der letzten ${D.mess_tage} Tage zuletzt an Claude zurückgab, mit der Zahl der Läufe, die überhaupt etwas zurückgaben.`],
         ["Dauer", "Median der gemessenen Laufzeiten aus denselben Transkripten, mit der Zahl der Messungen. Hooks laufen, während du wartest."]],
       ["Abschalten lassen sich Hooks nur mit ihrem Plugin oder in settings.json.",
         "Blockiert ein Hook das Turn-Ende, speichert Claude Code dessen Text ohne den Befehl. Solche Läufe fehlen bei der Ausgabe.",
-        "Bei einem Mod ist das Ereignis am Text des Moduls abgelesen, nicht gemessen. Was in importierten Dateien steht, fehlt.",
-        "Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code>, <code>CLAUDE_CODE_PLUGIN_DIRS</code> und <code>~/.claude/dev-mods</code> (nur in der Sitzung, in der sie entstanden)."]),
+        "Hooks kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code> und <code>CLAUDE_CODE_PLUGIN_DIRS</code>."]),
       erklaert("Befehle und MCP-Aufrufe, die Codex bei Ereignissen ausführt: aus ~/.codex/config.toml, ~/.codex/hooks.json und den Plugins, dazu <code>notify</code>.", [
         ["Ausgabe an Codex, Dauer", "Protokolliert Codex nicht."]],
       ["Abschalten lassen sich Hooks nur mit ihrem Plugin oder in der Konfiguration."])));
+}
+
+/* Mods: Code, der in der Sitzung mitläuft. Was er zeigt, wo er eingreift und was er darf, legt claude.py fertig ins
+   Inventar (mod_eintrag); hier wird nur angezeigt. Unter Codex gibt es keine. */
+const MOD = {
+  liste: werte => werte?.length ? werte.map(esc).join(", ") : '<span class="leer">–</span>',
+  roh: werte => werte.map(w => `<code>${esc(w)}</code>`).join(" "),
+};
+function renderMods() {
+  const mods = D.mods || [];
+  const herkunft = m => m.plugin ? `Plugin ${m.plugin.split("@")[0]}` : m.quelle.autor;
+  const zeilen = mods.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}</td>
+      <td>${esc(herkunft(m))}</td><td>${statusBadge(m.status)}</td><td>${MOD.liste(m.zeigt)}</td><td>${MOD.liste(m.greift_ein)}</td>
+      <td>${MOD.liste(m.darf)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
+    detailZeile(8 + SP, [
+      ["Hört auf Befehle", m.befehle.map(b => `<code>/${esc(b)}</code>`).join(" ")],
+      ["Wächter ohne Absicherung", m.waechter.length ? `${MOD.roh(m.waechter)}<div class="klein">Fällt einer davon aus, läuft weiter, was er prüfen sollte.</div>` : ""],
+      ["Ereignisse", MOD.roh(m.ereignisse)],
+      ["Aufrufe", MOD.roh(m.aufrufe)],
+      ["Gelesen mit", m.messung === "validate" ? "<code>claude plugin validate</code>" : "Textsuche in den Moduldateien: nur Ereignisse, ohne importierte Dateien"],
+      ["Begründung", txt(m.bewertung?.grund || "")],
+      ["Dateien", m.module.map(d => `<code>${esc(d)}</code>`).join(" ")],
+      ["Umsetzen", befehlZeile(m.befehl)],
+    ])).join("");
+  return abschnitt("mods", "Code, der in der Sitzung mitläuft",
+    mods.length ? `<div class="tabelle"><table><thead><tr><th>Mod</th><th data-filter="jede Herkunft">Herkunft</th><th data-filter="jeder Status">Status</th><th>Zeigt</th><th>Greift ein in</th><th>Darf</th><th>Was er macht</th><th data-filter="jede Empfehlung">Empfehlung</th>${WAHL_KOPF}</tr></thead><tbody>${zeilen}</tbody></table></div>`
+      : `<p class="klein">${je("Keine Mods installiert.", "Codex kennt keine Mods.")}</p>`,
+    je(erklaert("Mods sind Module eines Plugins (unter <code>modules</code> in <code>hooks/hooks.json</code>). Sie laufen in jeder Sitzung mit Claude Code mit, ohne dass Claude sie aufruft.", [
+        ["Zeigt", "Was der Mod hinzufügt: Panel, Leiste über dem Prompt, Statuszeile, Einblendung, Werkzeug für das Modell."],
+        ["Greift ein in", "Wo er ändern oder sperren kann, was sonst geschähe: Werkzeug-Aufrufe, Prompt, System-Prompt, Einstellungen."],
+        ["Darf", "Was er über Claude Code tun kann: Dateien schreiben, Programme starten, Netz, Modell aufrufen. Nur Lesen von Dateien steht nicht hier."],
+        ["Wächter ohne Absicherung", "Hooks, die etwas ablehnen können, aber keinen <code>.catch</code> haben: Fällt der Hook aus, läuft weiter, was er prüfen sollte."]],
+      ["Gelesen wird der Quelltext mit <code>claude plugin validate</code>, ausgeführt wird nichts. Ohne Claude Code oder mit einem anderen Bericht bleibt eine Textsuche, die nur Ereignisse findet.",
+        "Abschalten oder entfernen lässt sich ein Mod nur mit seinem Plugin (Tab „Plugins“) oder seinem Ordner.",
+        "Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener <code>plugin.json</code>, <code>CLAUDE_CODE_PLUGIN_DIRS</code> und <code>~/.claude/dev-mods</code> (nur in der Sitzung, in der sie entstanden). Mods, die nur in einem Projekt laden, stehen im Tab „Projekte“."]),
+      erklaert("Codex kennt keine Mods.", [])));
 }
 
 /* Laufzeiten und Kommandozeilen, die Inventur, MCP-Server und Hooks brauchen. Nur Anzeige und Befehl zum Kopieren:
@@ -1763,7 +1805,7 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderMods() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
 for (const [id, feld] of FILTERFELDER) {
   const el = document.getElementById(id);

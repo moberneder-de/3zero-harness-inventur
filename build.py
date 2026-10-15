@@ -156,7 +156,7 @@ def verlauf_fortschreiben(pfad, eintrag):
     return reihe
 
 
-ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "projekt_skills", "projekt_mcp", "projekt_hooks")
+ID_ARTEN = ("mcp", "plugins", "skills", "hooks", "mods", "projekt_skills", "projekt_mcp", "projekt_hooks", "projekt_mods")
 
 
 def aenderungen(reihe):
@@ -178,7 +178,7 @@ def aenderungen(reihe):
     return {"seit": reihe[-2]["datum"], "neu": neu, "entfernt": weg}
 
 
-BEWERTETE_ARTEN = ("mcp", "plugins", "skills", "projekt_skills", "projekt_mcp", "hooks")  # was bewerte() bewertet
+BEWERTETE_ARTEN = ("mcp", "plugins", "skills", "projekt_skills", "projekt_mcp", "hooks", "mods")  # was bewerte() bewertet
 
 SPAREN = ("entfernen", "abschalten", "nur manuell")  # nicht „prüfen“: Dort fehlt noch die Entscheidung
 

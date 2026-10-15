@@ -269,31 +269,95 @@ def projekt_skills(cfg, settings, autoren, projekte):
     return ergebnis
 
 
-MOD_AUFRUF = re.compile(r"""\bon\(\s*(['"`])([\w.*-]+)\1\s*(?:,\s*(\{[^{}]{0,200}\}))?""")
+MOD_AUFRUF = re.compile(r"""\bon\(\s*(['"`])([\w.*-]+)\1""")
+# Was ein Mod anzeigt, wo er eingreift und was er darf, abgelesen an den Ereignissen und Aufrufen, die
+# `claude plugin validate` meldet. Die Namen stehen in den Typen von Claude Code (Skill plugin-authoring).
+MOD_ZEIGT = {"Pane": "Panel", "AbovePrompt": "Leiste über dem Prompt", "PromptHint": "Hinweis am Prompt",
+             "$.ui.open": "Panel", "$.ui.status": "Statuszeile", "$.ui.toast": "Einblendung", "$.ui.notify": "Mitteilung",
+             "$.tool.register": "Werkzeug für das Modell", "$.agent.register": "Subagent-Typ", "$.audio.play": "Ton"}
+MOD_GREIFT_EIN = {"tool.call": "Werkzeug-Aufrufe", "tool.check": "Freigaben", "prompt.submit": "Prompt",
+                  "prompt.compose": "System-Prompt", "prompt.mention": "Erwähnungen", "config.set": "Einstellungen"}
+MOD_DARF = {"$.fs.write": "Dateien schreiben", "$.http.fetch": "Netz", "$.process.run": "Programme starten",
+            "$.process.spawn": "Programme starten", "$.model.complete": "Modell aufrufen", "$.model.fork": "Modell aufrufen",
+            "$.model.classify": "Modell aufrufen", "$.agent.spawn": "Subagenten starten", "$.mcp.call": "MCP-Server aufrufen",
+            "$.mcp.connect": "MCP-Server aufrufen", "$.settings.set": "Einstellungen ändern", "$.config.set": "Einstellungen ändern",
+            "$.env.set": "Umgebung ändern", "$.prompt.submit": "Prompts absenden"}
+MOD_BEFEHL = re.compile(r"command\.run\{command=([^}]+)\}")
 
 
-def mod_eintraege(hooks_datei, wurzel, schluessel, quelle, status="aktiv"):
-    """Mods: Hook-Module, die hooks/hooks.json unter `modules` nennt. Sie laufen in jeder Sitzung mit und können
-    Werkzeug-Aufrufe, Prompt und System-Prompt ändern. Ein Eintrag je Ereignis, abgelesen an `on('…'` im Text der
-    genannten Datei — gelesen, nie ausgeführt. Steht ein `on(` nur in einer importierten Datei, fehlt es; ohne Fund
-    bleibt deshalb eine Zeile, sonst wäre das Modul unsichtbar."""
+def liste_aus(text):
+    """`a, b{x=1, y=2}, c` in seine Teile; ein Komma in geschweiften Klammern trennt nicht."""
+    teile, tiefe, aktuell = [], 0, ""
+    for zeichen in text:
+        tiefe += {"{": 1, "}": -1}.get(zeichen, 0)
+        if zeichen == "," and tiefe == 0:
+            teile.append(aktuell.strip())
+            aktuell = ""
+        else:
+            aktuell += zeichen
+    return [t for t in teile + [aktuell.strip()] if t]
+
+
+def mod_bericht(wurzel):
+    """Was `claude plugin validate` über die Module eines Plugins meldet: Ereignisse, Aufrufe auf `$` und Wächter
+    ohne `.catch`. Liest den Quelltext wie Claude Code selbst, auch in importierten Dateien, und führt nichts aus.
+    None ohne `claude` oder ohne lesbaren Bericht; dann bleibt die Textsuche."""
+    try:
+        r = subprocess.run(["claude", "plugin", "validate", "--json", str(wurzel)], capture_output=True, text=True,
+                           timeout=60, stdin=subprocess.DEVNULL)
+        inhalt = next(c for c in json.loads(r.stdout)["contents"] if c.get("type") == "hooks")
+    except (OSError, subprocess.TimeoutExpired, ValueError, LookupError, TypeError, StopIteration, AttributeError):
+        return None
+    bericht = {"ereignisse": [], "aufrufe": [], "waechter": []}
+    for notiz in inhalt.get("notes") or []:
+        if not isinstance(notiz, str):
+            continue
+        for feld, marke in (("ereignisse", " hooks: "), ("aufrufe", " calls: ")):
+            if marke in notiz:
+                for teil in liste_aus(notiz.split(marke, 1)[1]):
+                    teil = re.sub(r" \(via [^)]*\)$", "", teil)
+                    if teil not in bericht[feld]:
+                        bericht[feld].append(teil)
+    bericht["waechter"] = [w["hook"] for w in inhalt.get("gatingHooks") or []
+                           if isinstance(w, dict) and isinstance(w.get("hook"), str) and not w.get("hasCatch")]
+    return bericht if bericht["ereignisse"] or bericht["aufrufe"] else None
+
+
+def mod_eintrag(hooks_datei, wurzel, schluessel, name, quelle, status="aktiv"):
+    """Ein Mod: die Hook-Module, die hooks/hooks.json unter `modules` nennt. Sie laufen in jeder Sitzung mit, können
+    Panels und Befehle hinzufügen, Werkzeug-Aufrufe und Prompt ändern, Dateien schreiben und Programme starten.
+    Ein Eintrag je Plugin oder Ordner; None ohne Modul. Was er tut, meldet mod_bericht(); ohne Bericht bleiben die
+    Ereignisse aus `on('…'` im Text der genannten Dateien — gelesen, nie ausgeführt, nur innerhalb des Plugins."""
     module = lies_json(hooks_datei).get("modules")
-    ergebnis = {}
+    dateien = []
     for m in module if isinstance(module, list) else []:
         if not isinstance(m, str):
             continue
         datei = (hooks_datei.parent / m).resolve()
         # der Pfad kommt aus einer fremden Datei: nichts lesen, was aus dem Plugin herausführt
-        if not datei.is_relative_to(wurzel.resolve()) or not datei.is_file():
-            continue
-        funde = MOD_AUFRUF.findall(datei.read_text(encoding="utf-8", errors="replace")) or [("", "unbekannt", "")]
-        for _, ereignis, matcher in funde:
-            e = ergebnis.setdefault(ereignis, {
-                "id": f"hook:{schluessel}:mod:{ereignis}", "name": "Mod" if ereignis == "unbekannt" else ereignis, "typ": "Hook",
-                "ereignis": ereignis, "status": status, "befehle": [], "quelle": dict(quelle), "pfad": str(datei),
-                "tokens": 0, "ausgabe": None, "dauer": None, "mod": True})
-            e["befehle"].append({"befehl": datei.name, "matcher": matcher or None, "bedingung": None})
-    return [ergebnis[k] for k in sorted(ergebnis)]
+        if datei.is_relative_to(wurzel.resolve()) and datei.is_file():
+            dateien.append(datei)
+    if not dateien:
+        return None
+    bericht = mod_bericht(wurzel)
+    if bericht is None:
+        funde = [f[1] for d in dateien for f in MOD_AUFRUF.findall(d.read_text(encoding="utf-8", errors="replace"))]
+        bericht = {"ereignisse": sorted(set(funde)), "aufrufe": [], "waechter": []}
+        messung = "Textsuche"
+    else:
+        messung = "validate"
+    ereignisse, aufrufe = bericht["ereignisse"], bericht["aufrufe"]
+    komponenten = [m.group(1) for e in ereignisse if (m := re.match(r"ui\.render\{component=(\w+)", e))]
+    zeigt = [MOD_ZEIGT.get(k, k) for k in komponenten] + [MOD_ZEIGT[a] for a in aufrufe if a in MOD_ZEIGT]
+    befehle = [b for e in ereignisse if (m := MOD_BEFEHL.fullmatch(e)) for b in m.group(1).split("|")]
+    beschreibung = lies_json(wurzel / ".claude-plugin" / "plugin.json").get("description")
+    return {"id": f"mod:{schluessel}", "name": name, "typ": "Mod", "status": status, "quelle": dict(quelle),
+            "beschreibung": beschreibung if isinstance(beschreibung, str) else "",
+            "pfad": str(dateien[0]), "module": [str(d.relative_to(wurzel.resolve())) for d in dateien], "messung": messung,
+            "ereignisse": ereignisse, "aufrufe": aufrufe, "waechter": bericht["waechter"],
+            "zeigt": list(dict.fromkeys(zeigt)), "befehle": befehle,
+            "greift_ein": list(dict.fromkeys(MOD_GREIFT_EIN[e.split("{")[0]] for e in ereignisse if e.split("{")[0] in MOD_GREIFT_EIN)),
+            "darf": list(dict.fromkeys(MOD_DARF[a] for a in aufrufe if a in MOD_DARF)), "tokens": 0}
 
 
 PLUGIN_ORDNER = "CLAUDE_CODE_PLUGIN_DIRS"
@@ -307,44 +371,48 @@ def unterordner(pfad):
 
 
 def ordner_hooks(art, wurzel, status):
-    """Hooks und Mods eines Plugins, das als Ordner lädt; ohne .claude-plugin/plugin.json ist es keins."""
+    """(Hooks, Mods) eines Plugins, das als Ordner lädt; ohne .claude-plugin/plugin.json ist es keins."""
     if not (wurzel / ".claude-plugin" / "plugin.json").is_file():
-        return []
+        return [], []
     quelle = {"art": art, "autor": f"{art} {wurzel.name}"}
     datei = wurzel / "hooks" / "hooks.json"
-    eintraege = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
-    eintraege += mod_eintraege(datei, wurzel, wurzel, quelle, status)
-    return [{**e, "ordner": str(wurzel)} for e in eintraege]
+    hooks = hook_eintraege(lies_json(datei).get("hooks"), wurzel, quelle, datei, status)
+    mod = mod_eintrag(datei, wurzel, wurzel, wurzel.name, quelle, status)
+    return [{**e, "ordner": str(wurzel)} for e in hooks], [{**mod, "ordner": str(wurzel)}] if mod else []
 
 
 def ordner_plugins(settings):
     """Hooks und Mods aus Plugins, die ohne Installation aus einem Ordner laden: Skill-Ordner mit eigener plugin.json,
     die Ordner aus CLAUDE_CODE_PLUGIN_DIRS (Umgebung oder `env` in settings.json) und die Mods aus
     ~/.claude/dev-mods/<Sitzung>, die nur in ihrer Sitzung laden. Die ID trägt den Ordner, `ordner` sagt `aktionen()`
-    und `befehl()`, dass der Eintrag weder zu einem Plugin noch in settings.json gehört."""
+    und `befehl()`, dass der Eintrag weder zu einem Plugin noch in settings.json gehört. Gibt (Hooks, Mods) zurück."""
     env = settings.get("env")
     eingetragen = [os.environ.get(PLUGIN_ORDNER), env.get(PLUGIN_ORDNER) if isinstance(env, dict) else None]
     orte = [("Skill-Ordner", o, "aktiv") for o in unterordner(CLAUDE / "skills")]
     orte += [("Plugin-Ordner", Path(p).expanduser(), "aktiv")
              for liste in eingetragen if isinstance(liste, str) for p in liste.split(os.pathsep) if p]
     orte += [("Mod-Ordner", o, "nur eine Sitzung") for sitzung in unterordner(CLAUDE / "dev-mods") for o in unterordner(sitzung)]
-    ergebnis, gesehen = [], set()
+    hooks, mods, gesehen = [], [], set()
     for art, wurzel, status in orte:
         try:
             if wurzel.resolve() in gesehen:
                 continue
             gesehen.add(wurzel.resolve())
-            ergebnis += ordner_hooks(art, wurzel, status)
+            h, m = ordner_hooks(art, wurzel, status)
         except Exception as fehler:
             lesefehler(f"{art} {wurzel}", fehler)
-    return ergebnis
+            continue
+        hooks += h
+        mods += m
+    return hooks, mods
 
 
 def projekt_hooks(projekte):
     """Hooks und Mods, die nur in einem Projekt laufen: `hooks` aus .claude/settings.json und .claude/settings.local.json
     und Skill-Ordner mit eigener plugin.json unter .claude/skills. Nur Anzeige im Tab „Projekte“, ohne Bewertung und
-    Aktion: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo. Die ID trägt Datei oder Ordner."""
-    ergebnis, gesehen = [], {CLAUDE.resolve()}
+    Aktion: Ein Hook in den Einstellungen eines Projekts gehört oft zum Repo. Die ID trägt Datei oder Ordner.
+    Gibt (Hooks, Mods) zurück."""
+    hooks, mods, gesehen = [], [], {CLAUDE.resolve()}
     for pfad in sorted(projekte):
         wurzel = Path(pfad) / ".claude"
         try:
@@ -354,17 +422,20 @@ def projekt_hooks(projekte):
         except OSError:  # etwa ~/Documents, das macOS ohne Freigabe verweigert: nur dieses Projekt fällt weg
             continue
         try:
-            eintraege = []
+            eintraege, projekt_mods = [], []
             for name in ("settings.json", "settings.local.json"):
                 datei = wurzel / name
                 eintraege += hook_eintraege(lies_json(datei).get("hooks"), datei, {"art": "Einstellungen", "autor": name}, datei)
             for ordner in unterordner(wurzel / "skills"):
-                eintraege += ordner_hooks("Skill-Ordner", ordner, "aktiv")
+                h, m = ordner_hooks("Skill-Ordner", ordner, "aktiv")
+                eintraege += h
+                projekt_mods += m
         except Exception as fehler:
             lesefehler(f"Projekt {pfad}", fehler)
             continue
-        ergebnis += [{**e, "projekt": str(pfad)} for e in eintraege]
-    return ergebnis
+        hooks += [{**e, "projekt": str(pfad)} for e in eintraege]
+        mods += [{**e, "projekt": str(pfad)} for e in projekt_mods]
+    return hooks, mods
 
 
 def eigene_hooks(settings, pfad):
@@ -538,12 +609,13 @@ def plugin_skill_dateien(wurzel, mkt_eintrag, manifest):
 
 
 def plugins(cfg, settings, autoren):
+    """(Plugins, ihre Skills/Befehle/Agenten, ihre Hooks, ihre Mods)."""
     roh = lies_json(PLUGINS / "installed_plugins.json").get("plugins", {})
     # nur Installationen mit Pfad: Ein Eintrag ohne sie ist nicht installiert
     installiert = {pid: mit_pfad for pid, inst in roh.items() if (mit_pfad := [i for i in inst if i.get("installPath")])}
     aktiviert = settings.get("enabledPlugins", {})
     marktplaetze = lies_json(PLUGINS / "known_marketplaces.json")
-    liste, bestandteile, hooks = [], [], []
+    liste, bestandteile, hooks, mods = [], [], [], []
     mehrfach = mehrfache_namen(installiert)
     for pid, installationen in sorted(installiert.items()):
         try:
@@ -585,8 +657,7 @@ def plugins(cfg, settings, autoren):
             hooks_roh = hooks_roh if isinstance(hooks_roh, dict) else {}
             for h in hook_eintraege(hooks_roh, pid, {"art": "Plugin", "autor": autor, "repo": pid}, hooks_datei, "aktiv" if aktiv else "aus"):
                 plugin_hooks.append({**h, "plugin": pid})
-            mods = mod_eintraege(hooks_datei, wurzel, pid, {"art": "Plugin", "autor": autor, "repo": pid}, "aktiv" if aktiv else "aus")
-            plugin_hooks += [{**h, "plugin": pid} for h in mods]
+            mod = mod_eintrag(hooks_datei, wurzel, pid, name, {"art": "Plugin", "autor": autor, "repo": pid}, "aktiv" if aktiv else "aus")
 
             genutzt = [t["nutzung"] for t in teile if t["nutzung"]]
             pnutzung = cfg.get("pluginUsage", {}).get(pid, {})
@@ -608,7 +679,7 @@ def plugins(cfg, settings, autoren):
                 "befehle": [t["name"] for t in teile if t["typ"] == "Befehl"],
                 "agenten": [t["name"] for t in teile if t["typ"] == "Agent"],
                 "hooks": sorted(hooks_roh.keys()),
-                "mods": [h["ereignis"] for h in mods],
+                "mods": mod["ereignisse"] if mod else [],
                 "mcp": mcp_definitionen(wurzel, manifest),
                 "tokens": sum(t["tokens"] for t in teile),
                 "nutzung": {
@@ -623,7 +694,8 @@ def plugins(cfg, settings, autoren):
         liste.append(eintrag)
         bestandteile += teile
         hooks += plugin_hooks
-    return liste, bestandteile, hooks
+        mods += [{**mod, "plugin": pid}] if mod else []
+    return liste, bestandteile, hooks, mods
 
 
 def mcp_live():
@@ -748,7 +820,7 @@ def projekt_mcp(gesperrt, projekte):
 def befehl(e, empfehlung):
     """Der Befehl, mit dem sich die Empfehlung umsetzen ließe."""
     eid = e["id"]
-    if eid.startswith("hook:") and e.get("ordner"):
+    if eid.startswith(("hook:", "mod:")) and e.get("ordner"):
         if e["quelle"]["art"] == "Plugin-Ordner":
             return f"{PLUGIN_ORDNER} → {e['ordner']} herausnehmen"
         # im Skill-Ordner nur die Hooks: Der Skill daneben soll bleiben
@@ -759,6 +831,9 @@ def befehl(e, empfehlung):
         if e["ereignis"] == "Statuszeile":
             return '~/.claude/settings.json → "statusLine" entfernen'
         return f'~/.claude/settings.json → "hooks" → "{e["ereignis"]}" entfernen'
+    if eid.startswith("mod:"):  # ein Mod kommt mit seinem Plugin und geht mit ihm
+        pid = shellwort(e["plugin"])
+        return f"claude plugin disable {pid}" if empfehlung == "abschalten" else f"claude plugin uninstall {pid}"
     # Plugins und MCP-Server vor skillOverrides: Ein Override unter ihrem Namen bewirkt nichts
     if eid.startswith("plugin:"):
         pid = shellwort(e['name'] + '@' + e['marktplatz'])
@@ -802,6 +877,8 @@ def aktionen(e):
     deniedMcpServers-Eintrag (`sperren`, zurück mit `entsperren`), Papierkorb (`papierkorb`) oder ein Hook-Block aus
     settings.json (`hook_entfernen`). Ein Override `None` nimmt den Eintrag weg. Aktionen, die schon gelten, fehlen."""
     eid = e["id"]
+    if eid.startswith("mod:"):
+        return {}  # kommt mit dem Plugin oder seinem Ordner und geht mit ihm
     if eid.startswith("hook:"):
         if e.get("plugin") or e.get("ordner"):
             return {}  # kommt mit dem Plugin oder seinem Ordner und geht mit ihm
@@ -875,7 +952,8 @@ def umgesetzt(e):
     empfehlung = b.get("empfehlung") if isinstance(b, dict) else None
     if empfehlung == "abschalten":
         return (e.get("override") == "off" or e.get("gesperrt") is True or e.get("status") == "deaktiviert"
-                or (e["id"].startswith("plugin:") and e.get("status") != "aktiv"))
+                or (e["id"].startswith("plugin:") and e.get("status") != "aktiv")
+                or (e["id"].startswith("mod:") and bool(e.get("plugin")) and e.get("status") == "aus"))  # mit seinem Plugin aus
     return empfehlung == "nur manuell" and e.get("aufruf") == "nur /"
 
 
@@ -943,12 +1021,14 @@ def inventar(cfg, settings, bewertung, lock):
     """Der Bestand von Claude Code. `cfg` ist ~/.claude.json, `settings` ~/.claude/settings.json, `bewertung` die Datei
     aus dem Datenordner, `lock` die Skills aus ~/.agents/.skill-lock.json: build.main() liest sie einmal und gibt sie mit."""
     namen, gesperrt, eingetragen = autoren(bewertung), gesperrte_namen(settings), cfg.get("projects") or {}
-    plugin_liste, plugin_teile, plugin_hooks = plugins(cfg, settings, namen)
+    plugin_liste, plugin_teile, plugin_hooks, plugin_mods = plugins(cfg, settings, namen)
     plugin_updates_markieren(plugin_liste)
     skills = persoenliche_skills(cfg, settings, lock, namen) + plugin_teile
     updates_markieren(skills, lock)
     projekte = projekt_skills(cfg, settings, namen, eingetragen.keys())
-    hooks = eigene_hooks(settings, CLAUDE / "settings.json") + plugin_hooks + ordner_plugins(settings)
+    ordner_hooks_, ordner_mods = ordner_plugins(settings)
+    hooks = eigene_hooks(settings, CLAUDE / "settings.json") + plugin_hooks + ordner_hooks_
+    mods = plugin_mods + ordner_mods
     dateien = transkripte()
     messen(hooks, *hook_ausgaben(dateien))
     for p in plugin_liste:
@@ -960,10 +1040,10 @@ def inventar(cfg, settings, bewertung, lock):
     mcp = mcp_server(cfg, gesperrt, plugin_liste, live, mcp_messungen(dateien, praefixe), lambda c: mcp_direkt.gemessen(c, speicher))
     speicher.sichern()
     mcp_projekte = projekt_mcp(gesperrt, eingetragen)
-    hooks_projekte = projekt_hooks(eingetragen.keys())
-    for h in hooks_projekte:  # nicht in `alle`: keine Bewertung, keine Aktion, nur der Text zum Kopieren
+    hooks_projekte, mods_projekte = projekt_hooks(eingetragen.keys())
+    for h in hooks_projekte + mods_projekte:  # nicht in `alle`: keine Bewertung, keine Aktion, nur der Text zum Kopieren
         h["befehl"] = befehl(h, "entfernen")
-    alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks
+    alle = mcp + plugin_liste + skills + projekte + mcp_projekte + hooks + mods
     eindeutige_ids(alle)
     bewerte(alle, bewertung, befehl)
     for e in alle:
@@ -986,6 +1066,8 @@ def inventar(cfg, settings, bewertung, lock):
         "projekt_mcp": mcp_projekte,
         "projekt_hooks": hooks_projekte,
         "hooks": hooks,
+        "mods": mods,
+        "projekt_mods": mods_projekte,
         "mess_tage": MESS_TAGE,
         "sammelordner": sammelordner(eingetragen.keys()),
         "eingebaut": eingebaut,

@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -201,7 +202,7 @@ class PluginBestand(unittest.TestCase):
         (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {
             "leer@m": [], "ohnepfad@m": [{"scope": "user"}], "gut@m": [{"scope": "user", "installPath": str(tmp / "gut")}]}}))
         with mock.patch.object(claude, "PLUGINS", tmp):
-            liste, _, _ = claude.plugins({}, {}, {})
+            liste, _, _, _ = claude.plugins({}, {}, {})
         self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
 
     def test_marktplatz_ohne_ort_liest_nichts_aus_dem_arbeitsordner(self):
@@ -730,7 +731,7 @@ class Lesefehler(unittest.TestCase):
                 raise RuntimeError("unerwartet")
             return echt(wurzel, *rest)
         with mock.patch.object(claude, "PLUGINS", self.tmp), mock.patch.object(claude, "plugin_skill_dateien", side_effect=dateien):
-            liste, teile, hooks = claude.plugins({}, {}, {})
+            liste, teile, hooks, _ = claude.plugins({}, {}, {})
         self.assertEqual([p["id"] for p in liste], ["plugin:gut@m"])
         self.assertEqual(bestand.LESEFEHLER, [{"quelle": "Plugin kaputt@m", "fehler": "RuntimeError: unerwartet"}])
 
@@ -812,7 +813,7 @@ class FremdeDateien(unittest.TestCase):
         (wurzel / "hooks/hooks.json").write_text(json.dumps({"hooks": ["echo"]}))
         (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
         with mock.patch.object(claude, "PLUGINS", self.tmp):
-            liste, _, hooks = claude.plugins({}, {}, {})
+            liste, _, hooks, _ = claude.plugins({}, {}, {})
         self.assertEqual((liste[0]["hooks"], hooks), ([], []))
 
     def test_unlesbares_projekt_wird_uebersprungen(self):
@@ -993,13 +994,13 @@ class PluginCommit(unittest.TestCase):
         (tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [
             {"scope": "user", "installPath": str(tmp / "p"), "version": "1.0", "gitCommitSha": "abc"}]}}))
         with mock.patch.object(claude, "PLUGINS", tmp):
-            liste, _, _ = claude.plugins({}, {}, {})
+            liste, _, _, _ = claude.plugins({}, {}, {})
         self.assertEqual(liste[0]["commit"], "abc")
 
 
 class Mods(unittest.TestCase):
-    """Ein Mod ist ein Hook-Modul, das hooks/hooks.json unter `modules` nennt. Er läuft in jeder Sitzung mit und stand
-    bisher nicht im Inventar: Gelesen wurde nur der Block `hooks` daneben."""
+    """Ein Mod ist ein Hook-Modul, das hooks/hooks.json unter `modules` nennt. Er läuft in jeder Sitzung mit, kann Panels
+    und Befehle hinzufügen, Werkzeug-Aufrufe ändern, Dateien schreiben und Programme starten. Ein Eintrag je Mod."""
 
     MODUL = """export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => next(e))
@@ -1007,12 +1008,21 @@ class Mods(unittest.TestCase):
   on('ui.render', ($, e, next) => next(e))
 }
 """
+    BERICHT = {"ereignisse": ["session.start", "ui.render{component=Pane}", "ui.render{component=AbovePrompt}", "tool.call",
+                              "command.run{command=zeig}", "command.run{command=clear|resume}", "prompt.compose"],
+               "aufrufe": ["$.ui.open", "$.ui.status", "$.fs.read", "$.fs.write", "$.process.run", "$.http.fetch", "$.command.register"],
+               "waechter": ["tool.call"]}
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, self.tmp)
         bestand.LESEFEHLER.clear()
         self.addCleanup(bestand.LESEFEHLER.clear)
+        # nie das echte `claude plugin validate`: Tests laufen auch ohne Claude Code, etwa bei GitHub
+        self.echter_bericht = claude.mod_bericht
+        bericht = mock.patch.object(claude, "mod_bericht", return_value=None)
+        self.bericht = bericht.start()
+        self.addCleanup(bericht.stop)
 
     def ordner(self, pfad, module=("./register.ts",), text=MODUL, hooks=None, manifest=True):
         wurzel = self.tmp / pfad
@@ -1024,49 +1034,83 @@ class Mods(unittest.TestCase):
         (wurzel / "hooks/register.ts").write_text(text)
         return wurzel
 
-    def test_ein_eintrag_je_ereignis(self):
-        wurzel = self.ordner("p")
-        werkzeug, zeichnen = claude.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {"art": "Plugin"}, "aus")
-        self.assertEqual((werkzeug["id"], werkzeug["name"], werkzeug["status"], werkzeug["mod"], werkzeug["typ"]),
-                         ("hook:p@m:mod:tool.call", "tool.call", "aus", True, "Hook"))
-        self.assertEqual(werkzeug["befehle"], [{"befehl": "register.ts", "matcher": "{ tool: 'Bash' }", "bedingung": None}])
-        self.assertEqual(werkzeug["pfad"], str(wurzel / "hooks/register.ts"))
-        self.assertEqual((zeichnen["id"], [b["matcher"] for b in zeichnen["befehle"]]),
-                         ("hook:p@m:mod:ui.render", ["{ component: 'Pane' }", None]))
+    def eintrag(self, wurzel, status="aktiv"):
+        return claude.mod_eintrag(wurzel / "hooks/hooks.json", wurzel, "p@m", "p", {"art": "Plugin"}, status)
 
-    def test_ohne_fund_bleibt_eine_zeile(self):
-        """Steht `on(` nur in einer importierten Datei, wäre das Modul sonst unsichtbar."""
-        wurzel = self.ordner("p", text="import { alles } from './rest'\nexport const register = alles\n")
-        (e,) = claude.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {})
-        self.assertEqual((e["id"], e["name"], e["ereignis"]), ("hook:p@m:mod:unbekannt", "Mod", "unbekannt"))
+    def test_ein_eintrag_je_mod_aus_dem_bericht(self):
+        wurzel = self.ordner("p")
+        self.bericht.return_value = self.BERICHT
+        e = self.eintrag(wurzel, "aus")
+        self.assertEqual((e["id"], e["name"], e["typ"], e["status"], e["messung"], e["module"], e["pfad"]),
+                         ("mod:p@m", "p", "Mod", "aus", "validate", ["hooks/register.ts"], str(wurzel / "hooks/register.ts")))
+        self.assertEqual(e["zeigt"], ["Panel", "Leiste über dem Prompt", "Statuszeile"])
+        self.assertEqual(e["befehle"], ["zeig", "clear", "resume"])
+        self.assertEqual(e["greift_ein"], ["Werkzeug-Aufrufe", "System-Prompt"])
+        self.assertEqual(e["darf"], ["Dateien schreiben", "Programme starten", "Netz"])  # lesen allein zählt nicht
+        self.assertEqual(e["waechter"], ["tool.call"])
+        self.bericht.assert_called_once_with(wurzel)
+
+    def test_ohne_bericht_bleibt_die_textsuche(self):
+        """Ohne `claude` (etwa bei GitHub) oder mit einem Bericht in anderer Form: die Ereignisse aus `on('…'`."""
+        e = self.eintrag(self.ordner("p"))
+        self.assertEqual((e["messung"], e["ereignisse"], e["aufrufe"], e["zeigt"], e["greift_ein"]),
+                         ("Textsuche", ["tool.call", "ui.render"], [], [], ["Werkzeug-Aufrufe"]))
 
     def test_fremde_form_und_pfad_nach_aussen(self):
         """Der Pfad kommt aus einer fremden Datei: Was aus dem Plugin herausführt, wird nicht gelesen."""
         (self.tmp / "aussen.ts").write_text(self.MODUL)
         for module in (["../../aussen.ts", str(self.tmp / "aussen.ts"), 3, None, "fehlt.ts", "."], "./register.ts", {"a": 1}, None):
             with self.subTest(module=module):
-                wurzel = self.ordner(f"p{len(list(self.tmp.iterdir()))}", module=module)
-                self.assertEqual(claude.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {}), [])
+                self.assertIsNone(self.eintrag(self.ordner(f"p{len(list(self.tmp.iterdir()))}", module=module)))
+        self.bericht.assert_not_called()
 
     def test_modul_in_anderer_kodierung(self):
         wurzel = self.ordner("p")
         (wurzel / "hooks/register.ts").write_bytes("// Prüfung\non('turn.start', f)\n".encode("latin-1"))
-        (e,) = claude.mod_eintraege(wurzel / "hooks/hooks.json", wurzel, "p@m", {})
-        self.assertEqual(e["ereignis"], "turn.start")
+        self.assertEqual(self.eintrag(wurzel)["ereignisse"], ["turn.start"])
+
+    def test_bericht_von_claude_plugin_validate(self):
+        """Die Hooks und Aufrufe stehen nur als Text in `notes`; ein Komma in geschweiften Klammern trennt nicht."""
+        antwort = {"contents": [{"type": "skills"}, {"type": "hooks", "notes": [
+            "./register.ts hooks: session.start, ui.render{component=Pane, requestId=x}, command.run{command=clear|resume}",
+            "./register.ts gating hook without .catch: tool.call",
+            "./register.ts calls: $.fs.write (via hostOf), $.ui.open, $.fs.write (via nochmal)", 7],
+            "gatingHooks": [{"hook": "tool.call", "hasCatch": False}, {"hook": "prompt.submit", "hasCatch": True}, "kaputt"]}]}
+        lauf = mock.Mock(stdout=json.dumps(antwort))
+        with mock.patch.object(claude.subprocess, "run", return_value=lauf) as run:
+            bericht = self.echter_bericht(Path("/x/p"))
+        self.assertEqual(run.call_args.args[0], ["claude", "plugin", "validate", "--json", "/x/p"])
+        self.assertEqual(bericht, {"ereignisse": ["session.start", "ui.render{component=Pane, requestId=x}", "command.run{command=clear|resume}"],
+                                   "aufrufe": ["$.fs.write", "$.ui.open"], "waechter": ["tool.call"]})
+
+    def test_ohne_lesbaren_bericht_none(self):
+        for lauf in (OSError("kein claude"), subprocess.TimeoutExpired("claude", 60), mock.Mock(stdout="kein JSON"),
+                     mock.Mock(stdout=json.dumps({"contents": [{"type": "hooks", "notes": ["anderes Format"]}]})),
+                     mock.Mock(stdout=json.dumps({"contents": "kaputt"})), mock.Mock(stdout="[]")):
+            with self.subTest(lauf=lauf), mock.patch.object(claude.subprocess, "run", side_effect=[lauf] if isinstance(lauf, Exception) else None,
+                                                            return_value=lauf):
+                self.assertIsNone(self.echter_bericht(Path("/x/p")))
 
     def test_plugin_bringt_mod_mit(self):
         wurzel = self.ordner("p", hooks={"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]})
         (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
         with mock.patch.object(claude, "PLUGINS", self.tmp):
-            liste, _, hooks = claude.plugins({}, {"enabledPlugins": {"p@m": True}}, {})
+            liste, _, hooks, mods = claude.plugins({}, {"enabledPlugins": {"p@m": True}}, {})
         self.assertEqual((liste[0]["hooks"], liste[0]["mods"]), (["Stop"], ["tool.call", "ui.render"]))
-        self.assertEqual([(h["id"], h["plugin"], h["status"]) for h in hooks], [
-            ("hook:p@m:Stop", "p@m", "aktiv"), ("hook:p@m:mod:tool.call", "p@m", "aktiv"), ("hook:p@m:mod:ui.render", "p@m", "aktiv")])
-        self.assertEqual(claude.aktionen(hooks[1]), {})
+        self.assertEqual([h["id"] for h in hooks], ["hook:p@m:Stop"])  # Mods stehen nicht mehr bei den Hooks
+        self.assertEqual([(m["id"], m["name"], m["plugin"], m["status"]) for m in mods], [("mod:p@m", "p", "p@m", "aktiv")])
+        self.assertEqual(claude.aktionen(mods[0]), {})
+
+    def test_befehl_und_umgesetzt_folgen_dem_plugin(self):
+        mod = {"id": "mod:p@m", "typ": "Mod", "plugin": "p@m", "status": "aktiv", "quelle": {"art": "Plugin"}}
+        self.assertEqual(claude.befehl(mod, "abschalten"), "claude plugin disable p@m")
+        self.assertEqual(claude.befehl(mod, "entfernen"), "claude plugin uninstall p@m")
+        self.assertFalse(claude.umgesetzt({**mod, "bewertung": {"empfehlung": "abschalten"}}))
+        self.assertTrue(claude.umgesetzt({**mod, "status": "aus", "bewertung": {"empfehlung": "abschalten"}}))
 
     def test_plugins_aus_ordnern(self):
         """Ohne Installation laden: Skill-Ordner mit eigener plugin.json, CLAUDE_CODE_PLUGIN_DIRS (Umgebung und env in
-        settings.json) und die Mods einer Sitzung. Dort zählen auch die Befehle unter `hooks`, die bisher fehlten."""
+        settings.json) und die Mods einer Sitzung. Dort zählen auch die Befehle unter `hooks`."""
         claude_ordner = self.tmp / ".claude"
         skill = self.ordner(".claude/skills/mit", hooks={"Stop": [{"hooks": [{"type": "command", "command": "echo"}]}]})
         self.ordner(".claude/skills/ohne", manifest=False)
@@ -1075,44 +1119,44 @@ class Mods(unittest.TestCase):
         umgebung, einstellung = self.ordner("u"), self.ordner("e")
         dirs = os.pathsep.join([str(umgebung), str(skill), str(self.tmp / "fehlt")])
         with mock.patch.object(claude, "CLAUDE", claude_ordner), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": dirs}):
-            hooks = claude.ordner_plugins({"env": {"CLAUDE_CODE_PLUGIN_DIRS": str(einstellung)}})
+            hooks, mods = claude.ordner_plugins({"env": {"CLAUDE_CODE_PLUGIN_DIRS": str(einstellung)}})
         self.assertEqual(bestand.LESEFEHLER, [])
-        je_ordner = {}
-        for h in hooks:
-            je_ordner.setdefault(h["ordner"], []).append(h)
-        self.assertEqual(sorted(je_ordner), sorted(str(o) for o in (skill, sitzung, umgebung, einstellung)))  # skill nur einmal
-        self.assertEqual([h["id"] for h in je_ordner[str(skill)]],
-                         [f"hook:{skill}:Stop", f"hook:{skill}:mod:tool.call", f"hook:{skill}:mod:ui.render"])
-        self.assertEqual({o.name: (je_ordner[str(o)][0]["quelle"], je_ordner[str(o)][0]["status"]) for o in (skill, sitzung, umgebung)}, {
+        self.assertEqual([h["id"] for h in hooks], [f"hook:{skill}:Stop"])
+        self.assertEqual(sorted(m["ordner"] for m in mods), sorted(str(o) for o in (skill, sitzung, umgebung, einstellung)))  # skill nur einmal
+        je_ordner = {m["ordner"]: m for m in mods}
+        self.assertEqual(je_ordner[str(skill)]["id"], f"mod:{skill}")
+        self.assertEqual({o.name: (je_ordner[str(o)]["quelle"], je_ordner[str(o)]["status"]) for o in (skill, sitzung, umgebung)}, {
             "mit": ({"art": "Skill-Ordner", "autor": "Skill-Ordner mit"}, "aktiv"),
             "zaehler": ({"art": "Mod-Ordner", "autor": "Mod-Ordner zaehler"}, "nur eine Sitzung"),
             "u": ({"art": "Plugin-Ordner", "autor": "Plugin-Ordner u"}, "aktiv")})
-        self.assertTrue(all("plugin" not in h for h in hooks))
+        self.assertTrue(all("plugin" not in e for e in hooks + mods))
 
     def test_ordner_ohne_aktion_mit_eigenem_befehl(self):
         """Ohne `ordner` böte das Dashboard „deinstallieren“ an und suchte den Block in settings.json."""
-        def hook(art, ordner):
-            return {"id": f"hook:{ordner}:Stop", "typ": "Hook", "ereignis": "Stop", "ordner": ordner, "quelle": {"art": art}}
-        self.assertEqual(claude.aktionen(hook("Skill-Ordner", "/x/skills/a")), {})
+        def eintrag(art, ordner, id="hook"):
+            return {"id": f"{id}:{ordner}" + (":Stop" if id == "hook" else ""), "typ": "Hook", "ereignis": "Stop", "ordner": ordner, "quelle": {"art": art}}
+        self.assertEqual(claude.aktionen(eintrag("Skill-Ordner", "/x/skills/a")), {})
+        self.assertEqual(claude.aktionen(eintrag("Mod-Ordner", "/x/dev-mods/s/a", "mod")), {})
         with mock.patch.object(claude.sys, "platform", "darwin"):
-            self.assertEqual(claude.befehl(hook("Skill-Ordner", "/x/skills/a"), "entfernen"), "mv /x/skills/a/hooks ~/.Trash/")
-            self.assertEqual(claude.befehl(hook("Mod-Ordner", "/x/dev-mods/s/a b"), "entfernen"), "mv '/x/dev-mods/s/a b' ~/.Trash/")
-        self.assertEqual(claude.befehl(hook("Plugin-Ordner", "/x/p"), "entfernen"), "CLAUDE_CODE_PLUGIN_DIRS → /x/p herausnehmen")
+            self.assertEqual(claude.befehl(eintrag("Skill-Ordner", "/x/skills/a"), "entfernen"), "mv /x/skills/a/hooks ~/.Trash/")
+            self.assertEqual(claude.befehl(eintrag("Mod-Ordner", "/x/dev-mods/s/a b"), "entfernen"), "mv '/x/dev-mods/s/a b' ~/.Trash/")
+            self.assertEqual(claude.befehl(eintrag("Mod-Ordner", "/x/dev-mods/s/a", "mod"), "abschalten"), "mv /x/dev-mods/s/a ~/.Trash/")
+        self.assertEqual(claude.befehl(eintrag("Plugin-Ordner", "/x/p"), "entfernen"), "CLAUDE_CODE_PLUGIN_DIRS → /x/p herausnehmen")
 
     def test_kaputter_ordner_kostet_nur_sich(self):
         claude_ordner = self.tmp / ".claude"
         for name in ("gut", "kaputt"):
             self.ordner(f".claude/skills/{name}")
-        echt = claude.mod_eintraege
+        echt = claude.mod_eintrag
 
-        def eintraege(datei, wurzel, *rest):
+        def eintrag(datei, wurzel, *rest):
             if wurzel.name == "kaputt":
                 raise RuntimeError("unerwartet")
             return echt(datei, wurzel, *rest)
         with mock.patch.object(claude, "CLAUDE", claude_ordner), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}), \
-                mock.patch.object(claude, "mod_eintraege", side_effect=eintraege):
-            hooks = claude.ordner_plugins({})
-        self.assertEqual({Path(h["ordner"]).name for h in hooks}, {"gut"})
+                mock.patch.object(claude, "mod_eintrag", side_effect=eintrag):
+            _, mods = claude.ordner_plugins({})
+        self.assertEqual({Path(m["ordner"]).name for m in mods}, {"gut"})
         self.assertEqual(bestand.LESEFEHLER, [{"quelle": f"Skill-Ordner {claude_ordner / 'skills/kaputt'}", "fehler": "RuntimeError: unerwartet"}])
 
 
@@ -1129,9 +1173,9 @@ class ProjektHooks(unittest.TestCase):
         (ordner / datei).write_text(json.dumps({"hooks": hooks}))
         return self.tmp / name
 
-    def lesen(self, *projekte):
+    def lesen(self, *projekte, mods=False):
         with mock.patch.object(claude, "CLAUDE", self.tmp / "home/.claude"):
-            return claude.projekt_hooks([str(p) for p in projekte])
+            return claude.projekt_hooks([str(p) for p in projekte])[1 if mods else 0]
 
     def test_beide_einstellungsdateien_und_skill_ordner(self):
         a = self.projekt("A")
@@ -1140,12 +1184,12 @@ class ProjektHooks(unittest.TestCase):
         self.ordner("A/.claude/skills/ohne", manifest=False)
         hooks = self.lesen(a, self.tmp / "fehlt")
         self.assertEqual([h["id"] for h in hooks], [
-            f"hook:{a}/.claude/settings.json:Stop", f"hook:{a}/.claude/settings.local.json:PreToolUse",
-            f"hook:{a}/.claude/settings.local.json:Stop", f"hook:{skill}:mod:tool.call", f"hook:{skill}:mod:ui.render"])
+            f"hook:{a}/.claude/settings.json:Stop", f"hook:{a}/.claude/settings.local.json:PreToolUse", f"hook:{a}/.claude/settings.local.json:Stop"])
         self.assertEqual({h["projekt"] for h in hooks}, {str(a)})
-        self.assertEqual([h["quelle"]["autor"] for h in hooks],
-                         ["settings.json", "settings.local.json", "settings.local.json", "Skill-Ordner mit", "Skill-Ordner mit"])
-        self.assertEqual((hooks[0]["pfad"], hooks[0]["status"], hooks[3]["mod"]), (f"{a}/.claude/settings.json", "aktiv", True))
+        self.assertEqual([h["quelle"]["autor"] for h in hooks], ["settings.json", "settings.local.json", "settings.local.json"])
+        self.assertEqual((hooks[0]["pfad"], hooks[0]["status"]), (f"{a}/.claude/settings.json", "aktiv"))
+        (mod,) = self.lesen(a, mods=True)
+        self.assertEqual((mod["id"], mod["projekt"], mod["ordner"], mod["quelle"]["autor"]), (f"mod:{skill}", str(a), str(skill), "Skill-Ordner mit"))
         self.assertEqual(bestand.LESEFEHLER, [])
 
     def test_home_ist_kein_projekt(self):
