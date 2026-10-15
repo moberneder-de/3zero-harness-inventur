@@ -20,11 +20,12 @@ from pathlib import Path
 import harness
 
 HOME = Path.home()
-ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status eines Werkzeugs, bei denen etwas zu tun ist
+ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status eines Werkzeugs, bei denen etwas zu tun ist; nicht „wartet auf Homebrew“
 RUHEND_TAGE = 180  # so lange ohne Commit upstream gilt ein Projekt als ruhend
 # Einstellungen aus der .git/config eines fremden Klons, die beim Lesen ein Programm starten könnten, abschalten
 GIT_SICHER = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
 NPM_NAME = re.compile(r"(@[A-Za-z0-9._~-]+/)?[A-Za-z0-9._~-]+")
+CELLAR = re.compile(r"/Cellar/([^/]+)/")  # Homebrew: die Formel steht im echten Pfad
 
 # Name im PATH → (Anzeigename, Quelle der neuesten Version)
 WERKZEUGE = {
@@ -113,7 +114,7 @@ def gebraucht(inhalt):
 
 def update_befehl(pfad):
     """Der Befehl zum Aktualisieren, abgelesen am echten Pfad des Programms; None, wenn die Installationsart unklar ist."""
-    if m := re.search(r"/Cellar/([^/]+)/", pfad):
+    if m := CELLAR.search(pfad):
         return f"brew upgrade {m.group(1)}"
     if m := re.search(r"/lib/node_modules/((?:@[^/]+/)?[^/]+)/", pfad):
         return f"npm install -g {m.group(1)}@latest"
@@ -122,6 +123,19 @@ def update_befehl(pfad):
     if "/.local/share/claude/" in pfad:
         return "claude update"
     return None
+
+
+def homebrew_version(formel):
+    """Die Version, die Homebrew für die Formel anbietet, aus seinem lokalen Stand; None ohne brew oder Antwort."""
+    brew = shutil.which("brew")
+    if not brew:
+        return None
+    try:
+        r = subprocess.run([brew, "info", "--json=v2", formel], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+                           env={**os.environ, "HOMEBREW_NO_AUTO_UPDATE": "1"})
+        return json.loads(r.stdout)["formulae"][0]["versions"]["stable"]
+    except (OSError, subprocess.TimeoutExpired, ValueError, LookupError, TypeError):
+        return None
 
 
 def installiert(werkzeug):
@@ -205,6 +219,11 @@ def pruefen(inhalt, harness_id, daten, heute):
         version, pfad = installiert(w)
         b = bewerten(version, nachschlagen(quelle), heute)
         befehl = update_befehl(pfad) if pfad and b["status"] in ("veraltet", "ohne Pflege") else None
+        # endoflife.date kennt eine Version oft Tage vor Homebrew; bis dahin täte `brew upgrade` nichts
+        if b["status"] == "veraltet" and (m := CELLAR.search(pfad or "")):
+            angebot = version_aus(homebrew_version(m.group(1)))
+            if angebot and zahlen(angebot) <= zahlen(version):
+                b["status"], befehl = "wartet auf Homebrew", None
         liste.append({"id": w, "name": name, "installiert": version, "pfad": pfad, **b, "befehl": befehl, "gebraucht_von": wer})
 
     fest = harness.SKILLS_CLI.split("@", 1)[1]

@@ -9,6 +9,9 @@ paths:
 `werkzeuge.py` prüft für den Tab „Versionen“ (er hieß „Werkzeuge“; so heißen aber auch die Funktionen eines MCP-Servers und `Bash` oder `WebFetch` in den Berechtigungen — Modul, Datenfeld `werkzeuge` und `werkzeuge.json` behalten ihren Namen), was die Inventur braucht (`GRUNDBEDARF`, dazu das CLI des Harness) und was MCP-Server und Hooks laut Befehl starten (`werkzeuge_in()`: `npx` gehört zu Node, `bunx` zu Bun, `uvx` zu uv, ein `.py`-Argument zu Python; ein Befehl mit Pfad zählt nur, wenn er auf dasselbe Programm zeigt wie der Name im PATH — Codex bringt ein eigenes Node mit, dessen Pflege Sache der App ist).
 Installiert per `--version`, neueste von endoflife.date (mit Pflegeende je Versionslinie), npm und GitHub, je Quelle ein Versuch am Tag, gemerkt in `werkzeuge.json` im Datenordner; ohne Netz gilt der letzte Stand.
 „veraltet“ heißt: in der eigenen Linie gibt es Neueres.
+Bei einer Homebrew-Installation nur, wenn Homebrew das Neuere schon anbietet (`homebrew_version()`, `brew info` aus dem lokalen Stand, ohne Auto-Update); sonst „wartet auf Homebrew“, ohne Befehl und nicht in `ZU_TUN`.
+Anlass: Node 26.12.0 stand bei endoflife.date, Homebrew hatte noch 26.11.1, und das Dashboard zeigte `brew upgrade node`, das nichts tat.
+Kennt Homebrew eine Version erst nach seinem eigenen Update, steht bis dahin „wartet“, obwohl `brew upgrade` (das vorher aktualisiert) schon etwas fände.
 Den Update-Befehl liest `update_befehl()` am echten Pfad ab (Homebrew-Cellar, npm global, `~/.bun`, `~/.local/share/claude`), sonst keiner.
 Nur Anzeige und Kopiertext, kein Knopf: Ein Laufzeit-Update aus dem Browser könnte laufende MCP-Server und Hooks stören, und `SKILLS_CLI` soll erst geprüft werden.
 Ein Fehler hier kostet nur den Tab (`lesefehler`).

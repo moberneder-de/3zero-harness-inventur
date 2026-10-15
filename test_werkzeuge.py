@@ -101,6 +101,25 @@ class Pruefen(unittest.TestCase):
         self.assertEqual(next(w for w in liste if w["id"] == "skills")["neueste"], "1.7.0")
 
 
+    def test_veraltet_nur_wenn_homebrew_schon_neueres_hat(self):
+        """endoflife.date kennt eine Version oft vor Homebrew. Solange Homebrew nichts Neueres anbietet, täte
+        `brew upgrade` nichts: kein Befehl, und es zählt nicht als offene Aufgabe."""
+        antworten = {"https://endoflife.date/api/v1/products/python/": {"result": {"releases": [
+            {"name": "3.14", "latest": {"name": "3.14.7"}, "eolFrom": "2030-10-31"}]}}}
+        for angebot, status, befehl in (("3.14.6", "wartet auf Homebrew", None), ("3.14.7", "veraltet", "brew upgrade python@3.14"),
+                                        (None, "veraltet", "brew upgrade python@3.14")):
+            with self.subTest(angebot=angebot), mock.patch.object(werkzeuge, "abrufen", side_effect=antworten.get), \
+                    mock.patch.object(werkzeuge, "homebrew_version", return_value=angebot) as gefragt, \
+                    mock.patch.object(werkzeuge, "installiert", side_effect=lambda w: ("3.14.6", "/opt/homebrew/Cellar/python@3.14/3.14.6/bin/python3.14")
+                                      if w == "python3" else (None, None)):
+                (self.tmp / "werkzeuge.json").unlink(missing_ok=True)
+                python = next(w for w in werkzeuge.pruefen({"mcp": [], "projekt_mcp": [], "hooks": []}, "claude-code", self.tmp, date(2026, 9, 26))
+                              if w["id"] == "python3")
+            self.assertEqual((python["status"], python["befehl"], python["neueste"]), (status, befehl, "3.14.7"))
+            gefragt.assert_called_once_with("python@3.14")
+            self.assertEqual(werkzeuge.offen([python], []), 1 if status == "veraltet" else 0)
+
+
 def git(ordner, *argv):
     subprocess.run(["git", "-C", str(ordner), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", *argv],
                    check=True, capture_output=True)

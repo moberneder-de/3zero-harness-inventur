@@ -414,7 +414,7 @@ const STATUS = {
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nur eine Sitzung": ["◐", "teil"], "bei Bedarf": ["◐", "teil"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
   "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
-  "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
+  "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "wartet auf Homebrew": ["◐", "aus"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
@@ -1104,13 +1104,15 @@ function renderWerkzeuge() {
       <td class="nowrap">${w.neueste ? esc(w.neueste) : '<span class="leer">unbekannt</span>'}${w.neue_linie ? `<div class="klein">neue Linie: ${esc(w.neue_linie)}</div>` : ""}</td>
       <td class="nowrap">${w.pflege_bis ? datum(w.pflege_bis) : '<span class="leer">–</span>'}</td>
       <td>${statusBadge(w.status)}</td><td class="klein">${w.gebraucht_von.map(esc).join("<br>")}</td>
-      <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>' : ""}${w.id === "python3" && w.befehl
+      <td style="min-width:250px">${w.befehl ? befehlZeile(w.befehl) : w.status === "veraltet" || w.status === "ohne Pflege" ? '<span class="klein">von Hand; die Installationsart ist nicht erkennbar</span>'
+        : w.status === "wartet auf Homebrew" ? `<span class="klein">Homebrew bietet ${esc(w.neueste)} noch nicht an; bis dahin gibt es nichts zu tun</span>` : ""}${w.id === "python3" && w.befehl
         ? '<div class="klein">Danach den Server neu starten: Er läuft sonst mit dem gelöschten alten Python weiter, und Aktionen scheitern.</div>' : ""}</td></tr>`).join("");
   return abschnitt("versionen", "Programme und ihre Versionen",
     `<div class="tabelle"><table><thead><tr><th>Programm</th><th>installiert</th><th>neueste</th><th>Pflege bis</th><th data-filter="jeder Status">Status</th><th>gebraucht von</th><th>Aktualisieren</th></tr></thead><tbody>${zeilen}</tbody></table></div>` + renderQuellcode(),
     erklaert("Was die Inventur selbst braucht und was deine MCP-Server und Hooks laut ihrem Befehl starten.", [
         ["veraltet", "In der eigenen Versionslinie gibt es Neueres. Eine neuere Linie steht darunter, macht aber nichts veraltet."],
         ["ohne Pflege", "Die Linie bekommt keine Sicherheitsupdates mehr."],
+        ["wartet auf Homebrew", "Es gibt Neueres, aber Homebrew bietet es noch nicht an. Zählt nicht als offene Aufgabe; sobald Homebrew nachzieht, steht hier wieder „veraltet“ mit dem Befehl."],
         ["neueste", "Von endoflife.date, npm und GitHub, einmal am Tag abgefragt. Ohne Netz gilt der letzte Stand."],
         ["Aktualisieren", "Musst du selbst. Den Befehl gibt es, wo die Installationsart am Pfad erkennbar ist (Homebrew, npm, Bun, Claude Code)."]],
       ["<code>skills</code> läuft in fester Version: Eine neuere erst prüfen, dann in <code>harness.py</code> eintragen."]));
