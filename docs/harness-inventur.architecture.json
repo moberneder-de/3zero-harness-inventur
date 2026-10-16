@@ -322,7 +322,7 @@
       "id": "claude-lesen",
       "from": "claudecfg",
       "to": "claudepy",
-      "label": "Plugins, Skills, Hooks",
+      "label": "Plugins, Skills, Hooks, Mods",
       "variant": "emphasis"
     },
     {
@@ -464,8 +464,8 @@
       "dot": "cyan",
       "title": "Werkzeug im Repo",
       "items": [
-        "claude.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; build.py startet den Leser und schreibt; mcp_direkt.py fragt HTTP-MCP-Server selbst",
-        "werkzeuge.py prüft Laufzeiten, berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief",
+        "claude.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; build.py startet den Leser und schreibt; mcp_direkt.py fragt HTTP-MCP-Server selbst; was ein Mod tut, liest claude.py mit claude plugin validate, ohne ihn auszuführen",
+        "werkzeuge.py prüft Laufzeiten (bei Homebrew-Installationen auch, ob Homebrew die neue Version schon anbietet), berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief",
         "anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md",
         "server.py liefert aus und führt Aktionen aus, konfig.py ändert dafür die Konfigurationsdateien; die Seite gibt es nur mit dem Schlüssel des laufenden Servers",
         "wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt"

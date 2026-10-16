@@ -45,7 +45,7 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks, Mods, Anweisungen), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
 
-Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.
+Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
 
 **Mods** (Claude Code) zeigt Code eines Plugins, der in der Sitzung mitläuft: was er anzeigt (Panel, Leiste über dem Prompt, Statuszeile), wo er eingreift (Werkzeug-Aufrufe, Prompt, System-Prompt), was er darf (Dateien schreiben, Programme starten, Netz) und welche Wächter ohne Absicherung laufen. Das liest die Inventur mit `claude plugin validate`, ohne den Mod auszuführen; ohne Claude Code bleibt eine Textsuche, die nur Ereignisse findet. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
 
@@ -142,7 +142,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
 | Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
 | MCP-Server | Aufrufe aus denselben Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | gezählt |
-| Update verfügbar | Skills: `gh api` gegen den Stand bei der Installation (`skillFolderHash`). Plugins (Claude Code): Version aus `plugin.json`, fester `sha` im Marktplatz oder, ohne beides, ob sich ihr Ordner seit dem installierten Stand geändert hat | genau |
+| Update verfügbar | Skills: `gh api` gegen den Stand bei der Installation (`skillFolderHash`). Plugins (Claude Code): Version aus `plugin.json`, fester `sha` im Marktplatz oder, ohne beides, ob sich ihr Ordner seit dem installierten Stand geändert hat. MCP-Server, Hooks und Mods eines Plugins übernehmen dessen Angabe | genau |
 | Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
 | Ungenutzt | Nutzung und Installationsdatum, 30 Tage; unter Codex gilt für Plugins mangels Datum der Stand ihres Ordners | abgeleitet |
 
@@ -153,7 +153,7 @@ Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods ga
 ## Voraussetzungen
 
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
-- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe
+- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`)
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
 - Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium)
 

@@ -58,7 +58,7 @@ Die zwölf Entwürfe, aus denen Nummer 7 gewählt wurde, liegen in Commit `28eff
 
 ## Was das Template nicht rechnet
 
-Urteile über den Bestand kommen fertig aus dem Inventar: `umgesetzt`, `wirksam`, `ersparnis`, `versionen_offen`, `kontextlast`.
+Urteile über den Bestand kommen fertig aus dem Inventar: `umgesetzt`, `wirksam`, `ersparnis`, `versionen_offen`, `kontextlast`, `update_plugin`.
 Eine neue Regel dieser Art gehört nach `build.py` oder in den Leser, wo sie einen Test bekommt; im Template gibt es keinen.
 Im Template bleibt, was von der Wahl im Browser abhängt (`gewaehlt()`, `abweichung`, die Zahl der offenen Aktionen), alle Texte und `befehlText()`: Der leitet die Anzeige bewusst aus genau dem Schritt ab, den der Server ausführt.
 Kein Rückfall auf eine eigene Rechnung, falls ein Feld fehlt: Inventar und Dashboard entstehen im selben Lauf.
