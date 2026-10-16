@@ -1038,6 +1038,8 @@ def inventar(cfg, settings, bewertung, lock):
     speicher = werkzeuge.Zwischenspeicher(harness.DATEN, datetime.now().date())
     mcp = mcp_server(cfg, gesperrt, plugin_liste, live, mcp_messungen(dateien, praefixe), lambda c: mcp_direkt.gemessen(c, speicher))
     speicher.sichern()
+    for p in plugin_liste:  # nur die Namen: roh trüge die Angabe env, headers und Token in Argumenten ins Dashboard
+        p["mcp"] = sorted(p["mcp"])
     mcp_projekte = projekt_mcp(gesperrt, eingetragen)
     hooks_projekte, mods_projekte = projekt_hooks(eingetragen.keys())
     for h in hooks_projekte + mods_projekte:  # nicht in `alle`: keine Bewertung, keine Aktion, nur der Text zum Kopieren

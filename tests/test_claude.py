@@ -816,6 +816,21 @@ class FremdeDateien(unittest.TestCase):
             liste, _, hooks, _ = claude.plugins({}, {}, {})
         self.assertEqual((liste[0]["hooks"], hooks), ([], []))
 
+    def test_plugin_mcp_im_inventar_nur_mit_namen(self):
+        """Die rohe Serverangabe eines Plugins trug env, headers und Token in Argumenten ins Inventar und ins Dashboard."""
+        wurzel = self.tmp / "p"
+        wurzel.mkdir()
+        (wurzel / ".mcp.json").write_text(json.dumps({"mcpServers": {"web": {
+            "command": "srv", "args": ["--token", "geheim"], "env": {"API_KEY": "geheim"}, "headers": {"Authorization": "Bearer geheim"}}}}))
+        (self.tmp / "installed_plugins.json").write_text(json.dumps({"plugins": {"p@m": [{"scope": "user", "installPath": str(wurzel)}]}}))
+        with mock.patch.object(claude, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(claude, "PLUGINS", self.tmp), \
+                mock.patch.object(claude, "mcp_live", return_value=None), mock.patch.object(claude, "transkripte", return_value=[]), \
+                mock.patch.object(claude.harness, "DATEN", self.tmp), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
+            inventar = claude.inventar({}, {}, {}, {})
+        self.assertEqual(inventar["plugins"][0]["mcp"], ["web"])
+        self.assertEqual([m["name"] for m in inventar["mcp"]], ["plugin:p:web"])
+        self.assertNotIn("geheim", json.dumps(inventar))
+
     def test_unlesbares_projekt_wird_uebersprungen(self):
         """macOS verweigert per TCC etwa ~/Documents; iterdir() warf PermissionError und nahm alle Projekte mit."""
         gut, gesperrt = self.tmp / "Gut", self.tmp / "Gesperrt"

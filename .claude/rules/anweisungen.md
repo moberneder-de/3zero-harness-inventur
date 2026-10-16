@@ -34,6 +34,7 @@ Schalten lässt sich über den Server, aber nie an der Datei, die oft in einem R
 Claude Code liest einen Eintrag in `claudeMdExcludes` als Muster, und der Pfad kommt aus dem Inventar: Der Server nimmt deshalb nur einen ganzen Pfad zu einer `.md`-Datei ohne `*?[]{}`.
 „einschalten“ gibt es nur, wo genau diese Datei in `~/.claude/settings.json` steht (`ausgeschlossen: eigen`); schließt ein Muster oder ein Eintrag im Projekt sie aus („per Muster“), träfe das Herausnehmen mehr als die Zeile.
 Die `CLAUDE.md` eines Projekts bekommt außerdem `pruefen` (Datei und Projekt) — bindet sie eine `AGENTS.md` ein, bekommt es diese statt ihrer, ebenso eine `AGENTS.md`, die ohne `CLAUDE.md` lädt: Die eine Zeile `@AGENTS.md` hätte der Skill bewertet — wenn der Skill `claude-md-improver` installiert ist und lädt (`pruefskill()` in `claude.py`, Feld `pruefskill`): Damit bietet das Dashboard „prüfen“ an, einen lesenden Claude-Lauf im Server (siehe `.claude/rules/server.md`).
+`CLAUDE.local.md` hat dieselbe Art, bekommt `pruefen` aber nicht: Der Server prüft nur Dateien namens `CLAUDE.md` und `AGENTS.md`, der Klick endete mit einer Fehlermeldung.
 Nicht die globale Datei, weil das Raster des Skills nach Befehlen und Aufbau eines Projekts fragt, keine geerbte, weil sie zum Ordner darüber gehört, und keine verwaltete.
 Ohne Aktion bleiben auch verwaltete Dateien, `MEMORY.md` (`autoMemoryEnabled` schaltet alles zusammen) und Codex.
 Einen Output-Style kann ein Projekt in `.claude/settings.local.json` anders wählen; das liest das Modul nicht.

@@ -134,7 +134,8 @@ class AnweisungenAktionen(unittest.TestCase):
 
     def test_pruefen_nur_fuer_die_claude_md_eines_projekts_und_nur_mit_dem_skill(self):
         self.assertEqual(build.anweisungen_aktionen([self.zeile()], True)[0]["pruefen"], {"datei": "/p/CLAUDE.md", "projekt": "/p"})
-        for zeile in (self.zeile(bereich="global"), self.zeile(geerbt=True), self.zeile(verwaltet=True), self.zeile(art="Regel"), self.zeile(art="Memory")):
+        for zeile in (self.zeile(bereich="global"), self.zeile(geerbt=True), self.zeile(verwaltet=True), self.zeile(art="Regel"), self.zeile(art="Memory"),
+                     self.zeile(pfad="/p/CLAUDE.local.md")):  # der Server prüft nur CLAUDE.md und AGENTS.md: der Klick endete mit einem Fehler
             with self.subTest(zeile=zeile):
                 self.assertNotIn("pruefen", build.anweisungen_aktionen([zeile], True)[0])
         self.assertNotIn("pruefen", build.anweisungen_aktionen([self.zeile()])[0])  # ohne den Skill kein Knopf

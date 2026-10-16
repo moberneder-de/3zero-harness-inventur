@@ -696,6 +696,8 @@ def inventar():
     speicher = werkzeuge.Zwischenspeicher(harness.DATEN, datetime.now().date())
     mcp = mcp_server(cfg, plugin_liste, mcp_tage, lambda c: mcp_direkt.gemessen(c, speicher))
     speicher.sichern()
+    for p in plugin_liste:  # nur die Namen: roh trügen args und url Token ins Dashboard, verdeckt stehen sie im Ziel unter `mcp`
+        p["mcp"] = sorted(p["mcp"])
 
     alle = mcp + plugin_liste + skills + projekt_skills + projekt_mcp + hooks
     bewerte(alle, bewertung, befehl)

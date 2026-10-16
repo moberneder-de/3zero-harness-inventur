@@ -348,6 +348,16 @@ class Plugins(CodexOrdner):
                          [("hook:documents@openai-primary-runtime:Stop", "MCP node_repl.turn_ended", "aktiv")])
         self.assertNotIn(GEHEIM, json.dumps([liste, teile, hooks]))
 
+    def test_plugin_mcp_im_inventar_nur_mit_namen(self):
+        """args und url eines Plugin-Servers gingen roh ins Inventar; verdeckt stehen sie nur im Ziel unter `mcp`."""
+        wurzel = self.plugin("m", "docs", "1", {"name": "docs"})
+        self.schreibe(wurzel / ".mcp.json", json.dumps({"mcpServers": {"srv": {"command": "node", "args": ["--token", GEHEIM]}}}))
+        with mock.patch.object(codex, "updates_markieren"):
+            daten = codex.inventar()
+        self.assertEqual(daten["plugins"][0]["mcp"], ["srv"])
+        self.assertEqual([m["name"] for m in daten["mcp"]], ["plugin:docs:srv"])
+        self.assertNotIn(GEHEIM, json.dumps(daten))
+
     def test_gleicher_plugin_name_in_zwei_marktplaetzen(self):
         """Sonst trügen beide Skills dieselbe ID, und eine Aktion träfe das falsche Plugin."""
         eins = self.plugin("openai-bundled", "sites", "0.1.57", {"name": "sites"})
