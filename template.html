@@ -417,6 +417,9 @@ const STATUS = {
   "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
   "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "Update verfügbar": ["◐", "teil"], "wartet auf Homebrew": ["◐", "aus"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
+/* Das Update eines Plugins steht auch bei seinen MCP-Servern, Hooks und Mods (build.updates_vom_plugin), als Marke
+   für den Statusfilter; eingespielt wird es am Plugin. */
+const updateVomPlugin = e => e.update_plugin ? ` ${statusBadge("Update verfügbar")}<div class="klein">über Plugin ${esc(e.update_plugin)}</div>` : "";
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
   return `<span class="status st-${cls}"><span aria-hidden="true">${icon}</span> ${esc(s)}</span>`;
@@ -809,7 +812,7 @@ function renderMcp() {
       : `${zahl(m.werkzeuge - m.lesend)} von ${zahl(m.werkzeuge)} Werkzeugen nicht als nur lesend ausgezeichnet (laut Server)`) : "",
   ].filter(Boolean).join("<br>") : "";
   const zeilen = D.mcp.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}${imNetz(m)}</td>
-      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}</td>
+      <td>${esc(m.art)}</td><td>${statusBadge(m.status)}${ausIn(m.aus_in_projekten.length)}${updateVomPlugin(m)}</td>
       <td class="zahl">${werkzeuge(m)}</td><td class="zahl">${kontext(m)}</td><td class="zahl">${nutzungText(m)}</td>
       <td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
     detailZeile(8 + SP, [
@@ -1076,7 +1079,7 @@ function renderHooks() {
   const dauer = h => h.dauer ? `${zahl(h.dauer.median)} ms <span class="klein">· ${zahl(h.dauer.messungen)}×</span>` : ungemessen;
   const befehle = h => h.befehle.map(b => `<div><code>${esc(b.befehl)}</code>${b.matcher ? ` <span class="klein">bei ${esc(b.matcher)}</span>` : ""}${b.bedingung ? ` <span class="klein">wenn ${esc(b.bedingung)}</span>` : ""}</div>`).join("");
   const zeilen = D.hooks.map(h => `<tr class="haupt"><td class="name">${aufklapp(h.name)}</td>
-      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}</td><td class="zahl">${h.befehle.length}</td>
+      <td>${esc(herkunft(h))}</td><td>${statusBadge(h.status)}${updateVomPlugin(h)}</td><td class="zahl">${h.befehle.length}</td>
       <td class="zahl">${h.tokens ? "≈ " + zahl(h.tokens) : '<span class="leer">–</span>'}</td><td class="zahl">${ausgabe(h)}</td><td class="zahl">${dauer(h)}</td>
       <td>${was(h)}</td><td>${empfBadge(h)}</td>${wahlZelle(h)}</tr>` +
     detailZeile(9 + SP, [
@@ -1112,7 +1115,7 @@ function renderMods() {
   const mods = D.mods || [];
   const herkunft = m => m.plugin ? `Plugin ${m.plugin.split("@")[0]}` : m.quelle.autor;
   const zeilen = mods.map(m => `<tr class="haupt"><td class="name">${aufklapp(m.name)}</td>
-      <td>${esc(herkunft(m))}</td><td>${statusBadge(m.status)}</td><td>${MOD.liste(m.zeigt)}</td><td>${MOD.liste(m.greift_ein)}</td>
+      <td>${esc(herkunft(m))}</td><td>${statusBadge(m.status)}${updateVomPlugin(m)}</td><td>${MOD.liste(m.zeigt)}</td><td>${MOD.liste(m.greift_ein)}</td>
       <td>${MOD.liste(m.darf)}</td><td>${was(m)}</td><td>${empfBadge(m)}</td>${wahlZelle(m)}</tr>` +
     detailZeile(8 + SP, [
       ["Hört auf Befehle", m.befehle.map(b => `<code>/${esc(b)}</code>`).join(" ")],

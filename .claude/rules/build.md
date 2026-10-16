@@ -23,5 +23,6 @@ Sonst hieße dieselbe Kachel in beiden Dashboards gleich und meinte Verschiedene
 Was das Dashboard aus der Bewertung ableitet, rechnet Python und legt es fertig ins Inventar: je Eintrag `umgesetzt` und `wirksam`, oben `ersparnis` und `versionen_offen`.
 `umgesetzt()` steht in jedem Leser neben `aktionen()`, dessen Gegenstück es ist: Was schon abgeschaltet oder auf „nur manuell“ gestellt ist, braucht keine Aktion mehr; die Merkmale dafür sind je Harness verschieden, deshalb je Leser eine Funktion statt einer gemeinsamen mit Schaltern.
 `empfehlungen_ableiten()` gilt für beide: `wirksam` ist die eigene Empfehlung, bei Plugin-Bestandteilen ohne eigene die ihres Plugins (`geerbt`), und `ersparnis` zählt jede Tokenzahl einmal (geht ein Plugin ganz, zählen seine Teile nicht noch einmal).
+`updates_vom_plugin()` gibt MCP-Servern, Hooks und Mods eines Plugins mit Update dessen Namen (`update_plugin`): Sie haben keine eigene Version, und erst als Marke beim Status findet sie der Statusfilter; Skills nicht, dort meint `update` ein eigenes Update aus `npx skills`.
 Vorher rechnete das Template alle vier selbst, in der einzigen Datei ohne Tests und mit einer eigenen Kopie von `LAEDT` aus `codex.py`.
 Welche Status im Tab „Versionen“ Handlungsbedarf bedeuten, steht einmal in `werkzeuge.ZU_TUN`; danach zählt `werkzeuge.offen()` und meldet der Wochenlauf.

@@ -422,6 +422,23 @@ class BewertungFuersDashboard(unittest.TestCase):
                          {"gruppen": [], "hinweise": [], "bewertung_stand": "2026-09-17"})
 
 
+class UpdateVomPlugin(unittest.TestCase):
+    """MCP-Server, Hooks und Mods eines Plugins haben keine eigene Version: Ihr Update kommt mit dem Plugin.
+    Damit der Statusfilter in ihren Tabs „Update verfügbar“ findet, tragen sie das Plugin, das es anbietet."""
+
+    def test_bestandteile_tragen_das_plugin_mit_update(self):
+        inhalt = {"plugins": [{"id": "plugin:p@m", "name": "p", "update": True}, {"id": "plugin:q@m", "name": "q", "update": False}],
+                  "mcp": [{"id": "mcp:plugin:p:s", "art": "Plugin", "quelle": "p@m"}, {"id": "mcp:user", "art": "User", "quelle": "~/.claude.json"},
+                          {"id": "mcp:plugin:q:s", "art": "Plugin", "quelle": "q@m"}],
+                  "hooks": [{"id": "hook:p@m:Stop", "plugin": "p@m"}, {"id": "hook:einstellungen:Stop"}],
+                  "mods": [{"id": "mod:p@m", "plugin": "p@m"}, {"id": "mod:/x/dev-mods/s/a", "ordner": "/x/dev-mods/s/a"}],
+                  "skills": [{"id": "skill:p:x", "plugin": "p@m"}]}
+        build.updates_vom_plugin(inhalt)
+        self.assertEqual({e["id"]: e.get("update_plugin") for art in ("mcp", "hooks", "mods", "skills") for e in inhalt[art]}, {
+            "mcp:plugin:p:s": "p", "mcp:user": None, "mcp:plugin:q:s": None, "hook:p@m:Stop": "p", "hook:einstellungen:Stop": None,
+            "mod:p@m": "p", "mod:/x/dev-mods/s/a": None, "skill:p:x": None})  # Skills zeigen ihr Update im eigenen Filter
+
+
 class Empfehlungen(unittest.TestCase):
     """Was das Dashboard aus der Bewertung ableitet. Das rechnete das Template selbst, ohne einen einzigen Test."""
 

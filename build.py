@@ -183,6 +183,12 @@ BEWERTETE_ARTEN = ("mcp", "plugins", "skills", "projekt_skills", "projekt_mcp", 
 SPAREN = ("entfernen", "abschalten", "nur manuell")  # nicht „prüfen“: Dort fehlt noch die Entscheidung
 
 
+def plugin_von(e, plugins):
+    """Das Plugin, das den Eintrag mitbringt, oder None. Ein MCP-Server eines Plugins nennt es in `quelle`."""
+    pid = e.get("plugin") or (e.get("quelle") if e["id"].startswith("mcp:") and e.get("art") == "Plugin" else None)
+    return plugins.get(f"plugin:{pid}") if isinstance(pid, str) else None
+
+
 def empfehlungen_ableiten(inhalt):
     """Für beide Harnesses, nach dem Leser: je Eintrag `wirksam`, die Empfehlung, die für ihn gilt, und oben `ersparnis`.
     Bestandteile eines Plugins ohne eigene Empfehlung übernehmen die ihres Plugins (`geerbt`).
@@ -195,8 +201,8 @@ def empfehlungen_ableiten(inhalt):
     plugins = {p["id"]: p for p in inhalt.get("plugins", [])}
     for art in BEWERTETE_ARTEN:
         for e in inhalt.get(art, []):
-            pid = e.get("plugin") or (e.get("quelle") if e["id"].startswith("mcp:") and e.get("art") == "Plugin" else None)
-            vom_plugin = eigene(plugins[f"plugin:{pid}"]) if isinstance(pid, str) and f"plugin:{pid}" in plugins else None
+            plugin = plugin_von(e, plugins)
+            vom_plugin = eigene(plugin) if plugin else None
             e["wirksam"] = ({"empfehlung": eigene(e), "geerbt": False} if eigene(e)
                             else {"empfehlung": vom_plugin, "geerbt": True} if vom_plugin else None)
     geht_weg = lambda e: eigene(e) in SPAREN and not e.get("projekt") and not e.get("umgesetzt")
@@ -205,6 +211,18 @@ def empfehlungen_ableiten(inhalt):
     inhalt["ersparnis"] = (sum(p.get("tokens") or 0 for p in ganz)
                            + sum(e.get("tokens") or 0 for art in ("skills", "hooks", "mcp") for e in inhalt.get(art, [])
                                  if geht_weg(e) and e.get("plugin") not in plugins_weg))
+
+
+def updates_vom_plugin(inhalt):
+    """MCP-Server, Hooks und Mods eines Plugins haben keine eigene Version, ihr Update kommt mit dem Plugin. Damit der
+    Statusfilter in ihren Tabs „Update verfügbar“ findet, tragen sie in `update_plugin` den Namen des Plugins, das eins
+    anbietet. Skills nicht: Ihr Filter fragt `update`, das bei ihnen ein eigenes Update aus `npx skills` meint."""
+    plugins = {p["id"]: p for p in inhalt.get("plugins", [])}
+    for art in ("mcp", "hooks", "mods"):
+        for e in inhalt.get(art, []):
+            plugin = plugin_von(e, plugins)
+            if plugin and plugin.get("update") is True:
+                e["update_plugin"] = plugin["name"]
 
 
 def ungenutzt_markieren(skills, plugins, heute):
@@ -264,6 +282,7 @@ def main(argv=None):
                                  lies_json(claude.AGENTS / ".skill-lock.json").get("skills", {}))
     inhalt = fuers_dashboard(inhalt)
     empfehlungen_ableiten(inhalt)
+    updates_vom_plugin(inhalt)
     jetzt = datetime.now()
     ungenutzt_markieren(inhalt.get("skills", []), inhalt.get("plugins", []), jetzt)
     try:
