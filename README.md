@@ -98,7 +98,19 @@ python3 build.py --harness codex
 
 ## Wo was liegt
 
-Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschreibt, liegt daneben:
+Der Projektordner enthält **nur das Werkzeug**:
+
+```
+3zero-Harness-Inventur/
+  build.py, server.py, wochenlauf.py   Startbefehle, rufen den Code in inventur/
+  seitenvergleich.py, render-app-icon.py   Werkzeuge für Umbauten am Template und am Icon
+  inventur/                       der Code: Leser, Server, Tabs, dazu Template, Icons und Logo
+  tests/                          die Tests (python3 -m unittest)
+  skill/                          der Skill /3zero-harness-inventur
+  docs/                           die Diagramme
+```
+
+Alles, was den Rechner beschreibt, liegt daneben:
 
 ```
 ~/.3zero-harness-inventur/
@@ -167,7 +179,7 @@ python3 -m unittest
 
 Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`); den Mac-Weg (Papierkorb, Browser) prüft der lokale Lauf.
 
-Für das JavaScript in `template.html` gibt es keine Tests. Nach einem Umbau dort vergleicht `python3 seitenvergleich.py` das Dashboard mit dem aus dem letzten Commit: den sichtbaren Text aller Tabs und was die Knöpfe an Regeln und Anweisungen auslösen.
+Für das JavaScript in `inventur/template.html` gibt es keine Tests. Nach einem Umbau dort vergleicht `python3 seitenvergleich.py` das Dashboard mit dem aus dem letzten Commit: den sichtbaren Text aller Tabs und was die Knöpfe an Regeln und Anweisungen auslösen.
 
 ## Diagramme
 
@@ -177,4 +189,4 @@ In `docs/` liegen vier eigenständige HTML-Diagramme mit ihren Quellen: der **Au
 
 Das Werkzeug läuft in jedem Ordner: Es liest `~/.claude`, `~/.codex` und `~/.agents`, weil die Werkzeuge dort liegen, und schreibt nach `~/.3zero-harness-inventur`. Sonst kennt es nur seinen eigenen Ordner.
 
-Zwei Stellen bleiben auf 3zero zugeschnitten: das Logo in `wordmark.svg` und die Frage in `skill/SKILL.md`, ob ein Eintrag zur Arbeit des Benutzers passt. Beides ist Inhalt, nicht Technik.
+Zwei Stellen bleiben auf 3zero zugeschnitten: das Logo in `inventur/wordmark.svg` und die Frage in `skill/SKILL.md`, ob ein Eintrag zur Arbeit des Benutzers passt. Beides ist Inhalt, nicht Technik.

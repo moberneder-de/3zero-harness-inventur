@@ -1,7 +1,7 @@
 ---
 paths:
-  - "bestand.py"
-  - "test_bestand.py"
+  - "inventur/bestand.py"
+  - "tests/test_bestand.py"
 ---
 
 # bestand.py

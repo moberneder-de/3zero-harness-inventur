@@ -1,9 +1,9 @@
 ---
 paths:
-  - "claude.py"
-  - "test_claude.py"
-  - "mcp_direkt.py"
-  - "test_mcp_direkt.py"
+  - "inventur/claude.py"
+  - "tests/test_claude.py"
+  - "inventur/mcp_direkt.py"
+  - "tests/test_mcp_direkt.py"
 ---
 
 # claude.py

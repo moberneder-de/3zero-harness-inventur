@@ -1,7 +1,7 @@
 ---
 paths:
-  - "konfig.py"
-  - "test_konfig.py"
+  - "inventur/konfig.py"
+  - "tests/test_konfig.py"
 ---
 
 # konfig.py

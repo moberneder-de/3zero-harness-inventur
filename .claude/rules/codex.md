@@ -1,7 +1,7 @@
 ---
 paths:
-  - "codex.py"
-  - "test_codex.py"
+  - "inventur/codex.py"
+  - "tests/test_codex.py"
 ---
 
 # codex.py

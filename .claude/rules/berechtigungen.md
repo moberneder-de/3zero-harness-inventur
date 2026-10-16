@@ -1,7 +1,7 @@
 ---
 paths:
-  - "berechtigungen.py"
-  - "test_berechtigungen.py"
+  - "inventur/berechtigungen.py"
+  - "tests/test_berechtigungen.py"
 ---
 
 # berechtigungen.py

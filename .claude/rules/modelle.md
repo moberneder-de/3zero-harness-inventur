@@ -1,7 +1,7 @@
 ---
 paths:
-  - "modelle.py"
-  - "test_modelle.py"
+  - "inventur/modelle.py"
+  - "tests/test_modelle.py"
 ---
 
 # modelle.py

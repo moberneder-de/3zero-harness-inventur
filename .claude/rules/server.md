@@ -1,7 +1,8 @@
 ---
 paths:
   - "server.py"
-  - "test_server.py"
+  - "inventur/server.py"
+  - "tests/test_server.py"
 ---
 
 # server.py
@@ -72,6 +73,7 @@ Jeder Lauf hat seine Befehlszeile als eigene Funktion, in der seine Grenzen wör
 `build.py` startet nur `bauen()`, und wer es aufruft, hält die Sperre.
 `/api/abbrechen` beendet einen solchen Lauf: `lauf()` startet jeden Prozess in einer eigenen Prozessgruppe (`start_new_session`), `abbrechen()` beendet die ganze Gruppe, weil claude und codex ihre Werkzeuge als Kindprozesse starten.
 Ctrl+C im Terminal erreicht diese Gruppen nicht mehr, deshalb beendet `main()` sie beim Verlassen selbst.
+Die Prüfung auf Python 3.11 steht im Startbefehl `server.py`, vor dem ersten Import aus dem Paket: Mit 3.9 scheiterte sonst schon `import tomllib` mit einem Traceback.
 `main()` nimmt `--harness` wie `build.py` und reicht es beim ersten Einlesen an `build.py` weiter, das ihn sich merkt; vorher ignorierte der Server die Angabe still und zeigte den gemerkten Harness.
 Kommt der Abbruch, während `build.py` davor noch läuft, stirbt der Lauf beim Start; ist claude schon durch, lehnt der Server ab, weil die Bewertung dann schon zurückgeschrieben ist.
 Unter Codex läuft „neu bewerten“ als `codex exec -s workspace-write` mit `-C` auf einer Arbeitskopie in einem Temp-Ordner, die eine Kopie von `bewertung-codex.json` enthält, nicht im Projektordner; build.py führt der Server davor und danach aus, prüft die zurückgegebene Kopie als JSON-Objekt und schreibt sie atomar zurück.

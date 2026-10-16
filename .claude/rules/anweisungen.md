@@ -1,7 +1,7 @@
 ---
 paths:
-  - "anweisungen.py"
-  - "test_anweisungen.py"
+  - "inventur/anweisungen.py"
+  - "tests/test_anweisungen.py"
 ---
 
 # anweisungen.py

@@ -5764,6 +5764,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Werkzeug im Repo</h3>
         </div>
         <ul>
+          <li>Der Code liegt im Paket inventur/, die Tests in tests/; im Hauptordner stehen nur die Startbefehle build.py, server.py und wochenlauf.py</li>
           <li>claude.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; build.py startet den Leser und schreibt; mcp_direkt.py fragt HTTP-MCP-Server selbst; was ein Mod tut, liest claude.py mit claude plugin validate, ohne ihn auszuführen</li>
           <li>werkzeuge.py prüft Laufzeiten (bei Homebrew-Installationen auch, ob Homebrew die neue Version schon anbietet), berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief</li>
           <li>anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md</li>

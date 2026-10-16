@@ -1,7 +1,7 @@
 ---
 paths:
-  - "werkzeuge.py"
-  - "test_werkzeuge.py"
+  - "inventur/werkzeuge.py"
+  - "tests/test_werkzeuge.py"
 ---
 
 # werkzeuge.py

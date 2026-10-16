@@ -1,7 +1,8 @@
 ---
 paths:
   - "wochenlauf.py"
-  - "test_wochenlauf.py"
+  - "inventur/wochenlauf.py"
+  - "tests/test_wochenlauf.py"
 ---
 
 # wochenlauf.py

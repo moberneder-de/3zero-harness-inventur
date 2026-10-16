@@ -1,12 +1,14 @@
 ---
 paths:
   - "build.py"
-  - "test_build.py"
+  - "inventur/build.py"
+  - "tests/test_build.py"
 ---
 
 # build.py
 
-`build.py` ist der Startbefehl: Es lässt den Bestand lesen (`claude.inventar()` für Claude Code, `codex.inventar()` für Codex), ergänzt, was für beide Harnesses gilt, und schreibt `dashboard-claude-code.html` und `inventar-claude-code.json` in den Datenordner.
+`build.py` im Hauptordner ist nur der Startbefehl und ruft `main()` in `inventur/build.py`; ebenso `server.py` und `wochenlauf.py`, damit Skill, Server, Wochenlauf und Freigaben ihre Pfade behalten.
+Der Code in `inventur/build.py` lässt den Bestand lesen (`claude.inventar()` für Claude Code, `codex.inventar()` für Codex), ergänzt, was für beide Harnesses gilt, und schreibt `dashboard-claude-code.html` und `inventar-claude-code.json` in den Datenordner.
 Wie Claude Code gelesen wird, steht in `claude-py.md`, für Codex in `codex.md`; hier steht nur, was nach dem Leser kommt.
 Beide sind erzeugt: nicht von Hand bearbeiten.
 Geschrieben wird über `harness.schreiben()` (erst eine eigene Zwischendatei je Aufruf per `mkstemp`, dann ein Tausch; ein fester Name `<datei>.neu` kollidierte bei zwei gleichzeitigen Läufen), ebenso Verlauf, `harness.json` und die zurückgeschriebene Bewertung: Der Server liest diese Dateien bei jedem Klick und Seitenaufruf, auch während `build.py` läuft.

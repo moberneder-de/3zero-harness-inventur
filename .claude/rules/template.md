@@ -1,11 +1,11 @@
 ---
 paths:
-  - "template.html"
+  - "inventur/template.html"
   - "seitenvergleich.py"
-  - "app-icon.svg"
-  - "app-icon.png"
+  - "inventur/app-icon.svg"
+  - "inventur/app-icon.png"
   - "render-app-icon.py"
-  - "wordmark.svg"
+  - "inventur/wordmark.svg"
 ---
 
 # template.html
@@ -40,7 +40,7 @@ Lädt dort ein Projekt-Skill oder Projekt-Server, bleibt der Ordner stehen, denn
 Wo je Projekt etwas steht (Tab „Projekte“, „Alle Regeln je Projekt“, Modelle „Je Projekt“), ist es eine Tabelle mit einer Zeile je Projekt, die sich per Klick aufklappt, wie bei Skills und MCP-Servern; lose `<details>` untereinander zeigten den Namen groß und die Zahlen klein dahinter.
 Der aufgeklappte Inhalt ist dort eine Tabelle und steht in `tr.inhalt` (`inhaltZeile()`), nicht in `tr.detail`: Dessen Regel `tr.detail td` träfe auch die Zellen der Tabelle darin.
 Farben und Bausteine nur aus dem 3zero-Brand-Kit (`../3zero-Design-Kit/BRAND.md` — zum Nachschlagen, der Bau braucht es nicht).
-Das Logo liegt als `wordmark.svg` im Projekt: eine Kopie aus dem Kit, viewBox schon gekürzt, damit der Zusatz „IT- Consulting“ wegfällt; `build.py` bettet sie als Data-URI ein.
+Das Logo liegt als `inventur/wordmark.svg` im Paket: eine Kopie aus dem Kit, viewBox schon gekürzt, damit der Zusatz „IT- Consulting“ wegfällt; `build.py` bettet sie als Data-URI ein.
 Ändert sich das Kit, die Kopie erneuern — wie, steht im Kommentar am Anfang der Datei.
 Die Klasse `kopf` ist für Gruppenköpfe vergeben; der feste Seitenkopf heißt `seitenkopf`.
 Signalfarben sind dort noch offen, deshalb unterscheiden sich die Empfehlungen per Form und Symbol statt per Farbe.
