@@ -181,6 +181,23 @@ def eigene_skills(aus, lock, autoren):
     return ergebnis
 
 
+def agenten(ordner):
+    """Eigene Agenten: je Datei <ordner>/*.toml einer, unter `name` aus der Datei. Ob Codex ihre Beschreibung in jede
+    Sitzung lädt, sagt die Doku nicht; bis das belegt ist, zählen sie nicht zur Kontextlast."""
+    ergebnis = []
+    for datei in sorted(Path(ordner).glob("*.toml")):
+        t = lies_toml(datei)
+        if not isinstance(t.get("name"), str) or not t["name"]:
+            continue  # ohne Namen lädt Codex die Datei nicht
+        ergebnis.append({
+            "id": f"agent:{t['name']}", "name": t["name"], "typ": "Agent",
+            "beschreibung": t["description"] if isinstance(t.get("description"), str) else "",
+            "status": "aktiv", "override": None, "aufruf": "als Subagent", "im_kontext": False, "tokens": 0, "nutzung": None,
+            "pfad": str(datei), "meta_autor": None, "quelle": {"art": "Symlink" if datei.is_symlink() else "lokal", "autor": "unbekannt"},
+        })
+    return ergebnis
+
+
 def eingebaute(aus, bewertung):
     """Die Skills, die Codex selbst in ~/.codex/skills/.system einspielt. Das deutsche `was` pflegt der Skill in bewertung-codex.json."""
     was = {b.get("name"): b.get("was") for b in bewertung.get("eingebaut", []) if isinstance(b, dict)}
@@ -520,6 +537,9 @@ def projekte(cfg, aus, autoren):
                     e.update(projekt=pfad,
                              quelle=quelle_cli(repo, autoren) if repo else {"art": "lokal", "autor": e["meta_autor"] or "unbekannt"})
                     p_skills.append(e)
+            for e in agenten(ordner / ".codex" / "agents"):
+                e["projekt"] = pfad
+                p_skills.append(e)
             datei = ordner / ".codex" / "config.toml"
             mcp_servers = lies_toml(datei).get("mcp_servers")
             mcp_servers = mcp_servers if isinstance(mcp_servers, dict) else {}
@@ -537,7 +557,9 @@ def projekte(cfg, aus, autoren):
             continue
         skills += p_skills
         mcp += p_mcp
-    projekt_ids(skills, "skill")
+    # je Art: Ein Agent und ein Skill gleichen Namens im selben Projekt teilten sich sonst eine ID
+    projekt_ids([e for e in skills if e["typ"] != "Agent"], "skill")
+    projekt_ids([e for e in skills if e["typ"] == "Agent"], "agent")
     projekt_ids(mcp, "mcp")
     return skills, mcp
 
@@ -583,6 +605,8 @@ def befehl(e, empfehlung):
         if e.get("projekt"):
             return f'{e["quelle"]} → [mcp_servers.{e["name"]}] entfernen'
         return f"codex plugin remove {shellwort(e['quelle'])}" if e["art"] == "Plugin" else f"codex mcp remove {shellwort(e['name'])}"
+    if e.get("typ") == "Agent":  # einzeln abschalten kennt Codex nicht, nur alle zusammen (agents.enabled)
+        return papierkorb_befehl(shellwort(e["pfad"]))
     if empfehlung == "nur manuell":
         return f"{e['ordner']}/agents/openai.yaml → policy: allow_implicit_invocation: false"
     if empfehlung == "abschalten":
@@ -630,6 +654,8 @@ def aktionen(e):
         if e["status"] == "deaktiviert":
             a["einschalten"] = {"toml": {"tabelle": tabelle, "schluessel": "enabled", "wert": "true"}}
         return a
+    if e.get("typ") == "Agent":
+        return {"deinstallieren": {"papierkorb": e["pfad"]}}  # nur die Datei, der Ordner hält auch die anderen
     if e.get("projekt"):
         # Pfade in skills.config gelten global; im Projekt bleibt nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":
@@ -681,7 +707,7 @@ def inventar():
     lock = skill_lock(AGENTS / ".skill-lock.json")
 
     plugin_liste, plugin_teile, plugin_hooks = plugins(cfg, aus, autoren)
-    skills = eigene_skills(aus, lock, autoren) + plugin_teile
+    skills = eigene_skills(aus, lock, autoren) + agenten(CODEX / "agents") + plugin_teile
     updates_markieren(skills, lock)
     projekt_skills, projekt_mcp = projekte(cfg, aus, autoren)
     eingebaut = eingebaute(aus, bewertung)

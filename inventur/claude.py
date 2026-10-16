@@ -203,11 +203,16 @@ def plugin_updates_markieren(plugins):
                 pl["update"] = update
 
 
+def agent_name(datei):
+    """Claude Code führt einen Agenten unter `name` aus seinem Kopf, nicht unter dem Dateinamen."""
+    name = frontmatter(datei).get("name")
+    return name if isinstance(name, str) and name else datei.stem
+
+
 def persoenliche_skills(cfg, settings, lock, autoren):
     ergebnis = []
-    if not (CLAUDE / "skills").is_dir():  # auf einem frischen Rechner gibt es den Ordner noch nicht
-        return ergebnis
-    for ordner in sorted((CLAUDE / "skills").iterdir()):
+    # auf einem frischen Rechner gibt es ~/.claude/skills noch nicht
+    for ordner in sorted((CLAUDE / "skills").iterdir()) if (CLAUDE / "skills").is_dir() else []:
         datei = ordner / "SKILL.md"
         if not datei.is_file():
             continue
@@ -233,6 +238,10 @@ def persoenliche_skills(cfg, settings, lock, autoren):
         e = skill_eintrag(cfg, settings, datei.stem, "Befehl", datei)
         e["quelle"] = {"art": "Symlink" if datei.is_symlink() else "lokal", "autor": "unbekannt"}
         ergebnis.append(e)
+    for datei in sorted((CLAUDE / "agents").glob("*.md")):
+        e = skill_eintrag(cfg, settings, agent_name(datei), "Agent", datei)
+        e["quelle"] = {"art": "Symlink" if datei.is_symlink() else "lokal", "autor": e["meta_autor"] or "unbekannt"}
+        ergebnis.append(e)
     return ergebnis
 
 
@@ -247,6 +256,7 @@ def projekt_skills(cfg, settings, autoren, projekte):
             gesehen.add(wurzel.resolve())
             dateien = [(o.name, "Skill", o / "SKILL.md") for o in sorted((wurzel / "skills").iterdir())] if (wurzel / "skills").is_dir() else []
             dateien += [(d.stem, "Befehl", d) for d in sorted(wurzel.glob("commands/*.md"))]
+            dateien += [(agent_name(d), "Agent", d) for d in sorted(wurzel.glob("agents/*.md"))]
         except OSError:  # etwa ~/Documents, das macOS ohne Freigabe verweigert: nur dieses Projekt fällt weg
             continue
         try:
@@ -264,7 +274,9 @@ def projekt_skills(cfg, settings, autoren, projekte):
             lesefehler(f"Projekt {pfad}", fehler)
             continue
         ergebnis += eintraege
-    projekt_ids(ergebnis, "skill")
+    # je Art: Ein Agent und ein Skill gleichen Namens im selben Projekt teilten sich sonst eine ID
+    projekt_ids([e for e in ergebnis if e["typ"] != "Agent"], "skill")
+    projekt_ids([e for e in ergebnis if e["typ"] == "Agent"], "agent")
     return ergebnis
 
 
@@ -833,6 +845,8 @@ def befehl(e, empfehlung):
     if eid.startswith("mod:"):  # ein Mod kommt mit seinem Plugin und geht mit ihm
         pid = shellwort(e["plugin"])
         return f"claude plugin disable {pid}" if empfehlung == "abschalten" else f"claude plugin uninstall {pid}"
+    if e.get("typ") == "Agent" and not e.get("plugin"):  # nur die Datei: Der Ordner agents/ hält auch die anderen
+        return papierkorb_befehl(shellwort(e["pfad"]))
     # Plugins und MCP-Server vor skillOverrides: Ein Override unter ihrem Namen bewirkt nichts
     if eid.startswith("plugin:"):
         pid = shellwort(e['name'] + '@' + e['marktplatz'])
@@ -911,7 +925,8 @@ def aktionen(e):
             a["deaktivieren"] = {"sperren": sperre}
         return a
     if e["typ"] == "Agent":
-        return {}
+        # skillOverrides gilt nur für Skills: Ein eigener Agent lässt sich nur entfernen, einer aus einem Plugin geht mit ihm
+        return {} if e.get("plugin") else {"deinstallieren": {"papierkorb": e["pfad"]}}
     if e.get("projekt"):
         # Overrides gelten global nach Namen und träfen gleichnamige Skills anderswo, deshalb nur deinstallieren
         if e["quelle"]["art"] == "skills-CLI":

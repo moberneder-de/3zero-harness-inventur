@@ -530,6 +530,28 @@ class Inventar(CodexOrdner):
         self.assertEqual([b["name"] for b in daten["eingebaut"]], ["imagegen"])
 
 
+class Agenten(CodexOrdner):
+    def test_eigene_agenten_global_und_im_projekt(self):
+        """Eigene Agenten sind TOML-Dateien in ~/.codex/agents und <Projekt>/.codex/agents; den Namen trägt das Feld `name`,
+        nicht die Datei. Ob Codex ihre Beschreibung in jede Sitzung lädt, sagt die Doku nicht: keine Tokens, bis es belegt ist."""
+        self.schreibe(self.home / ".codex/agents/pruefer.toml", 'name = "code-pruefer"\ndescription = "prüft Code"\ndeveloper_instructions = "Prüfe."\n')
+        self.schreibe(self.home / ".codex/agents/kaputt.toml", "name = \n")  # lädt Codex nicht, also kein Eintrag
+        kit = self.tmp / "Kit"
+        self.schreibe(kit / ".codex/agents/tester.toml", 'name = "tester"\ndescription = "testet"\ndeveloper_instructions = "Teste."\n')
+        self.skill(kit / ".codex/skills", "tester")
+        with mock.patch.object(codex, "updates_markieren"):
+            (g,) = [e for e in codex.inventar()["skills"] if e["typ"] == "Agent"]
+        pfad = str(self.home / ".codex/agents/pruefer.toml")
+        self.assertEqual((g["id"], g["name"], g["beschreibung"], g["aufruf"], g["tokens"], g["quelle"]["art"]),
+                         ("agent:code-pruefer", "code-pruefer", "prüft Code", "als Subagent", 0, "lokal"))
+        self.assertEqual(codex.aktionen(g), {"deinstallieren": {"papierkorb": pfad}})
+        self.assertEqual(codex.befehl(g, "abschalten"), codex.papierkorb_befehl(codex.shellwort(pfad)))
+        skills, _ = codex.projekte({"projects": {str(kit): {"trust_level": "trusted"}}}, (set(), set()), {})
+        eintraege = {e["id"]: e for e in skills}
+        self.assertEqual(sorted(eintraege), ["agent:Kit/tester", "skill:Kit/tester"])
+        self.assertEqual(codex.aktionen(eintraege["agent:Kit/tester"]), {"deinstallieren": {"papierkorb": str(kit / ".codex/agents/tester.toml")}})
+
+
 class HooksUndProjekte(CodexOrdner):
     def test_eigene_hooks_und_notify(self):
         cfg = {"notify": ["/x/client", "turn-ended"],
