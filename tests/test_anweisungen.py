@@ -28,8 +28,8 @@ class Ordner(unittest.TestCase):
         setzt gelegentlich einen Unterstrich in den Namen, und mit nur dem Schrägstrich ersetzt fiel der Test dann aus."""
         return self.home / ".claude/projects" / re.sub(r"[^A-Za-z0-9]", "-", str(projekt)) / "memory/MEMORY.md"
 
-    def claude(self, settings=None, projekte=(), verwaltet=()):
-        return anweisungen.claude(self.home, settings or {}, [str(p) for p in projekte], verwaltet)
+    def claude(self, settings=None, projekte=(), verwaltet=(), verwaltete_einstellungen=()):
+        return anweisungen.claude(self.home, settings or {}, [str(p) for p in projekte], verwaltet, verwaltete_einstellungen)
 
 
 class Global(Ordner):
@@ -269,6 +269,36 @@ class Projekte(Ordner):
         # nur im Codeblock genannt: kein Import, die AGENTS.md lädt weiter nicht
         self.schreibe(p / "CLAUDE.md", "```\n@AGENTS.md\n```\n")
         self.assertEqual(self.claude(projekte=[p])[1]["status"], "wirkungslos")
+
+    def test_einstellung_instruction_files(self):
+        """Welche Anweisungen laden, stellt `instructionFiles` ein (in /config „Project instructions“; früher
+        `projectInstructions` mit eigenen Werten). Abgelesen an Claude Code 2.1.301."""
+        p = self.tmp / "P"
+        self.schreibe(p / "CLAUDE.md")
+        self.schreibe(p / "AGENTS.md")
+        self.schreibe(p / ".claude/rules/r.md")
+        self.schreibe(self.home / ".claude/CLAUDE.md")
+        def status(settings=None, projekt=None, verwaltet=None):
+            if projekt is not None:
+                self.schreibe(p / ".claude/settings.local.json", json.dumps(projekt))
+            einstellungen = [self.schreibe(self.tmp / "managed.json", json.dumps(verwaltet))] if verwaltet is not None else []
+            zeilen = self.claude(settings, [p], verwaltete_einstellungen=einstellungen)
+            return {(z["bereich"] == "global", Path(z["pfad"]).name): z["status"] for z in zeilen}
+        self.assertEqual(status()[(False, "AGENTS.md")], "wirkungslos")  # Standard: nur ohne CLAUDE.md
+        self.assertEqual(status({"instructionFiles": "claude-md-and-agents-md"})[(False, "AGENTS.md")], "aktiv")
+        self.assertEqual(status({"projectInstructions": "both"})[(False, "AGENTS.md")], "aktiv")  # der alte Name
+        self.assertEqual(status({"instructionFiles": "claude-md-and-agents-md", "projectInstructions": "claude"})[(False, "AGENTS.md")], "aktiv")
+        # das Projekt geht den eigenen Einstellungen vor, die verwalteten allen
+        self.assertEqual(status({"instructionFiles": "claude-md-and-agents-md"}, {"instructionFiles": "claude-md"})[(False, "AGENTS.md")], "wirkungslos")
+        alles = status({}, {}, {"instructionFiles": "managed-only"})
+        self.assertEqual(alles, {(True, "CLAUDE.md"): "wirkungslos", (False, "CLAUDE.md"): "wirkungslos", (False, "r.md"): "wirkungslos",
+                                 (False, "AGENTS.md"): "wirkungslos"})
+        # nur Claude: Eine AGENTS.md lädt dann auch ohne CLAUDE.md nicht, eingebunden aber schon
+        (p / "CLAUDE.md").unlink()
+        self.assertEqual(status({}, {"instructionFiles": "claude-md"}, {})[(False, "AGENTS.md")], "wirkungslos")
+        self.schreibe(p / "CLAUDE.md", "@AGENTS.md\n")
+        self.assertEqual(status({}, {"instructionFiles": "claude-md"})[(False, "AGENTS.md")], "eingebunden")
+        self.assertEqual(status({}, {"instructionFiles": "unsinn"})[(False, "AGENTS.md")], "eingebunden")  # Unbekanntes zählt nicht
 
     def test_home_ist_kein_projekt_und_seine_datei_nicht_geerbt(self):
         """~ steht als Projekt in ~/.claude.json. ~/.claude/CLAUDE.md ist die globale Datei und stünde sonst in jedem

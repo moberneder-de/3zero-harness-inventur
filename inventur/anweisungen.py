@@ -12,6 +12,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from .berechtigungen import VERWALTET as VERWALTETE_EINSTELLUNGEN
+
 VERWALTET = [Path("/Library/Application Support/ClaudeCode/CLAUDE.md"), Path("/etc/claude-code/CLAUDE.md")]
 MEMORY_ZEILEN, MEMORY_BYTES = 200, 25_000  # mehr von MEMORY.md lädt Claude Code beim Start nicht
 EINGEBAUT = ("Proactive", "Concise", "Explanatory", "Learning")
@@ -25,6 +27,10 @@ GROSS_ZEILEN, GROSS_TOKENS = 200, 5_000  # darüber trägt eine CLAUDE.md die Ma
 SUCHGRENZE = 20_000  # so viele Dateien eines Projekts sieht die Prüfung „verwaist“ höchstens an
 AUSLASSEN = {".git", "node_modules", ".venv"}
 KOPF = re.compile(r"\A\ufeff?---\n(.*?)\n---", re.S)
+# Welche Anweisungen Claude Code lädt: `instructionFiles` in den Einstellungen, in /config „Project instructions“. Abgelesen
+# an Claude Code 2.1.301, die Doku nennt nur die Werte. `projectInstructions` ist der alte Name mit eigenen Werten.
+MODI = ("claude-md", "claude-md-or-agents-md", "claude-md-and-agents-md", "managed-only")
+ALTE_MODI = {"none": "managed-only", "claude": "claude-md", "agents-fallback": "claude-md-or-agents-md", "both": "claude-md-and-agents-md"}
 
 
 def lies(pfad):
@@ -147,6 +153,26 @@ def importe(text, datei, home):
     return gefunden
 
 
+def modus(*einstellungen):
+    """Der Wert von instructionFiles aus der ersten Einstellung, die ihn setzt (in der Reihenfolge, in der Claude Code sie
+    vorgehen lässt), sonst der alte projectInstructions, sonst der Standard. Was keiner der Werte ist, zählt nicht."""
+    for e in einstellungen:
+        if e.get("instructionFiles") in MODI:
+            return e["instructionFiles"]
+    for e in einstellungen:
+        if e.get("projectInstructions") in ALTE_MODI:
+            return ALTE_MODI[e["projectInstructions"]]
+    return "claude-md-or-agents-md"
+
+
+def nur_verwaltet(zeilen):
+    """managed-only: Die eigenen und die Anweisungen des Projekts fallen weg, die verwalteten bleiben, MEMORY.md auch."""
+    for z in zeilen:
+        if z["art"] in ("CLAUDE.md", "Regel", "AGENTS.md") and not z.get("verwaltet") and z["status"] in ("aktiv", "bei Bedarf", "eingebunden"):
+            z.update(status="wirkungslos", laedt=False)
+            z["marken"].append("managed-only")
+
+
 def muster(*einstellungen):
     return [m for e in einstellungen if isinstance(e.get("claudeMdExcludes"), list) for m in e["claudeMdExcludes"] if isinstance(m, str)]
 
@@ -258,13 +284,16 @@ def limit_markieren(zeilen):
             groesste["marken"].append("über dem Limit" if summe > LIMIT_ZEICHEN else "nahe am Limit")
 
 
-def claude(home, settings, projekte, verwaltet=VERWALTET):
+def claude(home, settings, projekte, verwaltet=VERWALTET, verwaltete_einstellungen=VERWALTETE_EINSTELLUNGEN):
     home = Path(home)
     settings = settings if isinstance(settings, dict) else {}
+    verwaltete = [lies_json(d) for d in verwaltete_einstellungen]
     eigene = set(muster(settings))
     zeilen = [zeile("global", "CLAUDE.md", d, home, text, verwaltet=True) for d in verwaltet if (text := lies(d)) is not None]
     zeilen += [z for z in [ausschliessbar("global", "CLAUDE.md", home / ".claude" / "CLAUDE.md", home, eigene, eigene)] if z]
     zeilen += regeln("global", home / ".claude" / "rules", home, eigene, eigene)
+    if modus(*verwaltete, settings) == "managed-only":
+        nur_verwaltet(zeilen)
     zeilen += output_styles(home, settings)
 
     eigen = (home / ".claude" / "CLAUDE.md").resolve()
@@ -298,15 +327,19 @@ def claude(home, settings, projekte, verwaltet=VERWALTET):
         # Eine CLAUDE.md, die @AGENTS.md einbindet, lädt sie mit: so empfiehlt es die Doku für Projekte, die auch andere
         # Agenten nutzen (Abschnitt „Share one file with other coding tools“)
         einbindend = {i: z["pfad"] for z in neu if z["art"] == "CLAUDE.md" and z["laedt"] for i in z.get("importiert", [])}
+        # verwaltet vor lokal vor Projekt vor den eigenen, wie Claude Code Einstellungen vorgehen lässt
+        art = modus(*verwaltete, *reversed(lokal), settings)
         for name in ("AGENTS.md", ".claude/AGENTS.md"):
             z = ausschliessbar(projekt, "AGENTS.md", ordner / name, home, aus, eigene)
-            if z and claude_md and z["status"] == "aktiv":
-                if str((ordner / name).resolve()) in einbindend:
+            if z and z["status"] == "aktiv":
+                if str((ordner / name).resolve()) in einbindend:  # lädt mit der CLAUDE.md, auch wenn sie allein nicht dürfte
                     z.update(status="eingebunden", eingebunden_von=einbindend[str((ordner / name).resolve())])
-                else:
-                    z.update(status="wirkungslos", laedt=False)  # Claude Code liest sie nur, wenn es keine CLAUDE.md gibt
+                elif art == "claude-md" or art == "claude-md-or-agents-md" and claude_md:
+                    z.update(status="wirkungslos", laedt=False)  # Standard: nur, wenn es keine CLAUDE.md gibt
             if z:
                 neu.append(z)
+        if art == "managed-only":
+            nur_verwaltet(neu)
         an = not any(e.get("autoMemoryEnabled") is False for e in (settings, *lokal))
         z = memory(projekt, home, an)
         if z:

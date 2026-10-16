@@ -544,6 +544,19 @@ class Server(unittest.TestCase):
                 self.assertEqual((status, antwort["ok"]), (400, False))
         self.assertFalse((self.tmp / "argv").exists())  # claude lief nie
 
+    def test_pruefen_nimmt_auch_eine_agents_md(self):
+        """Bindet die CLAUDE.md nur `@AGENTS.md` ein, steht die Anleitung in der AGENTS.md: Dort gibt es etwas zu prüfen."""
+        projekt, skill = self.pruefprojekt()
+        (projekt / "AGENTS.md").write_text("# P")
+        (projekt / "README.md").write_text("# P")
+        zeile = lambda eid, datei: {"id": eid, "name": datei, "pruefen": {"datei": str(projekt / datei), "projekt": str(projekt)}}
+        self.anweisungen(zeile("a:agents", "AGENTS.md"), zeile("a:readme", "README.md"), pruefskill=str(skill))
+        status, antwort = self.pruefen("a:readme")
+        self.assertEqual((status, antwort["ok"]), (400, False))
+        status, stand = self.pruefen("a:agents")
+        self.assertEqual((status, stand["ok"]), (200, True))
+        self.assertIn(str(projekt / "AGENTS.md"), (self.tmp / "argv").read_text())
+
     def test_pruefen_ohne_skill_und_unter_codex(self):
         _, skill = self.pruefprojekt()
         shutil.rmtree(skill)

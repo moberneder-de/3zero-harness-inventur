@@ -119,10 +119,13 @@ def anweisungen_aktionen(zeilen, pruefbar=False):
     `pruefen` bekommt die CLAUDE.md eines Projekts, wenn der Skill dafür da ist (`pruefbar`): Der Server lässt Claude
     sie dann lesend bewerten. Nicht die globale (das Raster des Skills fragt nach Befehlen und Aufbau eines Projekts),
     keine geerbte (sie gehört zum Ordner darüber) und keine verwaltete."""
+    # Bindet eine CLAUDE.md nur @AGENTS.md ein, steht die Anleitung dort: Geprüft wird die AGENTS.md, nicht die eine Zeile
+    einbindend = {z["eingebunden_von"] for z in zeilen if z.get("eingebunden_von")}
     for z in zeilen:
         z["id"] = f"anweisung:{z['bereich']}:{z['pfad'] or z['name']}"
         z["aktionen"] = {}
-        if pruefbar and z["art"] == "CLAUDE.md" and z["bereich"] != "global" and not z.get("geerbt") and not z.get("verwaltet"):
+        anleitung = (z["art"] == "CLAUDE.md" and z["pfad"] not in einbindend) or (z["art"] == "AGENTS.md" and z.get("laedt"))
+        if pruefbar and anleitung and z["bereich"] != "global" and not z.get("geerbt") and not z.get("verwaltet"):
             z["pruefen"] = {"datei": z["pfad"], "projekt": z["bereich"]}
         # eingebunden: Ob claudeMdExcludes eine per @ eingebundene Datei erfasst, sagt die Doku nicht; geschaltet wird an der CLAUDE.md
         if z.get("verwaltet") or z.get("eingebunden_von") or z["pfad"] and ".codex" in Path(z["pfad"]).parts:

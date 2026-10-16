@@ -119,6 +119,19 @@ class AnweisungenAktionen(unittest.TestCase):
         # ein eingebauter oder unbekannter Name hat keine Datei: abwählen geht, wählen nur, was es als Datei gibt
         self.assertEqual(self.aktionen(art="Output-Style", pfad=None, name="concise", gewaehlt=True, status="wirkungslos"), {"deaktivieren": {"output_style": None}})
 
+    def test_pruefen_wandert_an_die_eingebundene_agents_md(self):
+        """Eine CLAUDE.md, die nur `@AGENTS.md` einbindet, hat selbst nichts zu prüfen; die Anleitung steht in der AGENTS.md.
+        Eine AGENTS.md, die ohne CLAUDE.md lädt, ist die Anleitung selbst; eine wirkungslose bekommt nichts."""
+        claude_md = self.zeile()
+        agents_md = self.zeile(art="AGENTS.md", pfad="/p/AGENTS.md", status="eingebunden", laedt=True, eingebunden_von="/p/CLAUDE.md")
+        claude_md, agents_md = build.anweisungen_aktionen([claude_md, agents_md], True)
+        self.assertNotIn("pruefen", claude_md)
+        self.assertEqual(agents_md["pruefen"], {"datei": "/p/AGENTS.md", "projekt": "/p"})
+        (allein,) = build.anweisungen_aktionen([self.zeile(art="AGENTS.md", pfad="/p/AGENTS.md", laedt=True)], True)
+        self.assertEqual(allein["pruefen"], {"datei": "/p/AGENTS.md", "projekt": "/p"})
+        (wirkungslos,) = build.anweisungen_aktionen([self.zeile(art="AGENTS.md", pfad="/p/AGENTS.md", status="wirkungslos", laedt=False)], True)
+        self.assertNotIn("pruefen", wirkungslos)
+
     def test_pruefen_nur_fuer_die_claude_md_eines_projekts_und_nur_mit_dem_skill(self):
         self.assertEqual(build.anweisungen_aktionen([self.zeile()], True)[0]["pruefen"], {"datei": "/p/CLAUDE.md", "projekt": "/p"})
         for zeile in (self.zeile(bereich="global"), self.zeile(geerbt=True), self.zeile(verwaltet=True), self.zeile(art="Regel"), self.zeile(art="Memory")):
