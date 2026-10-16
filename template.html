@@ -415,7 +415,7 @@ const STATUS = {
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
   "wirkungslos": ["○", "aus"], "nur eine Sitzung": ["◐", "teil"], "bei Bedarf": ["◐", "teil"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
   "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
-  "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "wartet auf Homebrew": ["◐", "aus"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
+  "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "Update verfügbar": ["◐", "teil"], "wartet auf Homebrew": ["◐", "aus"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
 function statusBadge(s) {
   const [icon, cls] = STATUS[s] || ["?", "aus"];
@@ -851,8 +851,8 @@ function renderPlugins() {
       anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
-    return `<tr class="haupt"><td class="name">${aufklapp(p.name)}<div class="klein">${esc(p.marktplatz)}</div>${p.update ? '<span class="tag">Update verfügbar</span>' : ""}</td>
-      <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}</td><td class="klein">${teile || "–"}</td>
+    return `<tr class="haupt"><td class="name">${aufklapp(p.name)}<div class="klein">${esc(p.marktplatz)}</div></td>
+      <td>${esc(p.autor)}</td><td>${statusBadge(p.status)}${p.update ? " " + statusBadge("Update verfügbar") : ""}</td><td class="klein">${teile || "–"}</td>
       <td class="zahl">${nutzungText(p)}</td><td class="zahl">${p.tokens ? "≈ " + zahl(p.tokens) : "–"}</td><td>${was(p)}</td><td>${empfBadge(p)}</td>${wahlZelle(p)}</tr>` +
       detailZeile(8 + SP, [
         ["Beschreibung", esc(p.beschreibung)],
@@ -872,7 +872,8 @@ function renderPlugins() {
     je(erklaert("Installierte Plugins mit allem, was sie mitbringen.", [
         ["Genutzt", "Aufrufe der Skills und Befehle des Plugins."],
         ["Kontext", "Geschätzte Tokenzahl, die seine Beschreibungen und SessionStart-Hooks in jeder Sitzung belegen."],
-        ["Mod", "Code des Plugins, der in der Sitzung mitläuft. Einzelheiten stehen unter „Hooks“."]]),
+        ["Mod", "Code des Plugins, der in der Sitzung mitläuft. Einzelheiten stehen unter „Mods“."],
+        ["Update verfügbar", "Im Marktplatz gibt es einen neueren Stand als den installierten. Steht beim Status, damit der Filter danach suchen kann."]]),
       erklaert("Plugins aus <code>~/.codex/plugins/cache</code> mit ihrem Schalter in <code>~/.codex/config.toml</code>.", [
         ["im Konto", "Kommt aus deinem ChatGPT-Konto, geschaltet wird dort."],
         ["wirkungslos", "Steht in config.toml, aber Codex lädt openai-curated-Plugins aus dem Online-Katalog."],
