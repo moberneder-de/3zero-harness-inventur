@@ -26,7 +26,7 @@
           "transkripte",
           "messwerte"
         ],
-        "note": "Laufzeiten und MCP-Aufrufe stehen als Zahl im Transkript. Unter Codex fehlen sie ganz."
+        "note": "Laufzeiten und MCP-Aufrufe stehen als Zahl im Transkript. Unter Codex fehlen die Laufzeiten; MCP-Aufrufe zählt codex.py aus den Sitzungen."
       },
       {
         "id": "schaetzung",

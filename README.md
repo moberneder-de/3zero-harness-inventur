@@ -19,15 +19,15 @@ Das ist die zentrale Idee, und sie erklärt den Aufbau:
 | Schicht | Inhalt | Wer pflegt sie |
 |---|---|---|
 | **Bestand** | Was installiert ist, Status, Herkunft, Nutzung, Kontextkosten | `build.py`, ohne Urteil, jederzeit neu erzeugbar |
-| **Bewertung** | Kurzbeschreibung auf Deutsch, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise | Handarbeit über den Skill, teuer neu zu erzeugen |
+| **Bewertung** | Kurzbeschreibung auf Deutsch, Empfehlung, Begründung, Überschneidungsgruppen, Hinweise | ein Lauf von Claude oder Codex über den Skill oder den Knopf „neu bewerten“, teuer neu zu erzeugen |
 
 Der Bestand ist eine Messung. Die Bewertung ist ein Urteil. Beides getrennt zu halten heißt: Der Bestand darf jederzeit neu gelesen werden, ohne das Urteil zu verlieren.
 
 ## Schnellstart
 
 ```bash
-python3 build.py                 # Bestand einlesen und Dashboard bauen
-python3 server.py                # Dashboard auf http://127.0.0.1:8765 öffnen
+python3 build.py                 # Bestand einlesen und Dashboard bauen, ohne Server und ohne Knöpfe
+python3 server.py                # liest den Bestand selbst ein und öffnet das Dashboard auf http://127.0.0.1:8765
 ```
 
 ### Jede Woche von selbst
@@ -37,7 +37,7 @@ python3 wochenlauf.py einrichten   # jeden Montag um 9 Uhr (macOS: launchd, Linu
 python3 wochenlauf.py entfernen
 ```
 
-Der Lauf startet nur `build.py` für den zuletzt genannten Harness, ohne Bewertung und ohne Suche, und ändert nichts an der Konfiguration. Eine Mitteilung kommt nur, wenn es seit der letzten Meldung Neues zu tun gibt: ein Eintrag ist neu oder weg, ein Skill ist neu ungenutzt, ein Werkzeug ist veraltet, ohne Pflege oder fehlt, oder es gibt eine Sicherheitsmeldung. Was schon gemeldet war, kommt nicht jede Woche wieder. Ein Klick auf die Mitteilung öffnet unter macOS den Skripteditor, nicht das Dashboard; das öffnest du mit `/3zero-harness-inventur` oder `python3 server.py`. Hat der Rechner zur Uhrzeit geschlafen, läuft er beim Aufwachen.
+Der Lauf startet nur `build.py` für den zuletzt genannten Harness, ohne Bewertung und ohne Suche, und ändert nichts an der Konfiguration. Eine Mitteilung kommt nur, wenn es seit der letzten Meldung Neues zu tun gibt: ein Eintrag ist seit dem letzten Lauf vor heute neu oder weg, ein Skill ist neu ungenutzt, ein Werkzeug ist veraltet, ohne Pflege oder fehlt, oder es gibt eine Sicherheitsmeldung. Was schon gemeldet war, kommt nicht jede Woche wieder. Ein Klick auf die Mitteilung öffnet unter macOS den Skripteditor, nicht das Dashboard; das öffnest du mit `/3zero-harness-inventur` oder `python3 server.py`. Hat der Rechner zur Uhrzeit geschlafen, läuft er beim Aufwachen.
 
 Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüssel des laufenden Servers in der Adresse: `127.0.0.1` erreicht jeder Benutzer des Rechners. Den Browser öffnet er selbst; zum erneuten Öffnen dient `~/.3zero-harness-inventur/start.html` (nur für dich lesbar) oder die Adresse aus dem Terminal. Ohne ihn lässt sich das erzeugte HTML auch direkt öffnen — dann ist es lesbar, aber ohne Aktionsknöpfe.
 
@@ -45,21 +45,21 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks, Mods, Anweisungen), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
 
-Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks und Projekt-Mods sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
+Die Tabs unter **Bestand** zeigen Globales, Anweisungen auch je Projekt. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Anweisungen, seine Regeln und die Modelle, die dort liefen. Sammelordner wie `~` lässt er weg und nennt sie darunter. Projekt-Hooks und Projekt-Mods sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
 
-**Mods** (Claude Code) zeigt Code eines Plugins, der in der Sitzung mitläuft: was er anzeigt (Panel, Leiste über dem Prompt, Statuszeile), wo er eingreift (Werkzeug-Aufrufe, Prompt, System-Prompt), was er darf (Dateien schreiben, Programme starten, Netz) und welche Wächter ohne Absicherung laufen. Das liest die Inventur mit `claude plugin validate`, ohne den Mod auszuführen; ohne Claude Code bleibt eine Textsuche, die nur Ereignisse findet. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
+**Mods** (Claude Code) zeigt Code eines Plugins, der in der Sitzung mitläuft: was er anzeigt (Panel, Leiste über dem Prompt, Statuszeile), wo er eingreift (Werkzeug-Aufrufe, Prompt, System-Prompt), was er darf (Dateien schreiben, Programme starten, Netz) und welche Wächter ohne Absicherung laufen. Das liest die Inventur mit `claude plugin validate`, ohne den Mod auszuführen; ohne Claude Code bleibt eine Textsuche, die nur Ereignisse findet. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods` (Status „nur eine Sitzung“: Sie laden nur in der Sitzung, in der sie entstanden).
 
-**Anweisungen** zeigt, was der Harness als Text in die Sitzung lädt, zusätzlich zu seinem eingebauten Systemprompt: unter Claude Code `CLAUDE.md`, Regeln aus `rules`, den gewählten Output-Style, `MEMORY.md` und `AGENTS.md`, global und je Projekt, mit geschätzten Tokens; unter Codex die globale `AGENTS.md`. Über den Server lässt sich eine `CLAUDE.md` oder Regel ab- und wieder anschalten (`claudeMdExcludes`) und ein Output-Style wählen oder abwählen (`outputStyle`), beides nur in `~/.claude/settings.json`: Die Datei selbst bleibt, wie sie ist, denn sie liegt oft in einem Repo. Den eingebauten Systemprompt zeigt die Inventur nicht, er steht in keiner Datei. Eine `AGENTS.md` liest Claude Code nur, wenn es keine `CLAUDE.md` gibt, oder wenn eine `CLAUDE.md` sie mit `@AGENTS.md` einbindet; dann steht sie als **eingebunden** da, und „prüfen“ sitzt an ihr statt an der einen Zeile in der `CLAUDE.md`. So teilen sich Claude Code und Codex eine Datei, wie es die Doku von Claude Code empfiehlt; dieses Projekt macht es selbst so. Die Einstellung `instructionFiles` (in `/config` „Project instructions“, früher `projectInstructions`) liest die Inventur mit: Sie kann beide Dateien laden, nie eine `AGENTS.md` für sich oder nur noch die verwalteten Anweisungen. Ist das Plugin `claude-md-management` installiert, bietet jede `CLAUDE.md` eines Projekts außerdem **prüfen** an: Claude bewertet sie mit dem Skill `claude-md-improver` und zeigt Note, Befunde und Vorschläge als Karte. Der Lauf liest nur, und nur im Projekt. Umgesetzt wird in einer Sitzung dort: Der Bericht liegt als Datei im Datenordner, und der Befehl unter der Karte lässt Claude ihn umsetzen, ohne neu zu prüfen.
+**Anweisungen** zeigt, was der Harness als Text in die Sitzung lädt, zusätzlich zu seinem eingebauten Systemprompt: unter Claude Code `CLAUDE.md`, Regeln aus `rules`, die eigenen Output-Styles (der gewählte als aktiv), `MEMORY.md` und `AGENTS.md`, global und je Projekt, mit geschätzten Tokens; unter Codex die globale `AGENTS.md` (oder `AGENTS.override.md`). Über den Server lässt sich eine `CLAUDE.md` oder Regel ab- und wieder anschalten (`claudeMdExcludes`) und ein Output-Style wählen oder abwählen (`outputStyle`), beides nur in `~/.claude/settings.json`: Die Datei selbst bleibt, wie sie ist, denn sie liegt oft in einem Repo. Den eingebauten Systemprompt zeigt die Inventur nicht, er steht in keiner Datei. Ohne weitere Einstellung liest Claude Code eine `AGENTS.md` nur, wenn es keine `CLAUDE.md` gibt, oder wenn eine `CLAUDE.md` sie mit `@AGENTS.md` einbindet; dann steht sie als **eingebunden** da, und „prüfen“ sitzt an ihr statt an der einen Zeile in der `CLAUDE.md`. So teilen sich Claude Code und Codex eine Datei, wie es die Doku von Claude Code empfiehlt; dieses Projekt macht es selbst so. Die Einstellung `instructionFiles` (in `/config` „Project instructions“, früher `projectInstructions`) liest die Inventur mit: Sie kann beide Dateien laden, nie eine `AGENTS.md` für sich oder nur noch die verwalteten Anweisungen. Ist der Skill `claude-md-improver` aktiv (Plugin `claude-md-management`), bietet mit dem Server jede `CLAUDE.md` eines Projekts außerdem **prüfen** an, keine geerbte und keine `CLAUDE.local.md`: Claude bewertet sie mit dem Skill `claude-md-improver` und zeigt Note, Befunde und Vorschläge als Karte. Der Lauf liest nur, und nur im Projekt. Umgesetzt wird in einer Sitzung dort: Der Bericht liegt als Datei im Datenordner, und der Befehl unter der Karte lässt Claude ihn umsetzen, ohne neu zu prüfen.
 
-Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
+Der **Überblick** zählt auch, was **ungenutzt** ist: Skills, Befehle und Agenten, die ihre Beschreibung in jede Sitzung laden, seit 30 Tagen nicht benutzt wurden und länger installiert sind — die besten Kandidaten zum Aufräumen. Ohne bekanntes Installationsdatum gilt ein Eintrag als lange installiert. Im Tab **Skills** zeigt der Statusfilter nur diese; Filter und Sortierung bleiben beim Neuladen erhalten.
 
-**Versionen** zeigt, was die Inventur selbst und deine MCP-Server und Hooks laut ihrem Befehl brauchen (etwa Python, Node, Bun, `gh`, Claude Code oder Codex): installierte und neueste Version, Pflegeende der Versionslinie und, wo die Installationsart am Pfad erkennbar ist, den Befehl zum Aktualisieren (Homebrew, npm, `bun upgrade`, `claude update`). Aktualisiert wird nichts automatisch, auch nicht die feste Version von `skills`. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag. Ist ein Programm über Homebrew installiert, gilt es erst als veraltet, wenn Homebrew die neuere Version auch anbietet; bis dahin steht dort „wartet auf Homebrew“, ohne Befehl und ohne Meldung. Darunter stehen **MCP-Server aus Quellcode**, meist ein Git-Klon unter `~`: ob upstream Neueres vorliegt (verglichen mit demselben Zweig auf `origin`), ob das Projekt ruht (über 180 Tage ohne Commit) und welche Sicherheitsmeldungen die GitHub Advisory Database für die installierten npm-Abhängigkeiten kennt, mit `git pull` bzw. `bun update …`/`npm update …` zum Kopieren. Ein ruhendes Projekt hebt seine Abhängigkeiten nicht mehr selbst an.
+**Versionen** zeigt, was die Inventur selbst und deine MCP-Server und Hooks laut ihrem Befehl brauchen (etwa Python, Node, Bun, `gh`, Claude Code oder Codex): installierte und neueste Version, Pflegeende der Versionslinie und, wo die Installationsart am Pfad erkennbar ist, den Befehl zum Aktualisieren (Homebrew, npm, `bun upgrade`, `claude update`). Aktualisiert wird nichts automatisch, auch nicht die feste Version von `skills`. Die neuesten Versionen kommen von endoflife.date, npm und GitHub, einmal am Tag. Ist ein Programm über Homebrew installiert, gilt es erst als veraltet, wenn Homebrew die neuere Version auch anbietet; bis dahin steht dort „wartet auf Homebrew“, ohne Befehl und ohne Meldung. Darunter stehen **MCP-Server aus Quellcode**, meist ein Git-Klon unter `~`: ob upstream Neueres vorliegt (verglichen mit demselben Zweig auf `origin`), ob das Projekt ruht (über 180 Tage ohne Commit) und welche Sicherheitsmeldungen die GitHub Advisory Database für die direkten npm-Abhängigkeiten aus `package.json` kennt, mit `git pull` bzw. dem Update-Befehl des Paketmanagers (`bun`, `npm`, `pnpm`, `yarn`) zum Kopieren. Ein ruhendes Projekt hebt seine Abhängigkeiten nicht mehr selbst an; als ruhend erkennt die Inventur nur Projekte auf GitHub.
 
-**Berechtigungen** zeigt, was der Harness ohne Rückfrage darf, global und je Projekt: unter Claude Code `allow`, `ask`, `deny`, `defaultMode` und `additionalDirectories` aus den verwalteten Einstellungen, `~/.claude/settings.json` und `.claude/settings*.json` der Projekte; unter Codex `approval_policy` und `sandbox_mode` (auch in Profilen), die Regeln in `~/.codex/rules` und die vertrauten Ordner. Markiert ist, was sehr viel erlaubt (**breit**: ein ganzes Werkzeug, ein ganzer MCP-Server, ein Interpreter wie `Bash(python3:*)`, `bypassPermissions`, `danger-full-access`), was ins Leere zeigt (**verwaist**: Regel für einen Server, der nicht mehr eingetragen ist, oder ein vertrauter Ordner, den es nicht mehr gibt) was sich **widerspricht** und was im Projekt steht, obwohl es schon global gilt (**doppelt**). Der Reiter „Auffällig“ zeigt nur das Markierte; über den Server nimmt „entfernen“ eine solche Regel aus ihrer Datei (unter Codex einen verwaisten Ordner aus `config.toml`), mit Sicherung daneben. Der zweite Reiter zeigt alle Regeln je Projekt, nach Werkzeug gebündelt. Alles andere änderst du selbst.
+**Berechtigungen** zeigt, was der Harness ohne Rückfrage darf, global und je Projekt: unter Claude Code `allow`, `ask`, `deny`, `defaultMode` und `additionalDirectories` aus den verwalteten Einstellungen, `~/.claude/settings.json` und `.claude/settings*.json` der Projekte; unter Codex `approval_policy` und `sandbox_mode` (auch in Profilen), die Regeln in `~/.codex/rules` und die vertrauten Ordner. Markiert ist, was sehr viel erlaubt (**breit**: ein ganzes Werkzeug, ein ganzer MCP-Server, ein Interpreter wie `Bash(python3:*)`, `bypassPermissions`, `danger-full-access`), was ins Leere zeigt (**verwaist**: Regel für einen Server, der nicht mehr eingetragen ist, oder ein vertrauter Ordner, den es nicht mehr gibt), was sich **widerspricht** und was im Projekt steht, obwohl es schon global gilt (**doppelt**; beides nur unter Claude Code). Der Reiter „Auffällig“ zeigt nur das Markierte; über den Server nimmt „entfernen“ eine markierte Regel aus `allow`, `ask` oder `deny` ihrer Datei (unter Codex einen verwaisten Ordner aus `config.toml`), mit Sicherung daneben. Modi, Ordner, verwaltete Einstellungen und `~/.codex/rules` bleiben Handarbeit. Der zweite Reiter zeigt alle Regeln je Projekt, nach Werkzeug gebündelt. Alles andere änderst du selbst.
 
-**Modelle** zeigt, welches Modell und welcher Aufwand eingestellt sind und was wirklich lief. Eingestellt: unter Claude Code `model`, `effortLevel` und verwandte Schlüssel aus den verwalteten Einstellungen, `~/.claude/settings.json` und `.claude/settings*.json` der Projekte, auch im `env`-Block, dazu `model` und `effort` im Kopf von Agenten, Skills und Befehlen; unter Codex die Modell-Schlüssel in `~/.codex/config.toml`, auch in Profilen. **überschreibt** heißt: Der Wert weicht vom globalen ab. Gemessen: aus den Transkripten der letzten 14 Tage, je Projekt und Modell die Zahl der Antworten, die Tokens (Eingabe, Cache geschrieben und gelesen, Ausgabe) und der Aufwand, unter Claude Code getrennt nach Hauptsitzung und Subagent. Arbeitsordner von Subagenten und Unterordner zählen zu ihrem Projekt. Ein Subagent bekommt sein Modell oft erst beim Aufruf; das steht in keiner Datei, nur in der Messung. Nur Anzeige.
+**Modelle** zeigt, welches Modell und welcher Aufwand eingestellt sind und was wirklich lief. Eingestellt: unter Claude Code `model`, `effortLevel` und verwandte Schlüssel aus den verwalteten Einstellungen, `~/.claude/settings.json` und `.claude/settings*.json` der Projekte, auch im `env`-Block, dazu `model` und `effort` im Kopf von Skills, Befehlen und Plugin-Agenten; unter Codex die Modell-Schlüssel in `~/.codex/config.toml`, auch in Profilen. **überschreibt** heißt: Der Wert weicht vom globalen ab. Gemessen: aus den Transkripten der letzten 14 Tage, je Projekt und Modell die Zahl der Antworten, die Tokens (Eingabe, Cache geschrieben und gelesen, Ausgabe) und der Aufwand, unter Claude Code getrennt nach Hauptsitzung und Subagent, unter Codex Turns je Ordner. Arbeitsordner von Subagenten und Unterordner zählen zu ihrem Projekt (Claude Code). Ein Subagent bekommt sein Modell oft erst beim Aufruf; das steht in keiner Datei, nur in der Messung. Nur Anzeige.
 
-Lässt sich ein einzelnes Plugin oder Projekt nicht einlesen, fehlt nur diese Quelle; ein Banner oben nennt sie mit dem Fehler.
+Lässt sich eine Quelle nicht einlesen (ein Plugin, ein Projekt, ein Ordner mit Hooks oder ein ganzer Tab wie Versionen oder Berechtigungen), fehlt nur sie; ein Banner oben nennt sie mit dem Fehler.
 
 Die **Hilfe** im Dashboard erklärt jede Spalte und jede Zahl, passend zum gerade gezeigten Harness.
 
@@ -70,18 +70,18 @@ Die **Hilfe** im Dashboard erklärt jede Spalte und jede Zahl, passend zum gerad
 | `behalten` | Nützt und überschneidet sich nicht |
 | `prüfen` | Hängt an einer Entscheidung, die nur du treffen kannst — die Begründung nennt sie |
 | `entfernen` | Veraltet, unfertig und ungenutzt, doppelt, defekt oder ohne Bezug zur Arbeit |
-| `abschalten` | Einzelner Skill eines Plugins, das bleibt |
+| `abschalten` | Ausschalten, aber installiert lassen: ein Skill eines Plugins, das bleibt, ein Plugin, ein MCP-Server oder ein Mod |
 | `nur manuell` | Gelegentlich nützlich, lädt aber seine Beschreibung in jede Sitzung |
 
 Keine Empfehlung ohne Beleg aus dem Bestand. „Nie benutzt" trägt nicht, wenn etwas erst vor wenigen Tagen installiert wurde.
 
 ## Aktionen ausführen
 
-Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell** und, für alles, was aus ist, die Gegen-Aktionen **einschalten** und **wieder automatisch**. Vorbelegt ist, was die Empfehlung nahelegt. Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Bewertung und Suche laufen im Hintergrund, lassen sich abbrechen und halten Aktionen nicht auf.
+Mit `server.py` bietet jede Zeile die Aktionen an, die zu ihr passen: **aktualisieren**, **deinstallieren**, **deaktivieren**, **nur manuell** und, für alles, was aus ist, die Gegen-Aktionen **einschalten** und **wieder automatisch**; markierte Regeln bieten **entfernen**, Anweisungen **deaktivieren** und **einschalten**. Vorbelegt ist, was die Empfehlung nahelegt. Nach gelungenen Aktionen liest die Seite den Bestand selbst neu ein; schlägt eine fehl, bleibt die Meldung stehen. Bewertung, Suche und Prüfung laufen im Hintergrund und lassen sich abbrechen; Aktionen warten nur, solange davor oder danach `build.py` läuft.
 
-Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `claude.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext. `npx skills` steht dort in fester Version (`SKILLS_CLI` in `harness.py`) und läuft mit leerem `--prefix`, damit ein Projektordner kein eigenes `skills` und keine eigene `.npmrc` unterschiebt. Einen Namen, der mit `-` beginnt, setzt der Server in keinen Befehl ein.
+Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in `claude.py` bzw. `codex.py` fest, für Regeln und Anweisungen `rechte_aktionen()` und `anweisungen_aktionen()` in `build.py`. Der Server führt nur aus, was so im Inventar steht — er baut keine Befehle aus Freitext. `npx skills` steht dort in fester Version (`SKILLS_CLI` in `harness.py`) und läuft mit leerem `--prefix`, damit ein Projektordner kein eigenes `skills` und keine eigene `.npmrc` unterschiebt; nur die Suche ruft `npx skills find` ohne feste Version auf, lesend. Einen Namen, der mit `-` beginnt, setzt der Server in keinen Befehl ein.
 
-Vor der ersten Änderung an einer Konfigurationsdatei legt er eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, die letzten 10 bleiben), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen; unter Windows bleibt dafür nur das Löschen von Hand. Alles wirkt ab der nächsten Sitzung.
+Schreibt der Server selbst in eine Konfigurationsdatei, legt er vorher eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, die letzten 10 bleiben), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Aktionen über `claude`, `codex` oder `npx skills` schreiben mit den Mitteln dieser Programme, ohne eigene Sicherung. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen. Der Server läuft unter macOS und Linux, unter Windows startet er nicht. Alles wirkt ab der nächsten Sitzung.
 
 ## Beide Harness
 
@@ -92,7 +92,7 @@ python3 build.py --harness claude-code
 python3 build.py --harness codex
 ```
 
-`server.py` versteht dieselbe Angabe (`python3 server.py --harness codex`) und zeigt dann dieses Dashboard. Ohne Angabe gilt der zuletzt genannte. Die beiden Bewertungen sind getrennt, denn ein Skill kann in einem Harness sinnvoll und im anderen wirkungslos sein. `~/.agents/skills` liest allerdings jeder Harness — ein Skill von dort steht deshalb in beiden Beständen.
+`server.py` versteht dieselbe Angabe (`python3 server.py --harness codex`) und zeigt dann dieses Dashboard. Ohne Angabe gilt der zuletzt genannte. Die beiden Bewertungen sind getrennt, denn ein Skill kann in einem Harness sinnvoll und im anderen wirkungslos sein. Codex liest `~/.agents/skills` selbst, Claude Code über einen Symlink in `~/.claude/skills`: Ein solcher Skill steht in beiden Beständen, als geteilt markiert, und deinstallieren entfernt ihn aus beiden.
 
 **Achtung bei den Nutzungszahlen:** Claude Code zählt jeden Aufruf, Codex nur eine Sitzung je Skill. Dieselbe Zahl bedeutet in den beiden Dashboards nicht dasselbe.
 
@@ -103,12 +103,15 @@ Der Projektordner enthält **nur das Werkzeug**:
 ```
 3zero-Harness-Inventur/
   build.py, server.py, wochenlauf.py   Startbefehle, rufen den Code in inventur/
+  README.md                       diese Beschreibung
   AGENTS.md, CLAUDE.md            Anleitung für Agenten; CLAUDE.md bindet AGENTS.md nur ein
+  .claude/rules/                  Regeln je Modul für Agenten
   seitenvergleich.py, render-app-icon.py   Werkzeuge für Umbauten am Template und am Icon
   inventur/                       der Code: Leser, Server, Tabs, dazu Template, Icons und Logo
   tests/                          die Tests (python3 -m unittest)
   skill/                          der Skill /3zero-harness-inventur
   docs/                           die Diagramme
+  .github/                        die Tests bei GitHub
 ```
 
 Alles, was den Rechner beschreibt, liegt daneben:
@@ -124,7 +127,7 @@ Alles, was den Rechner beschreibt, liegt daneben:
   harness.json                   welcher Harness zuletzt lief
   verlauf-claude-code.json       Kontextlast und Bestand je Tag, erzeugt
   verlauf-codex.json             Kontextlast und Bestand je Tag, erzeugt
-  start.html                     Einstieg mit Schlüssel, nur solange server.py läuft
+  start.html                     Einstieg mit Schlüssel, solange server.py läuft; nach einem harten Abbruch bleibt sie liegen
   werkzeuge.json                 Antworten aus dem Netz (Versionen, MCP-Messungen), einmal am Tag
   wochenlauf.json                was der wöchentliche Lauf schon gemeldet hat
   wochenlauf.log                 Ausgabe des wöchentlichen Laufs (macOS)
@@ -137,11 +140,11 @@ Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". 
 
 Drei Knöpfe starten einen Agenten im Hintergrund. Alle sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
 
-**Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (Einstellungen und MCP-Server des Benutzers bleiben draußen), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf Unsinn, bleibt die alte Bewertung stehen.
+**Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (`--restricted` hält die Einstellungen des Benutzers draußen, `--strict-mcp-config` seine MCP-Server), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf kein JSON-Objekt, bleibt die alte Bewertung stehen.
 
-**Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten; Installationen, Sterne, letzter Push und Lizenz stehen als Zahlen am Kandidaten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
+**Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten; Installationen, Sterne, letzter Push und Lizenz stehen am Kandidaten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben außer in den Zwischenspeicher von npm und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut. MCP-Server installiert das Dashboard nie, ihr Befehl steht nur zum Kopieren da.
 
-**Prüfen** (nur Claude Code) bewertet die `CLAUDE.md` eines Projekts, oder die `AGENTS.md`, wenn die `CLAUDE.md` sie nur einbindet; der Knopf steht im Tab **Anweisungen** und ist dort beschrieben. Der Lauf liest nur, und nur im Projekt.
+**Prüfen** (nur Claude Code) bewertet die `CLAUDE.md` eines Projekts, oder die `AGENTS.md`, wenn eine `CLAUDE.md` sie einbindet oder sie ohne `CLAUDE.md` lädt; der Knopf steht im Tab **Anweisungen** und ist dort beschrieben. Der Lauf liest nur, und nur im Projekt.
 
 Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-inventur`) und liegt in `skill/SKILL.md`.
 
@@ -149,15 +152,15 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 
 | Angabe | Quelle | Verlässlichkeit |
 |---|---|---|
-| Nutzung | `skillUsage` in `~/.claude.json`, bzw. `~/.codex/sessions` | gezählt |
+| Nutzung | `skillUsage` in `~/.claude.json`, bzw. `~/.codex/sessions` (auch archivierte), eine Sitzung je Skill | gezählt |
 | Kontextkosten | Länge von Name und Beschreibung ÷ 4 | Schätzung |
-| Anweisungen | Länge von `CLAUDE.md`, Regeln, Output-Style und `MEMORY.md` ÷ 4; eingebundene Dateien (`@pfad`) zählen nicht mit, außer einer `AGENTS.md`, die eine eigene Zeile hat. Die globalen zählen zur Kontextlast | Schätzung |
-| Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten Tage, ÷ 4 | Schätzung |
+| Anweisungen | Länge von `CLAUDE.md` (auch `CLAUDE.local.md`, aus Ordnern darüber und verwaltete), Regeln, Output-Style und `MEMORY.md` (200 Zeilen) ÷ 4; eingebundene Dateien (`@pfad`) zählen nicht mit, außer einer `AGENTS.md`, die eine eigene Zeile hat. Die globalen zählen zur Kontextlast | Schätzung |
+| Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten 14 Tage, ÷ 4 | Schätzung |
 | Hook-Laufzeit | `durationMs` in denselben Transkripten, Median und Maximum | gemessen |
-| MCP-Server | Aufrufe aus denselben Transkripten. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | gezählt |
-| Update verfügbar | Skills: `gh api` gegen den Stand bei der Installation (`skillFolderHash`). Plugins (Claude Code): Version aus `plugin.json`, fester `sha` im Marktplatz oder, ohne beides, ob sich ihr Ordner seit dem installierten Stand geändert hat. MCP-Server, Hooks und Mods eines Plugins übernehmen dessen Angabe | genau |
-| Herkunft | `plugin.json`, `.skill-lock.json`, Symlink-Erkennung | belegt |
-| Ungenutzt | Nutzung und Installationsdatum, 30 Tage; unter Codex gilt für Plugins mangels Datum der Stand ihres Ordners | abgeleitet |
+| MCP-Server | Aufrufe aus denselben Transkripten, unter Codex aus den Sitzungen. Werkzeuge und Kontext (Anweisungsblock und Werkzeugnamen, ÷ 4): bei HTTP-Servern ohne Anmeldung direkt per `initialize` und `tools/list`, einmal am Tag; sonst aus den Transkripten. Schemata laden erst bei Bedarf und stehen nur in den Details | Aufrufe gezählt, Kontext geschätzt |
+| Update verfügbar | Skills: `gh api` gegen den Stand bei der Installation (`skillFolderHash`). Plugins (Claude Code): Version aus `plugin.json`, fester `sha` im Marktplatz oder, ohne beides, ob sich ihr Ordner seit dem installierten Stand geändert hat; nur Marktplätze auf GitHub, jede abweichende Version zählt. MCP-Server, Hooks und Mods eines Plugins übernehmen dessen Angabe | genau |
+| Herkunft | `plugin.json`, `marketplace.json`, `.skill-lock.json`, Symlink-Erkennung; Autor und Repo kann die Bewertung ergänzen | belegt |
+| Ungenutzt | Nutzung und Installationsdatum, 30 Tage; für Teile eines Plugins ohne Datum gilt der Stand seines Ordners | abgeleitet |
 
 Umgebungswerte von MCP-Servern übernimmt das Inventar nie. Was in URL oder Argumenten eines Servers nach Zugangsdaten aussieht (Passwort in der URL, Werte in der Query, `--token …`, `…_KEY=…`, `Bearer …`), ersetzt es durch „…“, bevor das Ziel im Inventar und im Dashboard steht. Das erkennt Muster, keine Bedeutung.
 
@@ -166,11 +169,11 @@ Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods ga
 ## Voraussetzungen
 
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
-- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`); **`git`** für MCP-Server aus Quellcode, **`brew`** für „wartet auf Homebrew“
+- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe, Aktionen und Installationen; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`); **`git`** für MCP-Server aus Quellcode, **`brew`** für „wartet auf Homebrew“
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
-- Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium)
+- Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium, sonst `BROWSER_BIN=<Pfad>`)
 
-Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst, dem Home-Verzeichnis, den Projekten aus `~/.claude.json` bzw. `~/.codex/config.toml` und den verwalteten Einstellungen von Claude Code (`/Library/Application Support/ClaudeCode`, `/etc/claude-code`).
+Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst, dem Home-Verzeichnis, den Projekten aus `~/.claude.json` bzw. `~/.codex/config.toml`, `CLAUDE.md` in Ordnern über einem Projekt, den Plugin-Ordnern, die Claude Code einträgt, und den verwalteten Einstellungen von Claude Code (`/Library/Application Support/ClaudeCode`, `/etc/claude-code`).
 
 ## Tests
 
@@ -180,7 +183,7 @@ python3 -m unittest
 
 Die Server-Tests arbeiten mit harmlosen Befehlen in Temp-Ordnern, nie gegen die echte Konfiguration. Auf GitHub laufen sie bei jedem Push unter Linux mit Python 3.11 und 3.13 (`.github/workflows/tests.yml`); den Mac-Weg (Papierkorb, Browser) prüft der lokale Lauf.
 
-Für das JavaScript in `inventur/template.html` gibt es keine Tests. Nach einem Umbau dort vergleicht `python3 seitenvergleich.py` das Dashboard mit dem aus dem letzten Commit: den sichtbaren Text aller Tabs und was die Knöpfe an Regeln und Anweisungen auslösen.
+Für das JavaScript in `inventur/template.html` gibt es keine Tests. Nach einem Umbau dort vergleicht `python3 seitenvergleich.py` das Dashboard mit dem aus dem letzten Commit (oder mit `--gegen <Stand>`): den sichtbaren Text aller Tabs und was die Knöpfe an Regeln und Anweisungen auslösen.
 
 ## Diagramme
 
@@ -188,6 +191,6 @@ In `docs/` liegen vier eigenständige HTML-Diagramme mit ihren Quellen: der **Au
 
 ## Hinweis
 
-Das Werkzeug läuft in jedem Ordner: Es liest `~/.claude`, `~/.codex` und `~/.agents`, weil die Werkzeuge dort liegen, und schreibt nach `~/.3zero-harness-inventur`. Sonst liest es nur seinen eigenen Ordner, die eingetragenen Projekte und die verwalteten Einstellungen von Claude Code.
+Das Werkzeug läuft in jedem Ordner: Es liest `~/.claude`, `~/.claude.json`, `~/.codex` und `~/.agents`, weil die Werkzeuge dort liegen, und schreibt nach `~/.3zero-harness-inventur`; der Wochenlauf schreibt außerdem nach `~/Library/LaunchAgents` bzw. `~/.config/systemd/user`. Sonst liest es nur seinen eigenen Ordner, die eingetragenen Projekte und die verwalteten Einstellungen von Claude Code.
 
-Zwei Stellen bleiben auf 3zero zugeschnitten: das Logo in `inventur/wordmark.svg` und die Frage in `skill/SKILL.md`, ob ein Eintrag zur Arbeit des Benutzers passt. Beides ist Inhalt, nicht Technik.
+Auf 3zero zugeschnitten sind Logo, App-Icon, Farben und Titel in `inventur/` und die Frage in `skill/SKILL.md`, ob ein Eintrag zur Arbeit passt; dort steht sie mit den Arbeitsfeldern des Autors (IT-Beratung, Requirements Engineering, Web- und Supabase-Projekte). Das ist Inhalt, nicht Technik.
