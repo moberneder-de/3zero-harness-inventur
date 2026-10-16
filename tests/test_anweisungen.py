@@ -256,6 +256,20 @@ class Projekte(Ordner):
         (z,) = self.claude(projekte=[p])
         self.assertEqual((z["art"], z["status"], z["laedt"]), ("AGENTS.md", "aktiv", True))
 
+    def test_agents_md_ueber_import_aus_der_claude_md(self):
+        """Die Doku von Claude Code empfiehlt für Projekte, die auch andere Agenten nutzen: Inhalt in AGENTS.md, daneben
+        eine CLAUDE.md mit `@AGENTS.md`. Dann lädt die AGENTS.md über den Import, obwohl es eine CLAUDE.md gibt."""
+        p = self.tmp / "P"
+        self.schreibe(p / "CLAUDE.md", "@AGENTS.md\n")
+        self.schreibe(p / "AGENTS.md", "a" * 400)
+        claude_md, agents_md = self.claude(projekte=[p])
+        self.assertEqual((agents_md["status"], agents_md["laedt"], agents_md["eingebunden_von"]), ("eingebunden", True, str(p / "CLAUDE.md")))
+        self.assertEqual(claude_md["importe"], 1)
+        self.assertEqual(sum(z["tokens"] for z in (claude_md, agents_md) if z["laedt"]), 2 + 100)  # einmal gezählt
+        # nur im Codeblock genannt: kein Import, die AGENTS.md lädt weiter nicht
+        self.schreibe(p / "CLAUDE.md", "```\n@AGENTS.md\n```\n")
+        self.assertEqual(self.claude(projekte=[p])[1]["status"], "wirkungslos")
+
     def test_home_ist_kein_projekt_und_seine_datei_nicht_geerbt(self):
         """~ steht als Projekt in ~/.claude.json. ~/.claude/CLAUDE.md ist die globale Datei und stünde sonst in jedem
         Projekt noch einmal; ~/CLAUDE.md dagegen lädt in jedem Projekt darunter."""

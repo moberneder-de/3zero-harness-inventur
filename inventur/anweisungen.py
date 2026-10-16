@@ -134,7 +134,7 @@ def kurz(pfad, home):
 
 
 def importe(text, datei, home):
-    """Wie viele vorhandene Dateien der Text mit @pfad einbindet. Nur was es gibt: `@anthropic-ai/sdk` ist kein Import."""
+    """Die vorhandenen Dateien, die der Text mit @pfad einbindet. Nur was es gibt: `@anthropic-ai/sdk` ist kein Import."""
     gefunden = set()
     for ziel in IMPORT.findall(ZAUN.sub("", text)):
         ziel = ziel.rstrip(".,;:")
@@ -144,7 +144,7 @@ def importe(text, datei, home):
                 gefunden.add(pfad.resolve())
         except OSError:
             pass
-    return len(gefunden)
+    return gefunden
 
 
 def muster(*einstellungen):
@@ -159,9 +159,9 @@ def zeile(bereich, art, datei, home, text, status="aktiv", name=None, **extra):
         geaendert = None
     z = {"bereich": bereich, "art": art, "name": name or kurz(datei, home), "pfad": str(datei), "tokens": len(text) // 4, "zeichen": len(text),
          "geaendert": geaendert, "status": status, "laedt": status == "aktiv", "marken": [], **extra}
-    anzahl = importe(text, datei, home)
-    if anzahl:
-        z.update(importe=anzahl)
+    gefunden = importe(text, datei, home)
+    if gefunden:
+        z.update(importe=len(gefunden), importiert=sorted(map(str, gefunden)))
         z["marken"].append("Importe")
     return z
 
@@ -295,10 +295,16 @@ def claude(home, settings, projekte, verwaltet=VERWALTET):
         gefunden = regeln(projekt, ordner / ".claude" / "rules", home, aus, eigene)
         verwaiste_markieren(gefunden, ordner)
         neu += gefunden
+        # Eine CLAUDE.md, die @AGENTS.md einbindet, lädt sie mit: so empfiehlt es die Doku für Projekte, die auch andere
+        # Agenten nutzen (Abschnitt „Share one file with other coding tools“)
+        einbindend = {i: z["pfad"] for z in neu if z["art"] == "CLAUDE.md" and z["laedt"] for i in z.get("importiert", [])}
         for name in ("AGENTS.md", ".claude/AGENTS.md"):
             z = ausschliessbar(projekt, "AGENTS.md", ordner / name, home, aus, eigene)
             if z and claude_md and z["status"] == "aktiv":
-                z.update(status="wirkungslos", laedt=False)  # Claude Code liest sie nur, wenn es keine CLAUDE.md gibt
+                if str((ordner / name).resolve()) in einbindend:
+                    z.update(status="eingebunden", eingebunden_von=einbindend[str((ordner / name).resolve())])
+                else:
+                    z.update(status="wirkungslos", laedt=False)  # Claude Code liest sie nur, wenn es keine CLAUDE.md gibt
             if z:
                 neu.append(z)
         an = not any(e.get("autoMemoryEnabled") is False for e in (settings, *lokal))

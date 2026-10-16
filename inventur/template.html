@@ -413,7 +413,7 @@ const STATUS = {
   "aus": ["○", "aus"], "deaktiviert": ["○", "aus"], "nicht aktiviert": ["○", "aus"], "inaktiv (Plugin aus)": ["○", "aus"],
   "abgelehnt": ["○", "aus"], "Ordner fehlt": ["○", "aus"],
   "Fehler": ["✕", "fehler"], "Anmeldung nötig": ["!", "fehler"],
-  "wirkungslos": ["○", "aus"], "nur eine Sitzung": ["◐", "teil"], "bei Bedarf": ["◐", "teil"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
+  "wirkungslos": ["○", "aus"], "eingebunden": ["●", "an"], "nur eine Sitzung": ["◐", "teil"], "bei Bedarf": ["◐", "teil"], "nicht vertraut": ["○", "aus"], "im Konto": ["◐", "teil"],
   "breit": ["!", "fehler"], "verwaist": ["○", "aus"], "widerspricht": ["◐", "teil"], "doppelt": ["○", "aus"], "überschreibt": ["◐", "teil"],
   "Sicherheitsmeldung": ["!", "fehler"], "aktuell": ["●", "an"], "veraltet": ["◐", "teil"], "Update verfügbar": ["◐", "teil"], "wartet auf Homebrew": ["◐", "aus"], "neuere Commits": ["◐", "teil"], "lokal voraus": ["●", "an"], "nur lokal": ["○", "aus"], "kein Git": ["?", "aus"], "ohne Pflege": ["✕", "fehler"], "fehlt": ["!", "fehler"], "unbekannt": ["?", "aus"],
 };
@@ -1243,7 +1243,7 @@ function renderAnweisungen() {
         ["verwaist", "Eine gebundene Regel, auf deren Muster im Projekt keine Datei passt: Sie lädt nie, etwa nach dem Umbenennen einer Datei. Ein Hinweis zum Nachsehen, denn Claude Code rechnet Muster mit seiner eigenen Logik. „nicht geprüft“ steht da, wenn sich ein Muster nicht lesen ließ oder das Projekt sehr groß ist. Regeln aus <code>~/.claude/rules</code> prüft die Inventur nicht: Ihr Muster gilt in jedem Projekt."],
         ["Output-Style", "Der Style, den <code>outputStyle</code> in <code>~/.claude/settings.json</code> nennt. Ein eigener Style lässt die eingebauten Programmier-Anweisungen weg, außer mit <code>keep-coding-instructions: true</code> im Kopf."],
         ["Memory", "<code>MEMORY.md</code> des Projekts, die Claude selbst schreibt. Geladen werden nur die ersten 200 Zeilen oder 25 KB."],
-        ["AGENTS.md", "Liest Claude Code nur, wenn es im Projekt und darüber keine CLAUDE.md gibt. Sonst steht sie als „wirkungslos“ da."],
+        ["AGENTS.md", "Liest Claude Code nur, wenn es im Projekt und darüber keine CLAUDE.md gibt, oder wenn eine CLAUDE.md sie mit <code>@AGENTS.md</code> einbindet („eingebunden“): So teilen sich Claude Code und Codex eine Datei. Sonst steht sie als „wirkungslos“ da. Eine eingebundene schaltest du über ihre CLAUDE.md ab."],
         ["groß", "Eine CLAUDE.md mit mehr als 200 Zeilen oder mehr als 5.000 Tokens. Die Doku von Claude Code rät zu unter 200 Zeilen: Längere Dateien kosten Kontext, und Claude hält sich schlechter daran. Was nur einen Teil des Codes betrifft, kann in eine Regel mit <code>paths</code> wandern und lädt dann erst bei Bedarf."],
         ["über dem Limit", "Die Anweisungsdateien, die im Projekt beim Start laden, haben zusammen mit den globalen mehr als 150.000 Zeichen. Ab dieser Grenze warnt Claude Code beim Start einer Sitzung. Gezählt werden CLAUDE.md, Regeln ohne <code>paths</code> und AGENTS.md. „nahe am Limit“ steht ab 120.000 Zeichen da, bevor Claude Code warnt."],
         ["zwei CLAUDE.md", "Im Projekt liegen <code>CLAUDE.md</code> und <code>.claude/CLAUDE.md</code>. Claude Code lädt beide. Wer nur eine öffnet, hält sie leicht für die ganze Anleitung."],

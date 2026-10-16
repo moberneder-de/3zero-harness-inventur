@@ -124,7 +124,8 @@ def anweisungen_aktionen(zeilen, pruefbar=False):
         z["aktionen"] = {}
         if pruefbar and z["art"] == "CLAUDE.md" and z["bereich"] != "global" and not z.get("geerbt") and not z.get("verwaltet"):
             z["pruefen"] = {"datei": z["pfad"], "projekt": z["bereich"]}
-        if z.get("verwaltet") or z["pfad"] and ".codex" in Path(z["pfad"]).parts:
+        # eingebunden: Ob claudeMdExcludes eine per @ eingebundene Datei erfasst, sagt die Doku nicht; geschaltet wird an der CLAUDE.md
+        if z.get("verwaltet") or z.get("eingebunden_von") or z["pfad"] and ".codex" in Path(z["pfad"]).parts:
             continue
         if z["art"] == "Output-Style":
             if z["gewaehlt"]:

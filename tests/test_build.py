@@ -110,6 +110,8 @@ class AnweisungenAktionen(unittest.TestCase):
         self.assertEqual(self.aktionen(verwaltet=True), {})
         self.assertEqual(self.aktionen(art="Memory"), {})
         self.assertEqual(self.aktionen(art="AGENTS.md", pfad="/h/.codex/AGENTS.md"), {})
+        # ob claudeMdExcludes eine eingebundene Datei erfasst, sagt die Doku nicht: geschaltet wird an der CLAUDE.md
+        self.assertEqual(self.aktionen(art="AGENTS.md", pfad="/p/AGENTS.md", status="eingebunden", eingebunden_von="/p/CLAUDE.md"), {})
 
     def test_output_style(self):
         self.assertEqual(self.aktionen(art="Output-Style", name="Einfach", gewaehlt=True), {"deaktivieren": {"output_style": None}})
