@@ -1,6 +1,6 @@
 # 3zero-Harness-Inventur
 
-Inventur der Laufzeitumgebung von Claude Code oder Codex: MCP-Server, Plugins, Skills, Befehle, Agenten und Hooks, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard.
+Inventur der Laufzeitumgebung von Claude Code oder Codex: MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks und Mods, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard.
 
 ## Wozu
 
@@ -45,7 +45,7 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Hooks, Mods, Anweisungen), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
 
-Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
+Die Tabs unter **Bestand** zeigen Globales. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Regeln und die Modelle, die dort liefen. Projekt-Hooks und Projekt-Mods sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
 
 **Mods** (Claude Code) zeigt Code eines Plugins, der in der Sitzung mitläuft: was er anzeigt (Panel, Leiste über dem Prompt, Statuszeile), wo er eingreift (Werkzeug-Aufrufe, Prompt, System-Prompt), was er darf (Dateien schreiben, Programme starten, Netz) und welche Wächter ohne Absicherung laufen. Das liest die Inventur mit `claude plugin validate`, ohne den Mod auszuführen; ohne Claude Code bleibt eine Textsuche, die nur Ereignisse findet. Hooks und Mods kommen auch aus Ordnern, die ohne Installation laden: Skill-Ordner mit eigener `plugin.json`, `CLAUDE_CODE_PLUGIN_DIRS` und `~/.claude/dev-mods`.
 
@@ -165,11 +165,11 @@ Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods ga
 ## Voraussetzungen
 
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
-- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`)
+- Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`); **`git`** für MCP-Server aus Quellcode, **`brew`** für „wartet auf Homebrew“
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
 - Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium)
 
-Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst und dem Home-Verzeichnis.
+Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst, dem Home-Verzeichnis, den Projekten aus `~/.claude.json` bzw. `~/.codex/config.toml` und den verwalteten Einstellungen von Claude Code (`/Library/Application Support/ClaudeCode`, `/etc/claude-code`).
 
 ## Tests
 
@@ -187,6 +187,6 @@ In `docs/` liegen vier eigenständige HTML-Diagramme mit ihren Quellen: der **Au
 
 ## Hinweis
 
-Das Werkzeug läuft in jedem Ordner: Es liest `~/.claude`, `~/.codex` und `~/.agents`, weil die Werkzeuge dort liegen, und schreibt nach `~/.3zero-harness-inventur`. Sonst kennt es nur seinen eigenen Ordner.
+Das Werkzeug läuft in jedem Ordner: Es liest `~/.claude`, `~/.codex` und `~/.agents`, weil die Werkzeuge dort liegen, und schreibt nach `~/.3zero-harness-inventur`. Sonst liest es nur seinen eigenen Ordner, die eingetragenen Projekte und die verwalteten Einstellungen von Claude Code.
 
 Zwei Stellen bleiben auf 3zero zugeschnitten: das Logo in `inventur/wordmark.svg` und die Frage in `skill/SKILL.md`, ob ein Eintrag zur Arbeit des Benutzers passt. Beides ist Inhalt, nicht Technik.
