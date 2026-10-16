@@ -8,8 +8,8 @@ from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import mcp_direkt
-import werkzeuge
+from inventur import mcp_direkt
+from inventur import werkzeuge
 
 WERKZEUGE = [
     {"name": "suche", "description": "Sucht.", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}},

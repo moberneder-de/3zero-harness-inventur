@@ -19,8 +19,8 @@ from pathlib import Path
 from PIL import Image
 
 HIER = Path(__file__).resolve().parent
-QUELLE = HIER / "app-icon.svg"
-ZIEL = HIER / "app-icon.png"
+QUELLE = HIER / "inventur" / "app-icon.svg"
+ZIEL = HIER / "inventur" / "app-icon.png"
 KANTE = 512
 RUNDUNG = ' rx="14"'
 GRUND = (0, 175, 208)  # --cyan aus dem Brand-Kit, die Fläche der Quelle

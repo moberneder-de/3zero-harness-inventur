@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 
-from berechtigungen import VERWALTET, kurz
+from .berechtigungen import VERWALTET, kurz
 
 SCHLUESSEL = ("model", "availableModels", "deniedModels", "fallbackModel", "effortLevel", "maxEffortLevel", "modelSettings",
               "alwaysThinkingEnabled", "fastMode")

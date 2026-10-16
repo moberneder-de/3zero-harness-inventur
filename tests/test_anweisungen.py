@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import anweisungen
+from inventur import anweisungen
 
 
 class Ordner(unittest.TestCase):

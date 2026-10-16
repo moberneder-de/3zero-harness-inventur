@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import wochenlauf
+from inventur import wochenlauf
 
 
 def inventar(**extra):

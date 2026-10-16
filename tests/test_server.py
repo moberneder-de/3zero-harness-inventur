@@ -12,8 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import harness
-import server
+from inventur import harness
+from inventur import server
 
 SETTINGS_VORHER = '{\n  "env": {\n    "A": "1"\n  },\n  "skillOverrides": {\n    "alt": "off"\n  }\n}\n'
 
@@ -174,13 +174,13 @@ class Server(unittest.TestCase):
         import signal
         import subprocess
         import sys
-        kind = ("import sys, server; from pathlib import Path; tmp = Path(sys.argv[1]);"
+        kind = ("import sys; from inventur import server; from pathlib import Path; tmp = Path(sys.argv[1]);"
                 "srv = server.Inventarserver(0, tmp, tmp / 'settings.json', 'geheim', tmp);"
                 "start = server.startdatei(tmp, 'http://127.0.0.1:1/?k=geheim');"
                 "print(srv.server_address[1], flush=True); server.bedienen(srv, start)")
         for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
             with self.subTest(signal=sig.name):
-                p = subprocess.Popen([sys.executable, "-c", kind, str(self.tmp)], cwd=server.HIER, stdout=subprocess.PIPE, text=True)
+                p = subprocess.Popen([sys.executable, "-c", kind, str(self.tmp)], cwd=harness.PROJEKT, stdout=subprocess.PIPE, text=True)
                 self.addCleanup(p.kill)
                 port = int(p.stdout.readline())
                 for _ in range(50):  # erst wenn er antwortet, stehen auch die Signal-Behandlungen
@@ -246,7 +246,7 @@ class Server(unittest.TestCase):
 
     def test_seite_nennt_bei_jeder_anfrage_ihren_harness(self):
         """Das Gegenstück im Browser: Ohne diesen Kopf lehnt der Server jede Anfrage der Seite ab."""
-        self.assertIn('"X-Harness": D.harness', (server.HIER / "template.html").read_text(encoding="utf-8"))
+        self.assertIn('"X-Harness": D.harness', (Path(server.__file__).parent / "template.html").read_text(encoding="utf-8"))
 
     def test_ohne_gueltiges_token_laeuft_nichts(self):
         for token in (None, "falsch"):
@@ -689,7 +689,7 @@ class Server(unittest.TestCase):
     def test_zu_altes_python_meldet_sich_verstaendlich(self):
         """/usr/bin/python3 ist auf dem Mac 3.9; dort scheiterte `import tomllib` mit einem rohen Traceback."""
         r = subprocess.run([sys.executable, "-c", "import runpy, sys; sys.version_info = (3, 9, 6); runpy.run_path(sys.argv[1])",
-                            str(server.HIER / "server.py")], capture_output=True, text=True, cwd=self.tmp, timeout=30)
+                            str(harness.PROJEKT / "server.py")], capture_output=True, text=True, cwd=self.tmp, timeout=30)
         self.assertEqual(r.returncode, 1)
         self.assertIn("Python 3.11", r.stderr)
         self.assertNotIn("Traceback", r.stderr)

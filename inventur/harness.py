@@ -13,6 +13,8 @@ import os
 import tempfile
 from pathlib import Path
 
+PROJEKT = Path(__file__).resolve().parent.parent  # der Projektordner: Startbefehle (build.py, server.py, wochenlauf.py), skill/
+
 DATEN = Path.home() / ".3zero-harness-inventur"
 
 HARNESSE = {

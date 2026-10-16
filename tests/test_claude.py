@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bestand
-import build
-import claude
-import harness
+from inventur import bestand
+from inventur import build
+from inventur import claude
+from inventur import harness
 
 CLI = harness.SKILLS_CLI  # die feste Version, die auch im Inventar steht
 

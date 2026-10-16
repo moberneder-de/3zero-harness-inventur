@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import codex
-import harness
+from inventur import codex
+from inventur import harness
 
 CLI = harness.SKILLS_CLI
 
@@ -19,7 +19,7 @@ class CodexOrdner(unittest.TestCase):
         self.home = self.tmp / "home"
         self.patches = [mock.patch.object(codex, "HOME", self.home), mock.patch.object(codex, "CODEX", self.home / ".codex"),
                         mock.patch.object(codex, "AGENTS", self.home / ".agents"), mock.patch.object(codex, "CLAUDE", self.home / ".claude"),
-                        mock.patch.object(codex, "HIER", self.tmp), mock.patch.object(harness, "DATEN", self.tmp)]
+                        mock.patch.object(harness, "PROJEKT", self.tmp), mock.patch.object(harness, "DATEN", self.tmp)]
         for p in self.patches:
             p.start()
 
@@ -288,7 +288,7 @@ class Nutzung(CodexOrdner):
     def test_sitzung_im_projektordner_zaehlt_nicht(self):
         """session_meta mit payload.cwd = Projektordner heißt: der Lauf war eine Bewertung, keine echte Nutzung."""
         skill = self.skill(self.home / ".agents/skills", "archify")
-        meta = json.dumps({"type": "session_meta", "payload": {"cwd": str(codex.HIER)}})
+        meta = json.dumps({"type": "session_meta", "payload": {"cwd": str(harness.PROJEKT)}})
         lesen = self.zeile("2026-09-02", {"type": "item_completed", "item": {"type": "CommandExecution",
                            "command": ["/bin/zsh", "-lc", f"sed -n '1,240p' {skill}"]}})
         eins = self.schreibe(self.home / ".codex/sessions/2026/09/02/rollout-2.jsonl", "\n".join([meta, lesen]))

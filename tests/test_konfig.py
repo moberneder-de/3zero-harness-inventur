@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import konfig
+from inventur import konfig
 
 SETTINGS_VORHER = '{\n  "env": {\n    "A": "1"\n  },\n  "skillOverrides": {\n    "alt": "off"\n  }\n}\n'
 CONFIG = '''# eigene Einstellungen
@@ -500,14 +500,14 @@ class OpenaiYaml(Ordner):
     def test_nur_manuell_rollback_bei_fehlgeschlagener_pruefung(self):
         inhalt = "policy:\n  allow_implicit_invocation: true\n"
         ordner = self.skill("rollback", inhalt)
-        with mock.patch("konfig.re.search", return_value=None):
+        with mock.patch("inventur.konfig.re.search", return_value=None):
             self.scheitert({"nur_manuell": str(ordner)})
         self.assertEqual((ordner / "agents/openai.yaml").read_text(), inhalt)
 
     def test_neu_angelegte_datei_verschwindet_wenn_die_pruefung_scheitert(self):
         """Gab es die Datei vorher nicht, bleibt auch keine zurück."""
         ordner = self.skill("neu")
-        with mock.patch("konfig.re.search", return_value=None):
+        with mock.patch("inventur.konfig.re.search", return_value=None):
             self.scheitert({"nur_manuell": str(ordner)})
         self.assertFalse((ordner / "agents/openai.yaml").exists())
 

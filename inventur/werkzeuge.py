@@ -17,7 +17,7 @@ import urllib.request
 from datetime import timedelta
 from pathlib import Path
 
-import harness
+from . import harness
 
 HOME = Path.home()
 ZU_TUN = ("veraltet", "ohne Pflege", "fehlt")  # Status eines Werkzeugs, bei denen etwas zu tun ist; nicht „wartet auf Homebrew“

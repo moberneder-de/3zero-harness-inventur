@@ -13,18 +13,17 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-import harness
-import konfig
-import mcp_direkt
-import werkzeuge
-from bestand import (LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
+from . import harness
+from . import konfig
+from . import mcp_direkt
+from . import werkzeuge
+from .bestand import (LESEFEHLER, abgleich, bewerte, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
                      papierkorb_befehl, projekt_ids, shellwort, updates_markieren, werkzeug_praefix, ziel_text)
 
 HOME = Path.home()
 CODEX = HOME / ".codex"
 AGENTS = HOME / ".agents"
 CLAUDE = HOME / ".claude"  # nur für die Frage, ob ein Skill auch in Claude Code lädt
-HIER = Path(__file__).resolve().parent
 SKILL_PFAD = re.compile(r"(/[^\s'\"<>]+/SKILL\.md)")
 
 
@@ -246,7 +245,7 @@ def nutzung_zaehlen(dateien):
     """Skills zählen je Sitzung einmal: per $name gewählt oder ihre SKILL.md gelesen. MCP-Server zählen je Aufruf.
     Eine Sitzung zählt ganz nicht mit, wenn sie selbst diesen Skill wählt oder im Projektordner lief: sonst zählte
     jede Bewertung ihre eigenen SKILL.md-Lesezugriffe als Nutzung. Ergebnis: ({aufgelöster SKILL.md-Pfad: [Tag, …]}, {Server: [Tag, …]})."""
-    hier = str(HIER.resolve())
+    hier = str(harness.PROJEKT.resolve())
     skills, mcp = {}, {}
     for datei in dateien:
         gelesen, mcp_gelesen, ueberspringen, sitzung_cwd = {}, {}, False, None

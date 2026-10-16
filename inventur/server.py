@@ -31,19 +31,15 @@ import tempfile
 import threading
 import time
 
-if sys.version_info < (3, 11):  # /usr/bin/python3 ist auf dem Mac 3.9; import tomllib scheiterte dort mit einem Traceback
-    sys.exit(f"server.py braucht Python 3.11 oder neuer, gestartet mit {sys.version.split()[0]}.")
-
 import tomllib
 import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import harness
-import konfig
+from . import harness
+from . import konfig
 
-HIER = Path(__file__).resolve().parent
 PORT = 8765
 TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
 
@@ -942,7 +938,7 @@ def main(argv=None):
     parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
     wahl = parser.parse_args(argv).harness
     try:
-        srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
+        srv = Inventarserver(PORT, harness.PROJEKT, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
     except OSError:
         sys.exit(f"Port {PORT} ist belegt. Läuft der Server schon? Dann {harness.DATEN / 'start.html'} öffnen.")
     print("Lese den Bestand ein …")
@@ -956,6 +952,3 @@ def main(argv=None):
     browser_oeffnen(start)
     bedienen(srv, start)
 
-
-if __name__ == "__main__":
-    main()

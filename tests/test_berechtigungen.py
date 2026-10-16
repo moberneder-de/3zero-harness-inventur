@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import berechtigungen as b
+from inventur import berechtigungen as b
 
 
 class Breit(unittest.TestCase):

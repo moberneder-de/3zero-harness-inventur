@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import modelle as m
+from inventur import modelle as m
 
 GRENZE = "2026-09-20T00:00:00"
 

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-import mcp_direkt
+from . import mcp_direkt
 
 
 def lies_json(pfad):

@@ -18,10 +18,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-import harness
-import mcp_direkt
-import werkzeuge
-from bestand import (MESS_TAGE, abgleich, bewerte, frisch, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
+from . import harness
+from . import mcp_direkt
+from . import werkzeuge
+from .bestand import (MESS_TAGE, abgleich, bewerte, frisch, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
                      papierkorb_befehl, projekt_ids, shellwort, updates_markieren, verdecken, werkzeug_praefix, zeitgrenze, ziel_text)
 
 HOME = Path.home()
@@ -29,7 +29,6 @@ CLAUDE = HOME / ".claude"
 AGENTS = HOME / ".agents"  # dorthin legt `npx skills` Skills; Codex liest denselben Ordner
 CODEX = HOME / ".codex"  # nur für die Frage, ob ein Skill auch in Codex lädt
 PLUGINS = CLAUDE / "plugins"
-HIER = Path(__file__).resolve().parent
 
 # Hier steht bewusst nichts Gelesenes: main() in build.py liest ~/.claude.json (`cfg`), settings.json (`settings`), die Bewertung
 # und das Lock von npx skills einmal je Lauf und gibt sie weiter. Als Modulwerte lasen 13 Funktionen sie heimlich mit,
@@ -701,7 +700,7 @@ def plugins(cfg, settings, autoren):
 def mcp_live():
     """Status laut `claude mcp list`, aus diesem Ordner heraus, also ohne Projekt-Abschaltungen."""
     try:
-        r = subprocess.run(["claude", "mcp", "list"], cwd=HIER, capture_output=True, text=True, timeout=180)
+        r = subprocess.run(["claude", "mcp", "list"], cwd=harness.PROJEKT, capture_output=True, text=True, timeout=180)
     except (OSError, subprocess.TimeoutExpired):
         return None
     status = {}

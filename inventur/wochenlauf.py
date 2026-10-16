@@ -18,16 +18,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-import harness
-import werkzeuge
+from . import harness
+from . import werkzeuge
 
-HIER = Path(__file__).resolve().parent
 KENNUNG = "de.3zero.harness-inventur.wochenlauf"  # launchd
 DIENST = "3zero-harness-inventur-wochenlauf"  # systemd
 
 
 def bauen():
-    subprocess.run([sys.executable, str(HIER / "build.py")], check=True, timeout=900)
+    subprocess.run([sys.executable, str(harness.PROJEKT / "build.py")], check=True, timeout=900)
 
 
 def offen(inv):
@@ -117,7 +116,7 @@ def systemd_dateien(python, skript, pfad):
 
 def einrichten():
     """python3 aus dem PATH, nicht sys.executable: Homebrew löscht beim Update den Ordner der alten Version, der Link bleibt."""
-    python, skript, pfad = shutil.which("python3") or sys.executable, str(HIER / "wochenlauf.py"), os.environ.get("PATH", "")
+    python, skript, pfad = shutil.which("python3") or sys.executable, str(harness.PROJEKT / "wochenlauf.py"), os.environ.get("PATH", "")
     harness.DATEN.mkdir(parents=True, exist_ok=True)
     if platform.system() == "Darwin":
         ziel = Path.home() / "Library/LaunchAgents" / f"{KENNUNG}.plist"
@@ -153,7 +152,7 @@ def entfernen():
 def main(argv=None):
     befehl = (argv if argv is not None else sys.argv[1:])[:1]
     if befehl == ["einrichten"]:
-        print(f"Eingerichtet: jeden Montag um 9 Uhr ({einrichten()}). Entfernen mit: python3 {HIER / 'wochenlauf.py'} entfernen")
+        print(f"Eingerichtet: jeden Montag um 9 Uhr ({einrichten()}). Entfernen mit: python3 {harness.PROJEKT / 'wochenlauf.py'} entfernen")
     elif befehl == ["entfernen"]:
         entfernen()
         print("Der wöchentliche Lauf ist entfernt.")
@@ -162,6 +161,3 @@ def main(argv=None):
     else:
         raise SystemExit("Aufruf: python3 wochenlauf.py [einrichten|entfernen]")
 
-
-if __name__ == "__main__":
-    main()

@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-import build
-import claude
+from inventur import build
+from inventur import claude
 
 
 class Verlauf(unittest.TestCase):
@@ -168,7 +168,7 @@ class HarnessWahl(unittest.TestCase):
                 "hinweise": [], "unbewertet": [], "entfallen": [], **extra}
 
     def test_codex_schreibt_eigene_dateien_und_merkt_sich_den_harness(self):
-        import codex
+        from inventur import codex
         with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value="codex-cli 0.154.0"):
             build.main(["--harness", "codex"])
         daten = json.loads((self.daten / "inventar-codex.json").read_text())
@@ -191,7 +191,7 @@ class HarnessWahl(unittest.TestCase):
         self.assertEqual(sorted(d.name for d in self.daten.iterdir()), sorted(getauscht))
 
     def test_ohne_angabe_gilt_der_gemerkte_harness(self):
-        import codex
+        from inventur import codex
         (self.daten / "harness.json").write_text('{"harness": "codex"}')
         with mock.patch.object(codex, "inventar", return_value=self.leeres_inventar()) as lesen, \
                 mock.patch.object(claude, "inventar") as gelesen, mock.patch.object(build, "version", return_value=None):
@@ -282,7 +282,7 @@ class HarnessWahl(unittest.TestCase):
         self.assertEqual((daten["berechtigungen"], daten["lesefehler"]), ([], [{"quelle": "Berechtigungen", "fehler": "RuntimeError: kaputt"}]))
 
     def test_verwaiste_regeln_bieten_entfernen_an(self):
-        import codex
+        from inventur import codex
         datei = "/x/P/.claude/settings.local.json"
         zeilen = [{"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "mcp__weg__lesen", "marken": ["verwaist"]},
                   {"bereich": "/x/P", "quelle": "~/P/.claude/settings.local.json", "datei": datei, "art": "allow", "regel": "Bash", "marken": ["breit"]},
@@ -338,7 +338,7 @@ class HarnessWahl(unittest.TestCase):
                          ({"eingestellt": [], "gemessen": [], "tage": build.MESS_TAGE}, [{"quelle": "Modelle", "fehler": "RuntimeError: kaputt"}]))
 
     def test_modelle_unter_codex_lesen_nur_frische_sitzungen(self):
-        import codex
+        from inventur import codex
         frisch, alt = self.tmp / "frisch.jsonl", self.tmp / "alt.jsonl"
         for d in (frisch, alt):
             d.write_text("")

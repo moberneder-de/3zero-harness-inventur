@@ -16,7 +16,7 @@ import time
 import tomllib
 from pathlib import Path
 
-import harness
+from . import harness
 
 SICHERUNGEN = 10  # so viele <datei>.bak-<Zeitstempel> bleiben je Datei
 BOM = "\ufeff"

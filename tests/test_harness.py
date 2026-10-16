@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import harness
+from inventur import harness
 
 
 class Harness(unittest.TestCase):

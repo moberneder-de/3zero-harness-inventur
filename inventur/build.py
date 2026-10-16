@@ -20,14 +20,14 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import anweisungen
-import berechtigungen
-import claude
-import codex
-import harness
-import modelle
-import werkzeuge
-from bestand import LESEFEHLER, MESS_TAGE, frisch, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
+from . import anweisungen
+from . import berechtigungen
+from . import claude
+from . import codex
+from . import harness
+from . import modelle
+from . import werkzeuge
+from .bestand import LESEFEHLER, MESS_TAGE, frisch, frontmatter, lesefehler, lies_json, werkzeug_praefix, zeitgrenze
 
 HIER = Path(__file__).resolve().parent
 DATEN = harness.DATEN  # Bewertung, Inventar, Dashboard und harness.json: alles außerhalb des Repos
@@ -344,6 +344,3 @@ def main(argv=None):
     if updates:
         print(f"Update verfügbar ({len(updates)}): " + ", ".join(updates))
 
-
-if __name__ == "__main__":
-    main()

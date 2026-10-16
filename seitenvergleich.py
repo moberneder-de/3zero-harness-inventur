@@ -29,8 +29,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import build
-import harness
+from inventur import build, harness
 
 BROWSER = ["/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -128,7 +127,7 @@ def main():
     inventare = wahl.inventare or [d for h in harness.HARNESSE.values() if (d := harness.DATEN / h["inventar"]).is_file()]
     if not inventare:
         sys.exit(f"Kein Inventar in {harness.DATEN}: erst python3 build.py ausführen oder eine Datei angeben.")
-    alt = subprocess.run(["git", "show", f"{wahl.gegen}:template.html"], cwd=build.HIER, capture_output=True, text=True)
+    alt = subprocess.run(["git", "show", f"{wahl.gegen}:./template.html"], cwd=build.HIER, capture_output=True, text=True)
     if alt.returncode:
         sys.exit(f"template.html aus {wahl.gegen} nicht lesbar: {alt.stderr.strip()}")
     neu = (build.HIER / "template.html").read_text(encoding="utf-8")

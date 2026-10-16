@@ -7,8 +7,8 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-import harness
-import werkzeuge
+from inventur import harness
+from inventur import werkzeuge
 
 PYTHON_LINIEN = [{"name": "3.15", "latest": "3.15.1", "eol": "2031-10-31"}, {"name": "3.14", "latest": "3.14.7", "eol": "2030-10-31"},
                  {"name": "3.9", "latest": "3.9.25", "eol": "2025-10-31"}]

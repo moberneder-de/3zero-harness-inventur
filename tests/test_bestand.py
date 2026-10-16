@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bestand
+from inventur import bestand
 
 
 def skill(name, quelle_art="skills-CLI", plugin_id=None):
