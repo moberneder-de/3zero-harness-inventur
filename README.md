@@ -92,7 +92,7 @@ python3 build.py --harness claude-code
 python3 build.py --harness codex
 ```
 
-Ohne Angabe gilt der zuletzt genannte. Die beiden Bewertungen sind getrennt, denn ein Skill kann in einem Harness sinnvoll und im anderen wirkungslos sein. `~/.agents/skills` liest allerdings jeder Harness — ein Skill von dort steht deshalb in beiden Beständen.
+`server.py` versteht dieselbe Angabe (`python3 server.py --harness codex`) und zeigt dann dieses Dashboard. Ohne Angabe gilt der zuletzt genannte. Die beiden Bewertungen sind getrennt, denn ein Skill kann in einem Harness sinnvoll und im anderen wirkungslos sein. `~/.agents/skills` liest allerdings jeder Harness — ein Skill von dort steht deshalb in beiden Beständen.
 
 **Achtung bei den Nutzungszahlen:** Claude Code zählt jeden Aufruf, Codex nur eine Sitzung je Skill. Dieselbe Zahl bedeutet in den beiden Dashboards nicht dasselbe.
 

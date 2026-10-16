@@ -126,6 +126,30 @@ class Server(unittest.TestCase):
                 self.assertNotIn("geheim", html)
                 self.assertIn("start.html", html)
 
+
+    def test_neu_einlesen_reicht_den_harness_an_build_weiter(self):
+        """`server.py --harness codex` merkt sich den Harness über build.py, wie `build.py --harness codex`."""
+        argv = self.tmp / "build-argv"
+        (self.tmp / "build.py").write_text(f"import sys, pathlib\npathlib.Path({str(argv)!r}).write_text(' '.join(sys.argv[1:]))\n")
+        self.assertTrue(self.srv.neu_einlesen("codex")["ok"])
+        self.assertEqual(argv.read_text(), "--harness codex")
+        self.assertTrue(self.srv.neu_einlesen()["ok"])
+        self.assertEqual(argv.read_text(), "")  # ohne Angabe gilt der gemerkte
+
+    def test_main_nimmt_harness_an_und_lehnt_unbekannte_ab(self):
+        """Vorher ignorierte server.py `--harness` still und zeigte den gemerkten Harness."""
+        srv = mock.Mock()
+        srv.neu_einlesen.return_value = {"ok": False, "ausgabe": "Abbruch im Test"}
+        with mock.patch.object(server, "Inventarserver", return_value=srv), mock.patch("builtins.print"), \
+                self.assertRaises(SystemExit) as ende:
+            server.main(["--harness", "codex"])
+        self.assertEqual(ende.exception.code, 1)
+        srv.neu_einlesen.assert_called_once_with("codex")
+        with mock.patch.object(server, "Inventarserver") as anlegen, mock.patch("sys.stderr"), self.assertRaises(SystemExit) as ende:
+            server.main(["--harness", "gibt-es-nicht"])
+        self.assertEqual(ende.exception.code, 2)
+        anlegen.assert_not_called()
+
     def test_startdatei_nur_fuer_den_benutzer_lesbar(self):
         """Die Adresse mit Schlüssel geht nicht als Argument an den Browser: Argumente sieht jeder Benutzer in `ps`."""
         (self.tmp / "start.html").write_text("alt")

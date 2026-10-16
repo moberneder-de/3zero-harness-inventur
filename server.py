@@ -16,6 +16,7 @@ Welcher Harness gilt (Claude Code oder Codex), steht in harness.json: Der Skill 
 letzte Start zählt. Danach richten sich Dashboard, Inventar und die Läufe für Bewertung und Suche.
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -540,13 +541,14 @@ class Inventarserver(ThreadingHTTPServer):
                     return lauf(["npx", "--prefix", leer, *schritt["argv"][1:]], schritt.get("cwd"), 120)
             return lauf(schritt["argv"], schritt.get("cwd"), 120)
 
-    def bauen(self):
-        """Liest den Bestand neu ein. Wer das aufruft, hält self.sperre: build.py schreibt Inventar und Dashboard."""
-        return lauf([sys.executable, str(self.ordner / "build.py")], self.ordner, 300)
+    def bauen(self, harness_id=None):
+        """Liest den Bestand neu ein. Wer das aufruft, hält self.sperre: build.py schreibt Inventar und Dashboard.
+        Mit `harness_id` merkt sich build.py diesen Harness, sonst gilt der gemerkte."""
+        return lauf([sys.executable, str(self.ordner / "build.py")] + (["--harness", harness_id] if harness_id else []), self.ordner, 300)
 
-    def neu_einlesen(self):
+    def neu_einlesen(self, harness_id=None):
         with self.sperre:
-            return self.bauen()
+            return self.bauen(harness_id)
 
     def bewerten(self):
         """Der Lauf arbeitet in beiden Harnesses auf einer Kopie der Bewertung in einem Temp-Ordner, und nur ein gültiges
@@ -935,13 +937,16 @@ def bedienen(srv, start):
                     beenden(prozess)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Dashboard der Harness-Inventur mit Knöpfen auf http://127.0.0.1:8765")
+    parser.add_argument("--harness", choices=list(harness.HARNESSE), help="ohne Angabe gilt der zuletzt genannte")
+    wahl = parser.parse_args(argv).harness
     try:
         srv = Inventarserver(PORT, HIER, Path.home() / ".claude" / "settings.json", secrets.token_hex(16), harness.DATEN)
     except OSError:
         sys.exit(f"Port {PORT} ist belegt. Läuft der Server schon? Dann {harness.DATEN / 'start.html'} öffnen.")
     print("Lese den Bestand ein …")
-    ergebnis = srv.neu_einlesen()
+    ergebnis = srv.neu_einlesen(wahl)
     print(ergebnis["ausgabe"])
     if not ergebnis["ok"]:
         sys.exit(1)
