@@ -106,6 +106,8 @@ class Codex(unittest.TestCase):
             'prefix_rule(pattern=["python3", "/x/build.py"], decision="allow")\n'
             'prefix_rule(pattern=["/bin/zsh", "-lc"], decision="allow")\n'
             'prefix_rule(pattern=["git", ["push", "fetch"]], decision="prompt")\n'
+            'prefix_rule(pattern=["rm"], decision="forbidden")\n'
+            'prefix_rule(pattern=["/bin/bash", "-c"], decision="prompt")\n'
             '# Kommentar\n'
             'prefix_rule(pattern=kaputt, decision="allow")\n')
         cfg = {"approval_policy": "never", "sandbox_mode": "workspace-write",
@@ -119,6 +121,9 @@ class Codex(unittest.TestCase):
             ("global", "~/rules/default.rules", "allow", "python3 /x/build.py"): [],
             ("global", "~/rules/default.rules", "allow", "/bin/zsh -lc"): ["breit"],
             ("global", "~/rules/default.rules", "prompt", "git {push|fetch}"): [],
+            # „breit“ nur bei Erlaubnissen: Ein Verbot für ein ganzes Programm stand sonst als auffällig da
+            ("global", "~/rules/default.rules", "forbidden", "rm"): [],
+            ("global", "~/rules/default.rules", "prompt", "/bin/bash -c"): [],
             ("global", "~/rules/default.rules", "unlesbar", 'prefix_rule(pattern=kaputt, decision="allow")'): [],
             (str(self.tmp / "da"), "~/.codex/config.toml", "Vertrauen", "trusted"): [],
             (str(self.tmp / "weg"), "~/.codex/config.toml", "Vertrauen", "trusted"): ["verwaist"],

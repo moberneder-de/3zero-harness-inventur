@@ -1,4 +1,5 @@
-"""Tab „Berechtigungen“: was Claude Code oder Codex ohne Rückfrage darf. Nur Anzeige, keine Aktionen.
+"""Tab „Berechtigungen“: was Claude Code oder Codex ohne Rückfrage darf. Was markiert ist, lässt sich über den Server
+entfernen (rechte_aktionen() in build.py).
 
 Claude Code: `permissions` (allow, ask, deny, defaultMode, additionalDirectories) aus den verwalteten Einstellungen,
 ~/.claude/settings.json und je Projekt aus .claude/settings.json und .claude/settings.local.json. Codex:
@@ -140,9 +141,9 @@ def codex(cfg, regeln_ordner, home):
             if not (isinstance(pattern, list) and pattern and all(isinstance(t, (str, list)) for t in pattern)):
                 zeilen.append(zeile("global", quelle, "unlesbar", text[:300]))
                 continue
+            art = entscheid.group(1) if entscheid else "allow"
             ganz = isinstance(pattern[0], str) and (len(pattern) == 1 or pattern[1:] in (["-c"], ["-lc"]))
-            zeilen.append(zeile("global", quelle, entscheid.group(1) if entscheid else "allow", muster_text(pattern),
-                                ["breit"] if ganz else []))
+            zeilen.append(zeile("global", quelle, art, muster_text(pattern), ["breit"] if ganz and art == "allow" else []))
     projekte = cfg.get("projects") if isinstance(cfg.get("projects"), dict) else {}
     for pfad, p in sorted(projekte.items()):
         if isinstance(p, dict) and isinstance(p.get("trust_level"), str):

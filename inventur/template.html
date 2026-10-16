@@ -850,7 +850,7 @@ function renderPlugins() {
     const anzahl = (n, eins, viele) => n && `${n} ${n === 1 ? eins : viele}`;
     const teile = [
       anzahl(p.skills.length, "Skill", "Skills"), anzahl(p.befehle.length, "Befehl", "Befehle"),
-      anzahl(p.agenten.length, "Agent", "Agenten"), Object.keys(p.mcp).length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"), (p.mods || []).length && "Mod",
+      anzahl(p.agenten.length, "Agent", "Agenten"), p.mcp.length && "MCP-Server", anzahl(p.hooks.length, "Hook", "Hooks"), (p.mods || []).length && "Mod",
       anzahl((p.apps || []).length, "App", "Apps"),
     ].filter(Boolean).join(" · ");
     const namen = l => l.map(n => `<code>${esc(n)}</code>`).join(" ");
@@ -862,7 +862,7 @@ function renderPlugins() {
         ["Begründung", txt(p.bewertung?.grund || "")],
         ["Skills", namen(p.skills)], ["Befehle", namen(p.befehle)], ["Agenten", namen(p.agenten)],
         ["Apps", namen(p.apps || [])],
-        ["MCP-Server", namen(Object.keys(p.mcp))], ["Hooks", p.hooks.map(esc).join(", ")], ["Mod hört auf", (p.mods || []).map(esc).join(", ")],
+        ["MCP-Server", namen(p.mcp)], ["Hooks", p.hooks.map(esc).join(", ")], ["Mod hört auf", (p.mods || []).map(esc).join(", ")],
         ["Version", `${esc(p.version)} · installiert ${datum(p.installiert)} · aktualisiert ${datum(p.aktualisiert)}${p.update === true ? " · <strong>Update verfügbar</strong>" : p.update === false ? " · aktuell" : ""}`],
         ["Marktplatz", p.marktplatz_repo ? link(`https://github.com/${p.marktplatz_repo}`, p.marktplatz_repo) : esc(p.marktplatz)],
         ["Homepage", p.homepage ? link(p.homepage) : ""],

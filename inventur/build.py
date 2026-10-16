@@ -124,7 +124,8 @@ def anweisungen_aktionen(zeilen, pruefbar=False):
     for z in zeilen:
         z["id"] = f"anweisung:{z['bereich']}:{z['pfad'] or z['name']}"
         z["aktionen"] = {}
-        anleitung = (z["art"] == "CLAUDE.md" and z["pfad"] not in einbindend) or (z["art"] == "AGENTS.md" and z.get("laedt"))
+        # CLAUDE.local.md hat dieselbe Art, aber der Server prüft nur CLAUDE.md und AGENTS.md
+        anleitung = (z["art"] == "CLAUDE.md" and Path(z["pfad"]).name == "CLAUDE.md" and z["pfad"] not in einbindend) or (z["art"] == "AGENTS.md" and z.get("laedt"))
         if pruefbar and anleitung and z["bereich"] != "global" and not z.get("geerbt") and not z.get("verwaltet"):
             z["pruefen"] = {"datei": z["pfad"], "projekt": z["bereich"]}
         # eingebunden: Ob claudeMdExcludes eine per @ eingebundene Datei erfasst, sagt die Doku nicht; geschaltet wird an der CLAUDE.md
