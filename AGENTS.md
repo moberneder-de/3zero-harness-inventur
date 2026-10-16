@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Hinweise für Claude Code beim Arbeiten in diesem Repository.
+Hinweise für Agenten (Claude Code und Codex) beim Arbeiten in diesem Repository. Claude Code liest diese Datei über `CLAUDE.md` (`@AGENTS.md`), Codex direkt.
 
 ## Projekt
 
