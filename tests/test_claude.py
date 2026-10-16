@@ -321,6 +321,29 @@ class ProjektSkills(unittest.TestCase):
             arten = {e["name"]: e["quelle"]["art"] for e in claude.persoenliche_skills({}, {}, {}, {})}
         self.assertEqual(arten, {"eigen": "Symlink", "kopie": "lokal", "start": "Symlink"})
 
+    def test_eigene_agenten_global_und_im_projekt(self):
+        """Agenten aus ~/.claude/agents und <Projekt>/.claude/agents las die Inventur nicht, nur die aus Plugins. Den Namen
+        trägt das Feld `name`, nicht die Datei; skillOverrides gilt nur für Skills, also bleibt der Papierkorb."""
+        claude_ordner, kit = self.tmp / ".claude", self.tmp / "Kit"
+        self.schreibe(claude_ordner / "agents/pruefer.md", "---\nname: code-pruefer\ndescription: prüft Code\nmodel: sonnet\n---\nDu prüfst.\n")
+        self.schreibe(kit / ".claude/agents/tester.md", "---\nname: tester\ndescription: testet\n---\n")
+        self.schreibe(kit / ".claude/skills/tester/SKILL.md", "---\nname: tester\ndescription: Skill gleichen Namens\n---\n")
+        with mock.patch.object(claude, "CLAUDE", claude_ordner):  # ohne ~/.claude/skills: Agenten liest es trotzdem
+            (g,) = claude.persoenliche_skills({}, {}, {}, {})
+        pfad = str(claude_ordner / "agents/pruefer.md")
+        self.assertEqual((g["id"], g["name"], g["typ"], g["aufruf"], g["quelle"]["art"]),
+                         ("agent:code-pruefer", "code-pruefer", "Agent", "als Subagent", "lokal"))
+        self.assertGreater(g["tokens"], 0)  # die Beschreibung steht in jeder Sitzung beim Werkzeug Agent
+        self.assertEqual(claude.aktionen(g), {"deinstallieren": {"papierkorb": pfad}})
+        self.assertEqual(claude.befehl(g, "abschalten"), claude.papierkorb_befehl(claude.shellwort(pfad)))
+        eintraege = {e["id"]: e for e in claude.projekt_skills({}, {}, {}, [str(kit)])}
+        self.assertEqual(sorted(eintraege), ["agent:Kit/tester", "skill:Kit/tester"])
+        p = eintraege["agent:Kit/tester"]
+        self.assertEqual((p["typ"], p["projekt"]), ("Agent", str(kit)))
+        # nur die Datei: Der Ordner agents/ hält auch die anderen Agenten des Projekts
+        self.assertEqual(claude.aktionen(p), {"deinstallieren": {"papierkorb": str(kit / ".claude/agents/tester.md")}})
+        self.assertEqual(claude.befehl(p, "entfernen"), claude.papierkorb_befehl(claude.shellwort(str(kit / ".claude/agents/tester.md"))))
+
     def test_skills_aus_agents_gelten_in_beiden_harnesses(self):
         """~/.agents/skills liest Codex direkt; über den Verweis in ~/.claude/skills lädt derselbe Skill auch in Claude Code."""
         agents, claude_ordner, codex, repo = self.tmp / ".agents", self.tmp / ".claude", self.tmp / ".codex", self.tmp / "Repo"

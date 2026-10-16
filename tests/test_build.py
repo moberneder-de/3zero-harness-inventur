@@ -416,7 +416,7 @@ class Ungenutzt(unittest.TestCase):
         skills = [s("nie"), s("alt", nutzung={"anzahl": 3, "zuletzt": "2026-08-01"}),
                   s("frisch", nutzung={"anzahl": 1, "zuletzt": "2026-09-20"}), s("neu", installiert="2026-09-10"),
                   s("manuell", im_kontext=False, tokens=0), s("plugin-neu", plugin="p@m"), s("plugin-alt", plugin="q@m"),
-                  s("codex-neu", plugin="r@m")]
+                  s("codex-neu", plugin="r@m"), s("agent", typ="Agent")]  # Agenten zählt niemand: „nicht erfasst“, nicht ungenutzt
         plugins = [{"name": "p", "marktplatz": "m", "installiert": "2026-09-15", "aktualisiert": None},
                    {"name": "q", "marktplatz": "m", "installiert": "2026-01-01", "aktualisiert": "2026-09-01"},
                    {"name": "r", "marktplatz": "m", "installiert": None, "aktualisiert": "2026-09-20"}]
