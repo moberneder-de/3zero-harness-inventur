@@ -24,7 +24,7 @@ class Server(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.marker = self.tmp / "gelaufen"
-        (self.tmp / "dashboard.html").write_text('<html><script id="token" type="application/json">null</script></html>')
+        (self.tmp / "dashboard-claude-code.html").write_text('<html><script id="token" type="application/json">null</script></html>')
         self.settings = self.tmp / "settings.json"
         self.settings.write_text(SETTINGS_VORHER)
         self.schreibe_inventar([{"id": "plugin:x@y", "name": "x", "aktionen": {
@@ -87,7 +87,7 @@ class Server(unittest.TestCase):
         self.srv.konfig.codex_config = config
 
     def schreibe_inventar(self, plugins, skills=(), mcp=(), hooks=()):
-        """Schreibt die Inventar-Datei des gerade aktiven Harness (inventar.json oder inventar-codex.json)."""
+        """Schreibt die Inventar-Datei des gerade aktiven Harness (inventar-claude-code.json oder inventar-codex.json)."""
         inventar = {"mcp": list(mcp), "plugins": plugins, "skills": list(skills), "hooks": list(hooks)}
         datei = self.tmp / harness.HARNESSE[harness.aktuell(self.tmp)]["inventar"]
         datei.write_text(json.dumps(inventar))
@@ -165,7 +165,7 @@ class Server(unittest.TestCase):
         text = server.startdatei(self.tmp, "http://127.0.0.1:8765/?k=geheim").read_text()
         self.assertIn('fetch("http://127.0.0.1:8765/"', text)  # Lebenszeichen ohne Schlüssel: 403 ist auch eine Antwort
         self.assertIn('location.replace("http://127.0.0.1:8765/?k=geheim")', text)
-        for erwartet in ("Der Server läuft nicht mehr", "python3 server.py", 'href="dashboard.html"', 'href="dashboard-codex.html"'):
+        for erwartet in ("Der Server läuft nicht mehr", "python3 server.py", 'href="dashboard-claude-code.html"', 'href="dashboard-codex.html"'):
             self.assertIn(erwartet, text)
 
     def test_startdatei_verschwindet_auch_bei_kill_und_geschlossenem_terminal(self):
@@ -293,7 +293,7 @@ class Server(unittest.TestCase):
         inventar = {"mcp": [], "plugins": [], "skills": [],
                     "projekt_skills": [{"id": "skill:Kit/seo-audit", "name": "seo-audit", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}],
                     "projekt_mcp": [{"id": "mcp:Q/q", "name": "q", "aktionen": {"deinstallieren": {"argv": ["touch", str(zweiter)]}}}]}
-        (self.tmp / "inventar.json").write_text(json.dumps(inventar))
+        (self.tmp / "inventar-claude-code.json").write_text(json.dumps(inventar))
         self.assertTrue(self.ausfuehren("skill:Kit/seo-audit", "deinstallieren")[1]["ok"])
         self.assertTrue(self.ausfuehren("mcp:Q/q", "deinstallieren")[1]["ok"])
         self.assertTrue(self.marker.exists() and zweiter.exists())
@@ -434,7 +434,7 @@ class Server(unittest.TestCase):
         self.assertEqual(json.loads(self.settings.read_text())["skillOverrides"], {"alt": "off", "sites:foo": "off"})
 
     def anweisungen(self, *zeilen, **extra):
-        (self.tmp / "inventar.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "anweisungen": list(zeilen), **extra}))
+        (self.tmp / "inventar-claude-code.json").write_text(json.dumps({"mcp": [], "plugins": [], "skills": [], "hooks": [], "anweisungen": list(zeilen), **extra}))
 
     PUNKTE = {k: {"punkte": 10, "notiz": f"Notiz zu {k}"} for k in server.PRUEFEN_KRITERIEN}
 
@@ -1069,7 +1069,7 @@ class Server(unittest.TestCase):
     def test_neu_einlesen_liest_frisches_inventar(self):
         neu = {"mcp": [], "plugins": [], "skills": [
             {"id": "skill:neu", "name": "neu", "aktionen": {"deinstallieren": {"argv": ["touch", str(self.marker)]}}}]}
-        (self.tmp / "build.py").write_text(f"from pathlib import Path\nPath('inventar.json').write_text({json.dumps(json.dumps(neu))})\n")
+        (self.tmp / "build.py").write_text(f"from pathlib import Path\nPath('inventar-claude-code.json').write_text({json.dumps(json.dumps(neu))})\n")
         status, inhalt = self.anfrage("POST", "/api/neu")
         self.assertEqual((status, json.loads(inhalt)["ok"]), (200, True))
         self.assertTrue(self.ausfuehren("skill:neu", "deinstallieren")[1]["ok"])

@@ -21,8 +21,8 @@ Der Skill läuft in Claude Code (Aufruf `/3zero-harness-inventur`) und in Codex 
 |---|---|---|
 | `<harness>` | `claude-code` | `codex` |
 | Bewertung | `bewertung-claude-code.json` | `bewertung-codex.json` |
-| Inventar | `inventar.json` | `inventar-codex.json` |
-| Dashboard | `dashboard.html` | `dashboard-codex.html` |
+| Inventar | `inventar-claude-code.json` | `inventar-codex.json` |
+| Dashboard | `dashboard-claude-code.html` | `dashboard-codex.html` |
 
 Diese vier Dateien liegen in `~/.3zero-harness-inventur`, nicht im Projektordner: Sie gehören zum Rechner des Benutzers, das Projekt enthält nur das Werkzeug. Dort liegt auch `harness.json` mit dem zuletzt genannten Harness.
 

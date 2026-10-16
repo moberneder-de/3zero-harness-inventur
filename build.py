@@ -3,7 +3,7 @@
 
 Lässt den Bestand des Harness lesen, in dem der Skill zuletzt gestartet wurde (Claude Code über claude.py,
 Codex über codex.py), ergänzt, was für beide gilt (Empfehlungen, Versionen, Berechtigungen, Modelle, Anweisungen,
-Verlauf), und schreibt inventar.json und dashboard.html, für Codex inventar-codex.json und dashboard-codex.html.
+Verlauf), und schreibt inventar-claude-code.json und dashboard-claude-code.html, für Codex inventar-codex.json und dashboard-codex.html.
 
 Alles Geschriebene landet in ~/.3zero-harness-inventur, nicht im Projektordner: Es gehört zum Rechner
 des Benutzers, nicht zum Werkzeug. Dort liegt auch die fachliche Bewertung (Beschreibung auf Deutsch,

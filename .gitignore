@@ -10,6 +10,8 @@ node_modules/
 # falls eine Sicherung zurück in den Projektordner kopiert wird.
 bewertung-claude-code.json
 bewertung-codex.json
+dashboard-claude-code.html
+inventar-claude-code.json
 dashboard.html
 inventar.json
 dashboard-codex.html

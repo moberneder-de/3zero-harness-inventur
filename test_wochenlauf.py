@@ -39,7 +39,7 @@ class Laufen(unittest.TestCase):
         self.daten = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.daten)
         self.inv = inventar(werkzeuge=[{"id": "node", "name": "Node.js", "status": "veraltet"}])
-        self.datei = "inventar.json"
+        self.datei = "inventar-claude-code.json"
         for p in (mock.patch.object(wochenlauf.harness, "DATEN", self.daten),
                   mock.patch.object(wochenlauf, "bauen", side_effect=lambda: (self.daten / self.datei).write_text(json.dumps(self.inv))),
                   mock.patch.object(wochenlauf, "melden")):

@@ -14,7 +14,7 @@ Inventar aussagekräftig, das die alte und die neue Vorlage lesen können.
 
 Handarbeit beim Entwickeln, kein Teil der Tests: Es braucht einen Browser, und den hat der Lauf bei GitHub nicht.
 
-Aufruf: python3 seitenvergleich.py [--gegen HEAD] [inventar.json …]
+Aufruf: python3 seitenvergleich.py [--gegen HEAD] [inventar-claude-code.json …]
 """
 
 import argparse

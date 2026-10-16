@@ -174,7 +174,7 @@ class HarnessWahl(unittest.TestCase):
         daten = json.loads((self.daten / "inventar-codex.json").read_text())
         self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("codex", "Codex", "codex-cli 0.154.0"))
         self.assertTrue((self.daten / "dashboard-codex.html").exists())
-        self.assertFalse((self.daten / "inventar.json").exists())
+        self.assertFalse((self.daten / "inventar-claude-code.json").exists())
         self.assertEqual(json.loads((self.daten / "harness.json").read_text()), {"harness": "codex"})
 
     def test_alles_geschriebene_wird_in_einem_schritt_getauscht(self):
@@ -187,7 +187,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), \
                 mock.patch.object(build, "version", return_value=None), mock.patch.object(build.harness.os, "replace", side_effect=tausch):
             build.main(["--harness", "claude-code"])
-        self.assertEqual(sorted(getauscht), ["dashboard.html", "harness.json", "inventar.json", "verlauf-claude-code.json"])
+        self.assertEqual(sorted(getauscht), ["dashboard-claude-code.html", "harness.json", "inventar-claude-code.json", "verlauf-claude-code.json"])
         self.assertEqual(sorted(d.name for d in self.daten.iterdir()), sorted(getauscht))
 
     def test_ohne_angabe_gilt_der_gemerkte_harness(self):
@@ -203,9 +203,9 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar(live_status=True)), \
                 mock.patch.object(build, "version", return_value="2.1.272 (Claude Code)"):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["harness"], daten["harness_name"], daten["version"]), ("claude-code", "Claude Code", "2.1.272 (Claude Code)"))
-        self.assertTrue((self.daten / "dashboard.html").exists())
+        self.assertTrue((self.daten / "dashboard-claude-code.html").exists())
 
     def test_verlauf_liegt_je_harness_getrennt_und_kommt_ins_inventar(self):
         """Die IDs bleiben in der Verlaufsdatei; ins Inventar und damit ins Dashboard kommt nur, was sich geändert hat."""
@@ -215,7 +215,7 @@ class HarnessWahl(unittest.TestCase):
         reihe = json.loads((self.daten / "verlauf-claude-code.json").read_text())
         self.assertEqual([r["kontextlast"] for r in reihe], [40])
         self.assertEqual(reihe[0]["ids"]["skills"], ["skill:x"])
-        inventar = json.loads((self.daten / "inventar.json").read_text())
+        inventar = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual(inventar["verlauf"], [{k: v for k, v in r.items() if k != "ids"} for r in reihe])
         self.assertIsNone(inventar["aenderungen"])
         self.assertFalse((self.daten / "verlauf-codex.json").exists())
@@ -228,7 +228,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), \
                 mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         erwartet = datetime.fromtimestamp(1789000000).strftime("%Y-%m-%d %H:%M")
         self.assertEqual(daten["bewertung_erstellt"], erwartet)
 
@@ -236,7 +236,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), \
                 mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        self.assertIsNone(json.loads((self.daten / "inventar.json").read_text())["bewertung_erstellt"])
+        self.assertIsNone(json.loads((self.daten / "inventar-claude-code.json").read_text())["bewertung_erstellt"])
 
     def test_lesefehler_und_ungenutzte_kommen_ins_inventar(self):
         def inventar(*_):
@@ -245,7 +245,7 @@ class HarnessWahl(unittest.TestCase):
         build.LESEFEHLER.append({"quelle": "vom letzten Lauf", "fehler": "…"})
         with mock.patch.object(claude, "inventar", side_effect=inventar), mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual(daten["lesefehler"], [{"quelle": "Projekt /x", "fehler": "RuntimeError: kaputt"}])
         self.assertEqual((daten["skills"][0]["ungenutzt"], daten["ungenutzt_tage"]), (True, 30))
 
@@ -256,13 +256,13 @@ class HarnessWahl(unittest.TestCase):
                 mock.patch.object(build, "version", return_value=None), mock.patch.object(build, "ungenutzt_markieren"), \
                 mock.patch.object(build.anweisungen, "claude", return_value=[dict(zeile)]):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["kontextlast"], daten["anweisungen"][0]["id"], daten["anweisungen"][0]["aktionen"]),
                          (310, "anweisung:global:/h/.claude/CLAUDE.md", {"deaktivieren": {"ausschliessen": "/h/.claude/CLAUDE.md"}}))
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.anweisungen, "claude", side_effect=RuntimeError("kaputt")):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["anweisungen"], daten["lesefehler"]), ([], [{"quelle": "Anweisungen", "fehler": "RuntimeError: kaputt"}]))
 
     def test_berechtigungen_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
@@ -273,12 +273,12 @@ class HarnessWahl(unittest.TestCase):
                 mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.berechtigungen, "claude", return_value=[regel]) as gelesen:
             build.main(["--harness", "claude-code"])
-        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["berechtigungen"], [regel])
+        self.assertEqual(json.loads((self.daten / "inventar-claude-code.json").read_text())["berechtigungen"], [regel])
         self.assertEqual(gelesen.call_args.args[2], {"plugin_github_github", "plugin_sites_web", "q"})
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.berechtigungen, "claude", side_effect=RuntimeError("kaputt")):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["berechtigungen"], daten["lesefehler"]), ([], [{"quelle": "Berechtigungen", "fehler": "RuntimeError: kaputt"}]))
 
     def test_verwaiste_regeln_bieten_entfernen_an(self):
@@ -295,7 +295,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.berechtigungen, "claude", return_value=zeilen):
             build.main(["--harness", "claude-code"])
-        rechte = json.loads((self.daten / "inventar.json").read_text())["berechtigungen"]
+        rechte = json.loads((self.daten / "inventar-claude-code.json").read_text())["berechtigungen"]
         self.assertEqual((rechte[0]["id"], rechte[0]["aktionen"]), (f"recht:{datei}:allow:mcp__weg__lesen", {"entfernen": {
             "regel_entfernen": {"datei": datei, "art": "allow", "regel": "mcp__weg__lesen"}}}))
         self.assertEqual(rechte[1]["aktionen"], {"entfernen": {"regel_entfernen": {"datei": datei, "art": "allow", "regel": "Bash"}}})
@@ -325,7 +325,7 @@ class HarnessWahl(unittest.TestCase):
                 mock.patch.object(claude, "transkripte", return_value=["t.jsonl"]), \
                 mock.patch.object(build.modelle, "claude", return_value=ergebnis) as gelesen:
             build.main(["--harness", "claude-code"])
-        self.assertEqual(json.loads((self.daten / "inventar.json").read_text())["modelle"], {**ergebnis, "tage": build.MESS_TAGE})
+        self.assertEqual(json.loads((self.daten / "inventar-claude-code.json").read_text())["modelle"], {**ergebnis, "tage": build.MESS_TAGE})
         self.assertEqual(gelesen.call_args.args[2], [
             {"bereich": "global", "eintrag": "Agent pruefer", "pfad": str(agent), "kopf": {"name": "pruefer", "model": "haiku"}},
             {"bereich": "/x/P", "eintrag": "Skill bauen", "pfad": str(skill), "kopf": {"name": "bauen", "effort": "low"}}])
@@ -333,7 +333,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.modelle, "claude", side_effect=RuntimeError("kaputt")):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["modelle"], daten["lesefehler"]),
                          ({"eingestellt": [], "gemessen": [], "tage": build.MESS_TAGE}, [{"quelle": "Modelle", "fehler": "RuntimeError: kaputt"}]))
 
@@ -354,13 +354,13 @@ class HarnessWahl(unittest.TestCase):
     def test_werkzeuge_kommen_ins_inventar_und_ein_fehler_kostet_nur_sie(self):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["werkzeuge"], daten["quellcode"]), ([{"id": "python3", "status": "aktuell"}], [{"id": "/h/x", "ruht": True}]))
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar()), mock.patch.object(build, "version", return_value=None), \
                 mock.patch.object(build.werkzeuge, "pruefen", side_effect=RuntimeError("kaputt")), \
                 mock.patch.object(build.werkzeuge, "quellcode_pruefen", side_effect=RuntimeError("auch")):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["werkzeuge"], daten["quellcode"], daten["lesefehler"]), ([], [], [
             {"quelle": "Werkzeuge", "fehler": "RuntimeError: kaputt"}, {"quelle": "MCP-Server aus Quellcode", "fehler": "RuntimeError: auch"}]))
 
@@ -379,7 +379,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar(hinweise=[{"titel": boese, "text": "x"}])), \
                 mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        html = (self.daten / "dashboard.html").read_text()
+        html = (self.daten / "dashboard-claude-code.html").read_text()
         self.assertEqual(html.count("<"), 2)  # nur <script> und </script> der Vorlage
         self.assertEqual(json.loads(html[len("<script>"):-len("</script>")])["hinweise"][0]["titel"], boese)
 
@@ -387,7 +387,7 @@ class HarnessWahl(unittest.TestCase):
         with mock.patch.object(claude, "inventar", return_value=self.leeres_inventar(gruppen=[{"titel": "x"}], bewertung_stand=5)), \
                 mock.patch.object(build, "version", return_value=None):
             build.main(["--harness", "claude-code"])
-        daten = json.loads((self.daten / "inventar.json").read_text())
+        daten = json.loads((self.daten / "inventar-claude-code.json").read_text())
         self.assertEqual((daten["gruppen"], daten["bewertung_stand"]), ([], None))
 
 

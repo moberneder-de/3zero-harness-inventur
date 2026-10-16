@@ -2028,7 +2028,7 @@ async function bewertungVerfolgen() {
     /* bewertungLaeuft vor jeder Meldung zurücksetzen, sonst trägt die Fehlerkarte „abbrechen“ statt „schließen“ */
     if (b.verbindung === false) { bewertungLaeuft = false; return setMeldung(b.ausgabe, "Fehler"); }
     if (b.harnessWechsel) { bewertungLaeuft = false; return harnessGewechselt(b); }
-    if (!b.laeuft) { bewertungLaeuft = false; return location.reload(); } /* Bewertung und dashboard.html sind neu; die Karte zeigt die Seite danach */
+    if (!b.laeuft) { bewertungLaeuft = false; return location.reload(); } /* Bewertung und dashboard-claude-code.html sind neu; die Karte zeigt die Seite danach */
     laufArt = "bewertung";
     bewertungLaeuft = b.abgebrochen ? "abbruch" : "ja"; /* der Knopf entsteht alle zwei Sekunden neu und bliebe sonst klickbar */
     setMeldung(`${je("Claude", esc(D.harness_name))} liest den Bestand ein und zieht die Bewertung nach … (${b.sekunden} s)`, "Bewertung läuft");

@@ -3,7 +3,7 @@
 
 Liest den Bestand neu ein (build.py), zeigt das Dashboard auf http://127.0.0.1:8765
 und führt die dort gewählten Aktionen aus. Ausgeführt wird nur, was build.py in
-inventar.json als Aktion eines Eintrags hinterlegt hat; der Browser schickt nur
+inventar-claude-code.json als Aktion eines Eintrags hinterlegt hat; der Browser schickt nur
 Eintrags-ID und Aktionsname, zusammen mit einem Token, das bei jedem Start neu entsteht.
 Die Seite selbst gibt es nur mit diesem Token als Schlüssel in der Adresse (?k=…), weil jeder Benutzer des Rechners
 127.0.0.1 erreicht; der Browser bekommt dafür eine Startdatei, die nur der Benutzer lesen kann.

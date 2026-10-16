@@ -104,9 +104,9 @@ Der Projektordner enthält **nur das Werkzeug**. Alles, was den Rechner beschrei
 ~/.3zero-harness-inventur/
   bewertung-claude-code.json     Urteile für Claude Code
   bewertung-codex.json           Urteile für Codex
-  inventar.json                  Bestand, erzeugt
+  inventar-claude-code.json      Bestand, erzeugt
   inventar-codex.json            Bestand, erzeugt
-  dashboard.html                 Oberfläche, erzeugt
+  dashboard-claude-code.html     Oberfläche, erzeugt
   dashboard-codex.html           Oberfläche, erzeugt
   harness.json                   welcher Harness zuletzt lief
   verlauf-claude-code.json       Kontextlast und Bestand je Tag, erzeugt

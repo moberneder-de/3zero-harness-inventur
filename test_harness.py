@@ -38,7 +38,7 @@ class Harness(unittest.TestCase):
     def test_schreiben_ersetzt_die_datei_in_einem_schritt(self):
         """Der Server liest Inventar und Dashboard, während build.py sie schreibt. Bis zum Tausch muss die alte Datei
         ganz dastehen und die neue schon fertig sein, sonst sieht ein Klick ein halbes Inventar."""
-        ziel = self.tmp / "inventar.json"
+        ziel = self.tmp / "inventar-claude-code.json"
         ziel.write_text("alt")
         gesehen, echt = [], harness.os.replace
 
@@ -48,13 +48,13 @@ class Harness(unittest.TestCase):
         with mock.patch.object(harness.os, "replace", side_effect=tausch):
             harness.schreiben(ziel, "neu")
         self.assertEqual(gesehen, [("neu", "alt")])
-        self.assertEqual([d.name for d in self.tmp.iterdir()], ["inventar.json"])
+        self.assertEqual([d.name for d in self.tmp.iterdir()], ["inventar-claude-code.json"])
         self.assertEqual(ziel.read_text(), "neu")
 
     def test_zwei_schreiber_zugleich(self):
         """Mit dem festen Zwischennamen <datei>.neu nahm der zweite Schreiber dem ersten die Datei weg:
         FileNotFoundError im Tausch, oder die Datei des einen mit dem Text des anderen."""
-        ziel = self.tmp / "inventar.json"
+        ziel = self.tmp / "inventar-claude-code.json"
         echt, erster = harness.os.replace, []
 
         def tausch(quelle, datei):
@@ -65,7 +65,7 @@ class Harness(unittest.TestCase):
         with mock.patch.object(harness.os, "replace", side_effect=tausch):
             harness.schreiben(ziel, "erster")
         self.assertEqual(ziel.read_text(), "erster")
-        self.assertEqual([d.name for d in self.tmp.iterdir()], ["inventar.json"])
+        self.assertEqual([d.name for d in self.tmp.iterdir()], ["inventar-claude-code.json"])
 
     def test_schreiben_behaelt_rechte_und_folgt_dem_symlink(self):
         ziel = self.tmp / "echt.json"
@@ -78,6 +78,6 @@ class Harness(unittest.TestCase):
 
     def test_dateien_je_harness(self):
         self.assertEqual({h: (d["inventar"], d["dashboard"], d["bewertung"]) for h, d in harness.HARNESSE.items()}, {
-            "claude-code": ("inventar.json", "dashboard.html", "bewertung-claude-code.json"),
+            "claude-code": ("inventar-claude-code.json", "dashboard-claude-code.html", "bewertung-claude-code.json"),
             "codex": ("inventar-codex.json", "dashboard-codex.html", "bewertung-codex.json"),
         })
