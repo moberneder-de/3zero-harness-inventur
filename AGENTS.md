@@ -4,7 +4,7 @@ Hinweise für Agenten (Claude Code und Codex) beim Arbeiten in diesem Repository
 
 ## Projekt
 
-Inventur der Claude-Code-Laufzeitumgebung: MCP-Server, Plugins, Skills, Befehle, Agenten und Hooks, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard, für Claude Code oder Codex. Die Skills aus `~/.agents` gelten auch für andere Agenten, das Inventar reicht also über Claude Code hinaus.
+Inventur von MCP-Servern, Plugins, Skills, Befehlen, Agenten und Hooks, global und in Projekten, für Claude Code und Codex (dazu die Skills aus `~/.agents`), mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard.
 
 ## Befehle
 
@@ -15,6 +15,8 @@ python3 -m unittest -v tests.test_claude.Mods.<methode>  # eine Methode, ausfüh
 python3 build.py                         # Bestand neu einlesen, schreibt in ~/.3zero-harness-inventur
 python3 server.py                        # Dashboard mit Knöpfen auf http://127.0.0.1:8765
 python3 seitenvergleich.py               # nach einem Umbau an inventur/template.html: gleicher Text, gleiche Klicks wie in HEAD?
+python3 seitenvergleich.py --gegen main  # gegen einen anderen Git-Stand; ein eigenes Inventar als Argument geht auch
+python3 render-app-icon.py               # inventur/app-icon.svg → inventur/app-icon.png (Dock-Icon), Einmalschritt
 python3 wochenlauf.py einrichten         # wöchentlicher Lauf, montags 9 Uhr; nur nach Bestätigung
 python3 wochenlauf.py entfernen
 ```
@@ -23,12 +25,12 @@ python3 wochenlauf.py entfernen
 - Kein Linter oder Formatter im Projekt: nichts installieren oder ausführen.
 - Der Server lehnt http://127.0.0.1:8765 ohne Schlüssel ab (403): zum erneuten Öffnen `~/.3zero-harness-inventur/start.html` nehmen.
 - `build.py --harness codex` (ebenso `server.py --harness codex`) merkt sich Codex als Harness: Ein laufender Server zeigt danach das Codex-Dashboard. Zum Ausprobieren stattdessen `codex.inventar()` oder eine einzelne Funktion in einem Skript aufrufen.
-- Oberfläche prüfen, ohne den Datenordner zu ändern: `build.seite()` füllt das Template mit einem Inventar aus dem Datenordner, das Ergebnis geht nach `$TMPDIR` und wird aufgenommen:
+- Oberfläche prüfen, ohne den Datenordner zu ändern (vorher einmal `python3 build.py`, damit `inventar-claude-code.json` im Datenordner liegt): `build.seite()` füllt das Template mit einem Inventar aus dem Datenordner, das Ergebnis geht nach `$TMPDIR` und wird aufgenommen:
 
   ```bash
   python3 -c 'import json,os,pathlib; from inventur import build, harness; v=(harness.PROJEKT/"inventur/template.html").read_text(); d=json.loads((harness.DATEN/"inventar-claude-code.json").read_text()); pathlib.Path(os.environ["TMPDIR"],"vorschau.html").write_text(build.seite(v,d))'
-  CHROMIUM="${CHROMIUM:-/Applications/Brave Browser.app/Contents/MacOS/Brave Browser}"  # oder ein anderer Chromium-Browser
-  "$CHROMIUM" --headless=new --screenshot="$TMPDIR/vorschau.png" --window-size=1440,2000 "file://$TMPDIR/vorschau.html"
+  BROWSER_BIN="${BROWSER_BIN:-/Applications/Brave Browser.app/Contents/MacOS/Brave Browser}"  # gilt auch für seitenvergleich.py
+  "$BROWSER_BIN" --headless=new --screenshot="$TMPDIR/vorschau.png" --window-size=1440,2000 "file://$TMPDIR/vorschau.html"
   ```
 
   Knöpfe erscheinen nur, wenn `<script id="token">` nicht `null` enthält.
@@ -57,8 +59,8 @@ Diese Vorgaben stehen auch in den Regeln der Module, mit ihrem Grund. Hier stehe
 
 Die Einzelheiten zu jedem Modul stehen in `.claude/rules/<Modul>.md`: wie es arbeitet und warum es so gebaut ist, meist mit dem Fehler, der dazu führte. Claude Code lädt eine Regel, sobald es eine ihrer Dateien mit Read, Edit oder Write anfasst (nachgemessen mit `claude -p`), aber nicht über die Shell (`grep`, `sed`, ein Skript). Vor einer Änderung an einem Modul deshalb seine Regel lesen, wenn sie nicht schon im Kontext steht. Neues Wissen zu einem Modul gehört in seine Regel, ein Satz je Zeile; hierher nur, was für jede Sitzung gilt.
 
-- `build.py` ist der Startbefehl: lässt den Bestand lesen und schreibt Inventar, Verlauf und Dashboard, für beide Harnesses. → `.claude/rules/build.md`
-- `claude.py` liest den Bestand von Claude Code, das Gegenstück zu `codex.py`; `mcp_direkt.py` fragt HTTP-MCP-Server selbst. → `.claude/rules/claude-py.md` (nicht `claude.md`: Auf dem Mac gälte die Datei als `CLAUDE.md` und lüde bei jeder Regel mit)
+- `build.py` ist der Startbefehl: lässt den Bestand lesen und schreibt Inventar, Verlauf und Dashboard für einen Harness (`--harness` oder den zuletzt gemerkten). → `.claude/rules/build.md`
+- `claude.py` liest den Bestand von Claude Code, das Gegenstück zu `codex.py`; `mcp_direkt.py` fragt HTTP-MCP-Server selbst. Beide → `.claude/rules/claude-py.md` (nicht `claude.md`: Auf dem Mac gälte die Datei als `CLAUDE.md` und lüde bei jeder Regel mit)
 - `harness.py`: Datenordner (`DATEN`), gemerkter Harness (`harness.json`) und die feste Version in `SKILLS_CLI`; von `build.py`, `claude.py`, `codex.py` und `server.py` importiert. Keine eigene Regel, die Vorgaben stehen oben unter „Was immer gilt“.
 - `codex.py` liest denselben Bestand aus `~/.codex` und `~/.agents`, in derselben Datenform. → `.claude/rules/codex.md`
 - `bestand.py`: was beide Leser brauchen (lesen ohne Absturz, IDs, Zugangsdaten verdecken, `bewerte()`); importiert weder `build` noch `claude` noch `codex`. → `.claude/rules/bestand.md`
