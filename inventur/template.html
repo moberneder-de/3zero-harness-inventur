@@ -903,7 +903,7 @@ function renderSkillsRahmen() {
     <input type="search" id="f-suche" placeholder="Name oder Text suchen …" aria-label="In Name und Beschreibung suchen">
     <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
     <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar", UNGENUTZT], "jeder Status")}</select>
-    <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $"]), "jeder Aufruf")}</select>
+    <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $", "als Subagent"]), "jeder Aufruf")}</select>
     <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
     <select id="f-geteilt" aria-label="Gilt in beiden Harnesses">${opt([`nur für ${D.harness_name}`, GETEILT], "beide Harnesses")}</select>
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
