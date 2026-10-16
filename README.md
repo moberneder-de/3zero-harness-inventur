@@ -103,6 +103,7 @@ Der Projektordner enthält **nur das Werkzeug**:
 ```
 3zero-Harness-Inventur/
   build.py, server.py, wochenlauf.py   Startbefehle, rufen den Code in inventur/
+  AGENTS.md, CLAUDE.md            Anleitung für Agenten; CLAUDE.md bindet AGENTS.md nur ein
   seitenvergleich.py, render-app-icon.py   Werkzeuge für Umbauten am Template und am Icon
   inventur/                       der Code: Leser, Server, Tabs, dazu Template, Icons und Logo
   tests/                          die Tests (python3 -m unittest)
@@ -140,7 +141,7 @@ Drei Knöpfe starten einen Agenten im Hintergrund. Alle sind eng eingezäunt, we
 
 **Suchen** nimmt einen Bedarf in einem Satz, gleicht ihn zuerst mit dem Bestand ab und schlägt höchstens drei geprüfte Kandidaten vor — mit Herkunft, Verbreitung, Pflegezustand und Kontextkosten; Installationen, Sterne, letzter Push und Lizenz stehen als Zahlen am Kandidaten. „Nichts installieren" ist eine gültige Empfehlung. Der Lauf selbst darf nichts schreiben und nichts installieren; installiert wird erst nach ausdrücklicher Bestätigung, mit einem Befehl, den der Server aus geprüften Feldern baut.
 
-**Prüfen** (nur Claude Code) bewertet die `CLAUDE.md` eines Projekts; der Knopf steht im Tab **Anweisungen** und ist dort beschrieben. Der Lauf liest nur, und nur im Projekt.
+**Prüfen** (nur Claude Code) bewertet die `CLAUDE.md` eines Projekts, oder die `AGENTS.md`, wenn die `CLAUDE.md` sie nur einbindet; der Knopf steht im Tab **Anweisungen** und ist dort beschrieben. Der Lauf liest nur, und nur im Projekt.
 
 Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-inventur`) und liegt in `skill/SKILL.md`.
 

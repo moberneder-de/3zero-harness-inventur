@@ -5767,7 +5767,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>Der Code liegt im Paket inventur/, die Tests in tests/; im Hauptordner stehen nur die Startbefehle build.py, server.py und wochenlauf.py</li>
           <li>claude.py liest den Bestand ohne Urteil, codex.py denselben aus ~/.codex, beide mit den Funktionen aus bestand.py; build.py startet den Leser und schreibt; mcp_direkt.py fragt HTTP-MCP-Server selbst; was ein Mod tut, liest claude.py mit claude plugin validate, ohne ihn auszuführen</li>
           <li>werkzeuge.py prüft Laufzeiten (bei Homebrew-Installationen auch, ob Homebrew die neue Version schon anbietet), berechtigungen.py liest, was ohne Rückfrage erlaubt ist, modelle.py, welches Modell eingestellt ist und lief</li>
-          <li>anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, Regeln, Output-Style, MEMORY.md</li>
+          <li>anweisungen.py liest, was als Text in die Sitzung lädt: CLAUDE.md, AGENTS.md, Regeln, Output-Style, MEMORY.md</li>
           <li>server.py liefert aus und führt Aktionen aus, konfig.py ändert dafür die Konfigurationsdateien; die Seite gibt es nur mit dem Schlüssel des laufenden Servers</li>
           <li>wochenlauf.py liest jeden Montag neu ein und meldet sich nur, wenn es Neues gibt</li>
         </ul>
@@ -5782,7 +5782,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>Bewertung: Handarbeit, teuer neu zu erzeugen</li>
           <li>Inventar, Dashboard, Verlauf, werkzeuge.json und wochenlauf.json: erzeugt, jederzeit neu baubar</li>
           <li>harness.json merkt den zuletzt gestarteten Harness</li>
-          <li>pruefung-….md: der Bericht je Projekt, den der Knopf „prüfen“ zu einer CLAUDE.md ablegt</li>
+          <li>pruefung-….md: der Bericht je Projekt, den der Knopf „prüfen“ zu einer CLAUDE.md oder AGENTS.md ablegt</li>
           <li>start.html gibt es nur, solange der Server läuft: Sie trägt den Schlüssel und ist nur für dich lesbar</li>
         </ul>
       </div>
