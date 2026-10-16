@@ -49,7 +49,7 @@ python3 wochenlauf.py entfernen
 Diese Vorgaben stehen auch in den Regeln der Module, mit ihrem Grund. Hier stehen sie, weil eine Regel erst lädt, wenn ihre Datei angefasst wird.
 
 - `dashboard*.html` und `inventar*.json` im Datenordner sind erzeugt: nicht von Hand bearbeiten.
-- Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `claude.py` bzw. `codex.py` fest. Der Server führt nur aus, was so im Inventar steht.
+- Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in `claude.py` bzw. `codex.py` fest, für Regeln und Anweisungen `rechte_aktionen()` und `anweisungen_aktionen()` in `build.py`. Der Server führt nur aus, was so im Inventar steht.
 - Den Befehl zum Umsetzen baut immer `befehl()`, nie die Bewertung: Sie stammt aus einem Lauf, der fremde Skill-Texte liest, und der Befehl steht im Dashboard neben dem Kopierknopf. Aus demselben Grund übernimmt `eingebaute()` von `eingebaut` nur `name`, `was` und `tokens`, und Hinweise zeigen keine Befehle.
 - Ein Absturz in `build.py` verhindert den Serverstart: Fehler je Quelle abfangen und über `lesefehler()` melden.
 - `SKILLS_CLI` in `harness.py`: eine neue Version erst prüfen, dann eintragen.

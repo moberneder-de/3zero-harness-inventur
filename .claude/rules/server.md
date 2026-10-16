@@ -8,7 +8,7 @@ paths:
 # server.py
 
 `server.py` zeigt das Dashboard auf http://127.0.0.1:8765 und führt die dort gewählten Aktionen aus (deinstallieren, deaktivieren, nur manuell).
-Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legt allein `aktionen()` in `claude.py` bzw. `codex.py` fest; der Server führt nur aus, was so in `inventar*.json` steht.
+Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in `claude.py` bzw. `codex.py` fest, für Regeln und Anweisungen `rechte_aktionen()` und `anweisungen_aktionen()` in `build.py`; der Server führt nur aus, was so in `inventar*.json` steht.
 Was davon eine Konfigurationsdatei ändert, führt `konfig.py` aus (`Konfig.ausfuehren`, siehe `.claude/rules/konfig.md`); der Server hält seine Sperre darum und führt selbst nur noch Papierkorb und Befehle aus.
 Die Seite nennt bei jeder Anfrage ihren Harness (`X-Harness`), und der Server antwortet mit 409, wenn inzwischen der andere gilt: Beide Inventare führen dieselben IDs mit denselben Aktionsnamen, ein Klick träfe sonst die Konfiguration des anderen Harness und meldete „erledigt“.
 Die Seite mit dem Token gibt es nur mit dem Token als Schlüssel in der Adresse (`/?k=…`), sonst 403: `127.0.0.1` erreicht jeder Benutzer des Rechners, und wer die Seite bekommt, kann Aktionen auslösen und eine Suche starten, die Dateien liest.
