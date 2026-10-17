@@ -598,6 +598,36 @@ class McpStatus(unittest.TestCase):
 
 
 @mock.patch.object(claude, "zeitgrenze", lambda: "2026-09-06T00:00:00")
+class AgentAufrufe(unittest.TestCase):
+    def test_subagenten_aus_transkripten(self):
+        """Welche Subagenten liefen, steht nur im Transkript: beim Werkzeug Agent (früher Task) als `subagent_type`."""
+        def start(typ, zeit, kennung, werkzeug="Agent"):
+            return json.dumps({"type": "assistant", "timestamp": zeit, "message": {"content": [
+                {"type": "tool_use", "id": kennung, "name": werkzeug, "input": {"description": "x", "prompt": "y", "subagent_type": typ}}]}}) + "\n"
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        datei = tmp / "sitzung.jsonl"
+        datei.write_text(start("Explore", "2026-09-10T08:00:00Z", "a") + start("Explore", "2026-09-10T08:00:00Z", "a")  # dieselbe Zeile zweimal
+                         + start("Explore", "2026-09-12T08:00:00Z", "b") + start("general-purpose", "2026-09-01T08:00:00Z", "c")  # vor dem Fenster
+                         + start("code-pruefer", "2026-09-11T08:00:00Z", "d", "Task") + "kaputt, aber subagent_type steht drin\n")
+        self.assertEqual(claude.agent_aufrufe([datei, tmp / "fehlt.jsonl"]),
+                         {"Explore": ["2026-09-10", "2026-09-12"], "code-pruefer": ["2026-09-11"]})
+
+    def test_eigene_zaehlen_der_rest_ist_eingebaut(self):
+        """Ein Typ mit Datei oder Plugin zählt dort, der Rest ist eingebaut; außer mit „:“, das ist ein Plugin-Agent,
+        dessen Plugin nicht mehr da ist."""
+        eigen = {"name": "code-pruefer", "typ": "Agent", "nutzung": None}
+        plugin = {"name": "sp:code-reviewer", "schluessel": "superpowers:code-reviewer", "typ": "Agent", "plugin": "superpowers@m", "nutzung": None}
+        skill = {"name": "Explore", "typ": "Skill", "nutzung": None}
+        aufrufe = {"code-pruefer": ["2026-09-11"], "superpowers:code-reviewer": ["2026-09-09"], "Explore": ["2026-09-10", "2026-09-12"],
+                   "weg:agent": ["2026-09-10"]}
+        eingebaut = claude.agenten_messen([eigen, plugin, skill], aufrufe)
+        self.assertEqual((eigen["nutzung"], plugin["nutzung"], skill["nutzung"]),
+                         ({"anzahl": 1, "zuletzt": "2026-09-11"}, {"anzahl": 1, "zuletzt": "2026-09-09"}, None))
+        self.assertEqual(eingebaut, [{"name": "Explore", "typ": "Agent", "was": "", "tokens": 0, "nutzung": {"anzahl": 2, "zuletzt": "2026-09-12"}}])
+
+
+@mock.patch.object(claude, "zeitgrenze", lambda: "2026-09-06T00:00:00")
 class McpMessungen(unittest.TestCase):
     def transkript(self, *zeilen):
         tmp = Path(tempfile.mkdtemp())
