@@ -60,6 +60,11 @@ def frontmatter(pfad):
         text = Path(pfad).read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return {}
+    return frontmatter_text(text)
+
+
+def frontmatter_text(text):
+    """Der YAML-Kopf eines Markdown-Texts; der Server prüft damit einen Agenten aus der Suche, bevor es eine Datei gibt."""
     m = re.match(r"^---\s*\n(.*?)\n---", text, re.S)
     if not m:
         return {}

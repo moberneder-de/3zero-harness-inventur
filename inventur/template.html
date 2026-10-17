@@ -243,6 +243,9 @@ dialog.frage h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
 dialog.frage p { margin: 0 0 10px; }
 dialog.frage ul { margin: 0 0 10px; padding-left: 18px; max-height: 40vh; overflow: auto; font-size: 14px; }
 dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+dialog.frage:has(pre.vorschau) { width: min(760px, calc(100vw - 40px)); }
+dialog.frage pre.vorschau { max-height: 45vh; overflow: auto; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius);
+  font: 12px/1.45 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
 dialog.frage form.felder { display: grid; justify-content: stretch; gap: 12px; margin-top: 4px; }
 dialog.frage .feld { display: grid; gap: 4px; font-size: 14px; }
 dialog.frage .feld input, dialog.frage .feld select, dialog.frage .feld textarea { font: 15px/1.4 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 7px 10px; background: var(--bg); }
@@ -1549,10 +1552,11 @@ function setMeldung(text, titel = meldungTitel, befehl = "") {
   meldungBefehl = befehl;
   renderMeldung();
 }
-/* Kandidaten der letzten Suche: Skills und Plugins installiert der Server mit selbst gebautem Befehl, MCP-Server nur zum Kopieren */
+/* Kandidaten der letzten Suche: Skills und Plugins installiert der Server mit selbst gebautem Befehl, Agenten mit dem Text,
+   den er vorher gezeigt hat, MCP-Server nur zum Kopieren */
 let kandidaten = [];
 const INSTALLATION = new Map();
-const ART = { skill: "Skill", plugin: "Plugin", mcp: "MCP-Server" };
+const ART = { skill: "Skill", plugin: "Plugin", mcp: "MCP-Server", agent: "Agent" };
 function kandidatenBlock() {
   return kandidaten.map((k, nr) => {
     const r = INSTALLATION.get(nr) || (k.installiert ? { ok: true } : null);
@@ -1561,11 +1565,12 @@ function kandidatenBlock() {
       : `<span class="status st-fehler"><span aria-hidden="true">✕</span> Fehler</span><details open><summary class="klein">Ausgabe</summary><pre>${esc(r.ausgabe)}</pre></details>`;
     const aus = beschaeftigt || r?.ok ? " disabled" : "";
     const knoepfe = !k.installierbar ? `<span class="klein">Installation nur von Hand${k.befehl ? " mit dem Befehl oben" : ""}.</span>`
-      : `<button type="button" class="zeilenknopf" data-installieren="${nr}"${aus}>installieren</button>` +
+      : `<button type="button" class="zeilenknopf" data-installieren="${nr}"${aus}>${k.art === "agent" ? "ansehen und installieren" : "installieren"}</button>` +
         (k.art === "skill" ? `<button type="button" class="zeilenknopf" data-installieren="${nr}" data-manuell="1"${aus}>installieren, nur manuell</button>` : "");
     /* Ohne geprüften Befehl steht hier keiner: Der Suchlauf liest fremde Webseiten, und ein Befehl von dort
        landete sonst per Kopierknopf in deinem Terminal. Der Server verwirft, was nicht wie eine Installation aussieht. */
-    const befehl = k.befehl ? befehlZeile(k.befehl) + '<p class="klein">Geprüft ist nur die Form: bekannter Anfang, keine Shell-Zeichen. Was der Befehl installiert, prüft niemand. Vergleiche ihn vor dem Einfügen mit der Doku des Anbieters.</p>'
+    const befehl = k.art === "agent" && k.installierbar ? `<p class="klein">Datei <code>${esc(k.pfad)}</code> aus <code>${esc(k.repo)}</code>: Der Server lädt sie und zeigt dir den ganzen Text, bevor er sie anlegt.</p>`
+      : k.befehl ? befehlZeile(k.befehl) + '<p class="klein">Geprüft ist nur die Form: bekannter Anfang, keine Shell-Zeichen. Was der Befehl installiert, prüft niemand. Vergleiche ihn vor dem Einfügen mit der Doku des Anbieters.</p>'
       : '<p class="klein">Kein prüfbarer Installationsbefehl. Hol ihn aus der Doku des Anbieters, nicht aus dieser Seite.</p>';
     const b = k.belege || {};
     const belege = [[b.installationen, "Installationen", zahl], [b.sterne, "Sterne", zahl], [b.letzter_push, "letzter Push", datum], [b.lizenz, "Lizenz", esc]]
@@ -1582,10 +1587,10 @@ function zeichne() {
   document.querySelectorAll("select.wahl, [data-recht], [data-anweisung], [data-pruefen]").forEach(s => { s.disabled = beschaeftigt; });
 }
 /* Bestätigung im 3zero-Stil statt confirm(); Esc und „Abbrechen“ zählen als Nein */
-function frage(titel, text, ja, liste = []) {
+function frage(titel, text, ja, liste = [], vorschau = "") {
   const d = document.getElementById("frage");
   d.innerHTML = `<h3 id="frage-titel">${esc(titel)}</h3>${text.split("\n\n").map(p => `<p>${esc(p)}</p>`).join("")}
-    ${liste.length ? `<ul>${liste.map(z => `<li>${esc(z)}</li>`).join("")}</ul>` : ""}
+    ${liste.length ? `<ul>${liste.map(z => `<li>${esc(z)}</li>`).join("")}</ul>` : ""}${vorschau ? `<pre class="vorschau">${esc(vorschau)}</pre>` : ""}
     <form method="dialog"><button class="btn btn-outline" value="nein" autofocus>Abbrechen</button><button class="btn btn-primary" value="ja">${esc(ja)}</button></form>`;
   d.returnValue = "";
   d.showModal();
@@ -1599,12 +1604,12 @@ function renderSuche() {
     ? `<form class="suchfeld" id="suchform"><textarea id="bedarf" rows="3" maxlength="300" required placeholder="z. B. Präsentationen als HTML" aria-label="Wofür suchst du ein Werkzeug?"></textarea>
        <button type="submit" class="btn btn-primary" id="suchen">suchen</button></form><div id="such-inhalt"></div>`
     : '<p class="leer">Die Suche braucht den Server: <code>python3 server.py</code> im Projektordner starten; das Dashboard öffnet sich dann von selbst.</p>';
-  return abschnitt("suche", "Neue Skills, Plugins und MCP-Server finden", inhalt,
+  return abschnitt("suche", "Neue Skills, Plugins, Agenten und MCP-Server finden", inhalt,
     erklaert("Beschreibe, wofür du ein Werkzeug suchst.", [], [
       `${je("Claude", esc(D.harness_name))} prüft zuerst, ob dein Bestand das schon kann.`,
-      "Dann sucht es bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor.",
+      "Dann sucht es bei skills.sh, in den Plugin-Marktplätzen, auf GitHub nach Agenten und bei Anbietern von MCP-Servern und schlägt höchstens drei geprüfte Kandidaten vor.",
       `Eine Suche dauert eine bis einige Minuten und verbraucht Kontingent deines ${je("Claude", "ChatGPT")}-Abos.`,
-      "Installiert wird erst, wenn du es bestätigst."]));
+      "Installiert wird erst, wenn du es bestätigst. Einen Agenten zeigt der Server vorher mit seinem ganzen Text."]));
 }
 function renderSuchInhalt() {
   if (!TOKEN) return;
@@ -2047,7 +2052,16 @@ if (TOKEN) {
       });
     } else if (knopf.dataset.installieren !== undefined) {
       const nr = Number(knopf.dataset.installieren), k = kandidaten[nr], manuell = !!knopf.dataset.manuell;
-      if (!await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
+      /* ein Agent ist Text: erst laden und ganz zeigen, installiert wird dann genau dieser Stand (agent_vorschau) */
+      let v = null;
+      if (k.art === "agent") {
+        v = await api("/api/agent_vorschau", { nr });
+        if (v.harnessWechsel) return harnessGewechselt(v);
+        if (!v.ok) return setMeldung(`${k.name} laden fehlgeschlagen:\n\n` + v.ausgabe, "Fehler");
+      }
+      if (v ? !await frage(`${k.name} installieren?`, `Die Datei ${k.pfad} aus ${k.repo}, Stand ${v.commit.slice(0, 7)}, wird als ${kurzPfad(v.datei)} angelegt, genau mit diesem Text. `
+          + `Er sagt dem Agenten, was er tut, wenn ${je("Claude", "Codex")} ihn startet; lies ihn, bevor du bestätigst.\n\nWirksam ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`, "installieren", [], v.text)
+        : !await frage(`${k.name} installieren?`, `${ART[k.art]} ${k.name}${manuell ? " wird installiert und auf „nur manuell“ gestellt" : " wird installiert"}. Er läuft danach mit deinen vollen Rechten.\n\nWirksam ab der nächsten ${je("Claude-Code", D.harness_name)}-Sitzung.`, manuell ? "installieren, nur manuell" : "installieren")) return;
       mitSperre(async () => {
         INSTALLATION.set(nr, { laeuft: true }); renderSuchInhalt();
         const r = await api("/api/installieren", { nr, nur_manuell: manuell });

@@ -33,12 +33,14 @@ import time
 
 import tomllib
 import urllib.parse
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import harness
 from . import konfig
+from .bestand import frontmatter_text
 
 PORT = 8765
 TOKEN_PLATZHALTER = '<script id="token" type="application/json">null</script>'
@@ -101,7 +103,8 @@ SUCHEN_HINWEIS = (
     "GitHub-Daten (Sterne, letzter Push, Lizenz) holst du per WebFetch von https://api.github.com/repos/<owner>/<repo>, nicht mit gh. "
     "bericht ist dein Bericht aus S1 bis S5 auf Deutsch in Markdown mit Überschriften (##), Absätzen, Listen, **fett** und `code`, ohne Tabellen. "
     "kandidaten sind höchstens die drei aus S5: art skill mit repo (owner/repo) und skill (Name im Repo), "
-    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters. "
+    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters, "
+    "art agent mit repo (owner/repo) und pfad (Pfad der Agent-Datei im Repo, eine Markdown-Datei mit Kopf, wie sie in .claude/agents liegt); kommt ein Agent mit einem Plugin, ist er art plugin. "
     "belege: die Zahlen aus S4 (installationen, sterne, letzter_push als JJJJ-MM-TT, lizenz), unbekannt null."
 )
 # Belege aus S4 je Kandidat; unbekannt ist null
@@ -115,10 +118,10 @@ SUCHEN_SCHEMA = {
         "kandidaten": {"type": "array", "maxItems": 3, "items": {
             "type": "object",
             "properties": {
-                "art": {"type": "string", "enum": ["skill", "plugin", "mcp"]},
+                "art": {"type": "string", "enum": ["skill", "plugin", "mcp", "agent"]},
                 "name": {"type": "string"}, "was": {"type": "string"}, "befehl": {"type": "string"},
                 "repo": {"type": "string"}, "skill": {"type": "string"},
-                "plugin": {"type": "string"}, "marktplatz": {"type": "string"}, "belege": BELEGE_SCHEMA,
+                "plugin": {"type": "string"}, "marktplatz": {"type": "string"}, "pfad": {"type": "string"}, "belege": BELEGE_SCHEMA,
             },
             "required": ["art", "name", "was", "befehl"],
         }},
@@ -191,7 +194,9 @@ CODEX_SUCHEN_HINWEIS = (
     "GitHub-Daten (Sterne, letzter Push) holst du mit curl -s https://api.github.com/repos/<owner>/<repo>. "
     "bericht ist dein Bericht aus S1 bis S5 auf Deutsch in Markdown mit Überschriften (##), Absätzen, Listen, **fett** und `code`, ohne Tabellen. "
     "kandidaten sind höchstens die drei aus S5: art skill mit repo (owner/repo) und skill (Name im Repo), "
-    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters; nicht zutreffende Felder sind null. "
+    "art plugin mit plugin und marktplatz, art mcp nur mit befehl aus der Doku des Anbieters, "
+    "art agent mit repo (owner/repo) und pfad (Pfad der Agent-Datei im Repo, eine TOML-Datei, wie sie in .codex/agents liegt); kommt ein Agent mit einem Plugin, ist er art plugin. "
+    "Nicht zutreffende Felder sind null. "
     "belege: die Zahlen aus S4 (installationen, sterne, letzter_push als JJJJ-MM-TT, lizenz), unbekannt null."
 )
 # Codex prüft Schemas strikt: jedes Feld required, additionalProperties false, Optionales als null
@@ -204,11 +209,11 @@ SUCHEN_SCHEMA_CODEX = {
         "kandidaten": {"type": "array", "items": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["art", "name", "was", "befehl", "repo", "skill", "plugin", "marktplatz", "belege"],
+            "required": ["art", "name", "was", "befehl", "repo", "skill", "plugin", "marktplatz", "pfad", "belege"],
             "properties": {
-                "art": {"type": "string", "enum": ["skill", "plugin", "mcp"]},
+                "art": {"type": "string", "enum": ["skill", "plugin", "mcp", "agent"]},
                 "name": {"type": "string"}, "was": {"type": "string"}, "befehl": {"type": "string"},
-                **{f: {"type": ["string", "null"]} for f in ("repo", "skill", "plugin", "marktplatz")},
+                **{f: {"type": ["string", "null"]} for f in ("repo", "skill", "plugin", "marktplatz", "pfad")},
                 "belege": BELEGE_SCHEMA,
             },
         }},
@@ -365,8 +370,10 @@ def sicherer_befehl(befehl):
 
 def geprueft(k):
     """Ein Kandidat mit dem, was der Server verantworten kann: geprüfter Befehl, geprüfte Installierbarkeit, Belege
-    nur mit passenden Typen."""
-    return {**k, "befehl": k.get("befehl") if sicherer_befehl(k.get("befehl")) else "", "installierbar": installierbar(k),
+    nur mit passenden Typen. Nur die Felder des Schemas: `vorschau` und `installiert` setzt allein der Server, und ein
+    Suchlauf, der fremde Webseiten liest, schöbe sonst Text und Ziel eines Agenten unter, die niemand gesehen hat."""
+    felder = {f: k[f] for f in ("art", "name", "was", "repo", "skill", "plugin", "marktplatz", "pfad") if f in k}
+    return {**felder, "befehl": k.get("befehl") if sicherer_befehl(k.get("befehl")) else "", "installierbar": installierbar(k),
             "belege": belege(k.get("belege"))}
 
 
@@ -430,14 +437,60 @@ def belege(roh):
     return {f: roh.get(f) if passt[typ](roh.get(f)) else None for f, typ in BELEGE.items()}
 
 
+AGENT_PFAD = re.compile(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\.(?:md|toml)")
+
+
 def installierbar(k):
-    """Nur Kandidaten, deren Angaben der Server selbst in einen Befehl einsetzen kann, ohne Shell und ohne Optionen."""
+    """Nur Kandidaten, deren Angaben der Server selbst in einen Befehl oder eine Adresse einsetzen kann, ohne Shell
+    und ohne Optionen. Der Pfad eines Agenten geht in eine GitHub-Adresse: kein `..`, kein `.` als Ordner."""
     passt = lambda muster, wert: isinstance(wert, str) and muster.fullmatch(wert) is not None
     if k.get("art") == "skill":
         return passt(REPO, k.get("repo")) and passt(NAME, k.get("skill"))
     if k.get("art") == "plugin":
         return passt(NAME, k.get("plugin")) and passt(NAME, k.get("marktplatz"))
+    if k.get("art") == "agent":
+        return (passt(REPO, k.get("repo")) and ".." not in k["repo"] and passt(AGENT_PFAD, k.get("pfad"))
+                and not {".", ".."} & set(k["pfad"].split("/")))
     return False
+
+
+class OhneUmleitung(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None  # ein umgezogenes Repo meldet sich als Fehler, statt die Anfrage woandershin zu schicken
+
+
+def github_text(url):
+    """Eine Antwort von api.github.com oder raw.githubusercontent.com als Text, höchstens 200 KB. Ohne Anmeldung:
+    Der Server liest nur öffentliche Repos, und ein Token gehörte nicht in einen Abruf, dessen Ziel eine Suche nannte."""
+    anfrage = urllib.request.Request(url, headers={"User-Agent": "3zero-harness-inventur", "Accept": "application/vnd.github+json"})
+    with urllib.request.build_opener(OhneUmleitung).open(anfrage, timeout=20) as antwort:
+        daten = antwort.read(200_001)
+    if len(daten) > 200_000:
+        raise ValueError("Die Datei ist größer als 200 KB.")
+    return daten.decode("utf-8")
+
+
+def agent_pruefen(codex, text):
+    """Der Name eines Agenten aus der Suche, wenn der Text im Format des Harness vorliegt, sonst eine Fehlermeldung.
+    Der Name wird der Dateiname und muss deshalb zu AGENT_NAME passen."""
+    if codex:
+        try:
+            t = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            return None, "Die Datei ist kein gültiges TOML."
+        if not all(isinstance(t.get(f), str) and t[f].strip() for f in ("name", "description", "developer_instructions")):
+            return None, "Der Datei fehlt name, description oder developer_instructions."
+        name = t["name"]
+    else:
+        kopf = frontmatter_text(text)
+        if not kopf:
+            return None, "Die Datei hat keinen Kopf (---) mit name und description."
+        if not (isinstance(kopf.get("description"), str) and kopf["description"].strip()):
+            return None, "Im Kopf fehlt die Beschreibung (description)."
+        name = kopf.get("name")
+    if not (isinstance(name, str) and AGENT_NAME.fullmatch(name)):
+        return None, "Der Name im Kopf passt nicht: nur Kleinbuchstaben, Ziffern und Bindestriche."
+    return name, None
 
 
 def claude_text(ausgabe):
@@ -776,10 +829,49 @@ class Inventarserver(ThreadingHTTPServer):
                 return 200, {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
         return 200, {"ok": True, "ausgabe": f"{datei} angelegt."}
 
+    def agent_vorschau(self, k):
+        """Lädt die Datei eines Agenten aus der Suche auf ihrem letzten Commit, prüft sie und merkt sich den Text am
+        Kandidaten. Installiert wird später genau dieser Text: Was danach im Repo landet, hat niemand gesehen."""
+        h = self.harness()
+        codex = h == "codex"
+        if not k["pfad"].endswith(".toml" if codex else ".md"):
+            return {"ok": False, "ausgabe": f"Falsches Format: {harness.HARNESSE[h]['name']} liest Agenten als {'TOML' if codex else 'Markdown'}-Datei."}
+        pfad = urllib.parse.quote(k["pfad"])
+        commits = json.loads(github_text(f"https://api.github.com/repos/{k['repo']}/commits?path={pfad}&per_page=1"))
+        commit = commits[0].get("sha") if isinstance(commits, list) and commits and isinstance(commits[0], dict) else None
+        if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+            return {"ok": False, "ausgabe": f"{k['pfad']} gibt es in {k['repo']} nicht."}
+        text = github_text(f"https://raw.githubusercontent.com/{k['repo']}/{commit}/{pfad}")
+        name, fehler = agent_pruefen(codex, text)
+        if fehler:
+            return {"ok": False, "ausgabe": fehler}
+        datei = self.agenten[h] / f"{name}.{'toml' if codex else 'md'}"
+        if datei.exists():
+            return {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
+        k["vorschau"] = {"text": text, "datei": str(datei), "commit": commit}
+        return {"ok": True, "text": text, "datei": str(datei), "commit": commit}
+
+    def agent_installieren(self, k):
+        v = k.get("vorschau")
+        if not v:
+            return {"ok": False, "ausgabe": "Erst ansehen: Installiert wird nur ein Text, den du gesehen hast."}
+        datei = Path(v["datei"])
+        with self.sperre:
+            datei.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(datei, "x", encoding="utf-8") as ausgabe:  # „x“: nur neu anlegen, nie überschreiben
+                    ausgabe.write(v["text"])
+            except FileExistsError:
+                return {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
+        k["installiert"] = True
+        return {"ok": True, "ausgabe": f"{datei} angelegt, Stand {v['commit'][:7]}."}
+
     def installieren(self, k, nur_manuell):
         """`k` ist der Kandidat selbst, nicht seine Nummer: Zwischen Prüfung und Zugriff konnte eine neue Suche
         die Liste austauschen, und der Zugriff lief ins Leere."""
         codex = self.harness() == "codex"
+        if k["art"] == "agent":
+            return self.agent_installieren(k)
         if k["art"] == "skill":
             argv = ["npx", "-y", harness.SKILLS_CLI, "add", k["repo"], "--skill", k["skill"], "-g", "-y",
                     "--agent", "codex" if codex else "claude-code"]
@@ -859,7 +951,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
         if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren", "/api/abbrechen",
-                             "/api/pruefen", "/api/pruefung", "/api/agent"):
+                             "/api/pruefen", "/api/pruefung", "/api/agent", "/api/agent_vorschau"):
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:
             anfrage = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -896,6 +988,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/api/suche", "/api/bewertung", "/api/pruefung"):
             art = self.path.removeprefix("/api/")
             return self.antworte(200, self.server.stand(art, isinstance(anfrage, dict) and anfrage.get("verwerfen") is True))
+        if self.path == "/api/agent_vorschau":
+            nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
+            kandidaten = self.server.kandidaten
+            if type(nr) is not int or not 0 <= nr < len(kandidaten) or not kandidaten[nr]["installierbar"] or kandidaten[nr]["art"] != "agent":
+                return self.antworte(400, {"ok": False, "ausgabe": "Diesen Kandidaten kann das Dashboard nicht laden."})
+            try:
+                return self.antworte(200, self.server.agent_vorschau(kandidaten[nr]))
+            except (OSError, ValueError, UnicodeDecodeError) as fehler:  # OSError umfasst die Fehler von urllib
+                return self.antworte(200, {"ok": False, "ausgabe": f"Laden fehlgeschlagen: {type(fehler).__name__}: {fehler}"})
         if self.path == "/api/installieren":
             nr = anfrage.get("nr") if isinstance(anfrage, dict) else None
             kandidaten = self.server.kandidaten  # einmal festhalten: eine neue Suche tauscht die Liste aus
