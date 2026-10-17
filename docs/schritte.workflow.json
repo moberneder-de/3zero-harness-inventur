@@ -226,6 +226,7 @@
       "title": "Der Such-Modus",
       "items": [
         "Er läuft nur lesend und installiert erst nach deinem ausdrücklichen Ja",
+        "Einen Agenten aus einem Repo zeigt das Dashboard vorher mit seinem ganzen Text",
         "Ohne Benutzer, etwa aus dem Dashboard, schlägt er nur vor",
         "Danach beginnt die Inventur von vorn, damit das Neue ein Urteil bekommt"
       ]

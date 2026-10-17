@@ -336,7 +336,8 @@
       "items": [
         "Bei Claude Code zählt Nutzung jeden Aufruf, bei Codex nur eine Sitzung",
         "Dieselbe Zahl bedeutet in den beiden Dashboards also nicht dasselbe",
-        "Frisch installiert heißt wenig genutzt; das Datum steht daneben"
+        "Frisch installiert heißt wenig genutzt; das Datum steht daneben",
+        "Agenten zählen nur als Starts der letzten 14 Tage und gelten deshalb nie als ungenutzt"
       ]
     },
     {
