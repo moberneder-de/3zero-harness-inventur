@@ -1292,9 +1292,13 @@ class ProjektHooks(unittest.TestCase):
         a = self.projekt("A", hooks={"SessionStart": self.STOP["Stop"]})
         with mock.patch.object(claude, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(claude, "PLUGINS", self.tmp), \
                 mock.patch.object(claude, "mcp_live", return_value=None), mock.patch.object(claude, "transkripte", return_value=[]), mock.patch.object(claude.harness, "DATEN", self.tmp), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
-            inventar = claude.inventar({"projects": {str(a): {}, str(self.tmp / "weg"): {}}}, {}, {}, {})
-        # wohin das Dashboard einen Agenten legen darf: eingetragene Projekte, die es gibt
-        self.assertEqual(inventar["projektordner"], [str(a)])
+            # Claude Code trägt jeden Ordner ein, in dem eine Sitzung lief: auch ~/.claude, Ordner voller Projekte und Scratch-Ordner der App
+            sammel, darin, scratch = self.tmp / "Sammel", self.tmp / "Sammel/b", self.tmp / "App/Claude/scratch-workspaces/1"
+            for ordner in (self.tmp / "home/.claude", darin, scratch):
+                ordner.mkdir(parents=True, exist_ok=True)
+            inventar = claude.inventar({"projects": {str(p): {} for p in (a, self.tmp / "weg", self.tmp / "home/.claude", sammel, darin, scratch)}}, {}, {}, {})
+        # wohin das Dashboard einen Agenten legen darf: eingetragene Projekte, die es gibt und die Projekte sind
+        self.assertEqual(inventar["projektordner"], sorted([str(a), str(darin)]))
         (h,) = inventar["projekt_hooks"]
         self.assertEqual((h["befehl"], inventar["hooks"]), (f'{a}/.claude/settings.json → "hooks" → "SessionStart" entfernen', []))
         self.assertNotIn("aktionen", h)

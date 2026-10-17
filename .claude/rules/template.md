@@ -53,6 +53,8 @@ Neue Flächen deshalb nie auf `#fff` setzen, sondern auf `var(--bg)`.
 Bestätigungen laufen über `frage()` mit einem `<dialog>` im Stil der Service-Card, nie über `confirm()` oder `prompt()`; das Kit hat keinen Dialog-Baustein.
 Das Formular „Agent anlegen“ (`agentFormular()`) ist ein zweiter `<dialog>` derselben Klasse (`#agent-dialog`, `form.felder`); die Rückfrage danach läuft wieder über `frage()`, mit dem Pfad, den der Server schreiben wird.
 `form.felder` setzt `justify-content` zurück: Die Regel für die Knopfleiste der Rückfrage (`flex-end`) schob die Spalte des Formulars sonst nach rechts.
+Jede Spalte darin ist `minmax(0, …)` und jedes Feld `width: 100%`: Eine `<select>` wird sonst so breit wie ihre längste Option, ein Projektpfad mit 171 Zeichen machte das Formular 1266 Pixel breit, und die Knöpfe lagen rechts außerhalb (nachgemessen mit den echten Projekten, nicht mit zwei kurzen).
+Die Knopfleiste klebt unten (`position: sticky`), damit sie in einem niedrigen Fenster beim Scrollen sichtbar bleibt.
 
 ## Icons
 
