@@ -26,6 +26,9 @@ Eine neue Erläuterung deshalb nicht als Fließtext schreiben.
 Eine neue Tabelle bekommt den Filter also von selbst, eine Auswahl braucht nur das Attribut.
 Die Suche liest auch die aufgeklappten Einzelheiten einer Zeile mit (im Tab „Projekte“ findet `git push` die Projekte mit dieser Regel).
 Tabellen in aufgeklappten Zeilen bekommen keinen Filter, und diese Filter merken sich nichts.
+Sortiert wird jede fertige Tabelle, auch in Gruppen und aufgeklappten Zeilen (`tabellenSortieren()`, getrennt vom Filter, der diese auslässt): anfangs nach der ersten Spalte, per Klick nach ihr oder einer Spalte mit `class="zahl"`, wie bei „Skills“ (`sortKnopf()`, `sortMarke()`); die Einzelheiten (`tr.detail`, `tr.inhalt`) wandern mit ihrer Zeile, Zellen ohne Zahl („–“, „nie“) landen in beiden Richtungen hinten.
+„Skills“ sortiert seine Daten selbst und merkt sich die Wahl, die Empfehlungen entstehen bei jeder Aktion neu und behalten nur die Richtung des Namens (`EMPF_RICHTUNG`).
+`seitenvergleich.py` klickt je Art nur die ersten 8 Knöpfe in der Reihenfolge der Seite: Nach einer Änderung der Sortierung sind das andere Knöpfe, und „Klicks“ meldet Unterschiede, obwohl sich kein Knopf anders verhält.
 Auch die Tabellenköpfe bleiben stehen, unter Seitenkopf und Filter (`--kopf` plus `--filter`, die Höhe des Filters, die ein `ResizeObserver` an das Element danach schreibt).
 Dafür hat `.tabelle` kein `overflow-x: auto` mehr, außer unter 900 Pixeln Breite: Mit `overflow` hinge der Kopf an diesem Kasten statt an der Seite.
 Schmal scrollt die Tabelle also weiter für sich, ohne festen Kopf.
