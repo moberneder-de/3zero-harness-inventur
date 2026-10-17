@@ -1292,7 +1292,9 @@ class ProjektHooks(unittest.TestCase):
         a = self.projekt("A", hooks={"SessionStart": self.STOP["Stop"]})
         with mock.patch.object(claude, "CLAUDE", self.tmp / "home/.claude"), mock.patch.object(claude, "PLUGINS", self.tmp), \
                 mock.patch.object(claude, "mcp_live", return_value=None), mock.patch.object(claude, "transkripte", return_value=[]), mock.patch.object(claude.harness, "DATEN", self.tmp), mock.patch.dict(os.environ, {"CLAUDE_CODE_PLUGIN_DIRS": ""}):
-            inventar = claude.inventar({"projects": {str(a): {}}}, {}, {}, {})
+            inventar = claude.inventar({"projects": {str(a): {}, str(self.tmp / "weg"): {}}}, {}, {}, {})
+        # wohin das Dashboard einen Agenten legen darf: eingetragene Projekte, die es gibt
+        self.assertEqual(inventar["projektordner"], [str(a)])
         (h,) = inventar["projekt_hooks"]
         self.assertEqual((h["befehl"], inventar["hooks"]), (f'{a}/.claude/settings.json → "hooks" → "SessionStart" entfernen', []))
         self.assertNotIn("aktionen", h)

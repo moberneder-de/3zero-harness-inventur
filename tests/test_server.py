@@ -18,8 +18,9 @@ from inventur import server
 SETTINGS_VORHER = '{\n  "env": {\n    "A": "1"\n  },\n  "skillOverrides": {\n    "alt": "off"\n  }\n}\n'
 
 
-class Server(unittest.TestCase):
-    """Echter Server auf freiem Port, Inventar mit harmlosen Befehlen statt Deinstallationen."""
+class ServerBasis(unittest.TestCase):
+    """Echter Server auf freiem Port, Inventar mit harmlosen Befehlen statt Deinstallationen. Ohne Tests, damit eine
+    Klasse, die davon erbt, nicht alle Tests von `Server` noch einmal mit ihrem eigenen Inventar ausführt."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -111,6 +112,8 @@ class Server(unittest.TestCase):
         status, inhalt = self.anfrage("POST", "/api/ausfuehren", {"id": eid, "aktion": aktion}, **kw)
         return status, (json.loads(inhalt) if status == 200 else inhalt)
 
+
+class Server(ServerBasis):
     def test_seite_bekommt_token(self):
         status, html = self.anfrage("GET", "/?k=geheim", token=None)
         self.assertEqual(status, 200)
@@ -1272,6 +1275,78 @@ enabled = true
         self.auf_codex()
         self.srv.konfig.codex_config = config
         return config
+
+
+class AgentAnlegen(ServerBasis):
+    """Der Server legt einen eigenen Agenten aus dem Formular an: global oder in einem Projekt aus dem Inventar,
+    im Format des Harness, und überschreibt nie eine vorhandene Datei."""
+
+    def setUp(self):
+        super().setUp()
+        self.srv.agenten = {"claude-code": self.tmp / "home/.claude/agents", "codex": self.tmp / "home/.codex/agents"}  # nie das echte Home
+        self.projekt = self.tmp / "Kit"
+        self.projekt.mkdir()
+        self.inventar_mit_projekt()
+
+    def inventar_mit_projekt(self, skills=()):
+        datei = self.tmp / harness.HARNESSE[harness.aktuell(self.tmp)]["inventar"]
+        datei.write_text(json.dumps({"mcp": [], "plugins": [], "skills": list(skills), "projekt_skills": [], "projektordner": [str(self.projekt)]}))
+
+    def anlegen(self, **auftrag):
+        status, inhalt = self.anfrage("POST", "/api/agent", {"name": "code-pruefer", "beschreibung": 'Prüft Code: "streng" --- und knapp',
+                                                             "anweisung": "Du prüfst Code.\n---\nDu änderst nichts.", "modell": "sonnet",
+                                                             "ziel": "global", **auftrag})
+        return status, json.loads(inhalt)
+
+    def test_global_unter_claude_code(self):
+        status, antwort = self.anlegen()
+        datei = self.tmp / "home/.claude/agents/code-pruefer.md"
+        self.assertEqual((status, antwort["ok"]), (200, True), antwort)
+        text = datei.read_text()
+        # Beschreibung als JSON-String: Doppelpunkt, Anführungszeichen und „---“ beenden den Kopf nicht
+        self.assertEqual(text, '---\nname: code-pruefer\ndescription: "Prüft Code: \\"streng\\" --- und knapp"\nmodel: sonnet\n---\n\n'
+                               "Du prüfst Code.\n---\nDu änderst nichts.\n")
+        self.assertIn(str(datei), antwort["ausgabe"])
+
+    def test_im_projekt_aus_dem_inventar(self):
+        status, antwort = self.anlegen(ziel=str(self.projekt), modell="")
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertNotIn("model:", (self.projekt / ".claude/agents/code-pruefer.md").read_text())
+
+    def test_unter_codex_als_toml(self):
+        self.auf_codex()
+        self.inventar_mit_projekt()
+        status, antwort = self.anlegen(modell="gpt-5.5")
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual(tomllib.loads((self.tmp / "home/.codex/agents/code-pruefer.toml").read_text()), {
+            "name": "code-pruefer", "description": 'Prüft Code: "streng" --- und knapp', "model": "gpt-5.5",
+            "developer_instructions": "Du prüfst Code.\n---\nDu änderst nichts."})
+
+    def test_was_nicht_geht(self):
+        """Der Name wird ein Dateiname, das Ziel ein Ordner: Beides nimmt der Server nur so, wie er es kennt."""
+        for auftrag, grund in [({"name": "../weg"}, "Name"), ({"name": "Gross"}, "Name"), ({"beschreibung": "zwei\nZeilen"}, "Beschreibung"),
+                               ({"beschreibung": " "}, "Beschreibung"), ({"anweisung": ""}, "Anweisung"), ({"modell": "gpt"}, "Modell"),
+                               ({"ziel": str(self.tmp)}, "Projekt"), ({"ziel": 3}, "Projekt")]:
+            with self.subTest(auftrag=auftrag):
+                status, antwort = self.anlegen(**auftrag)
+                self.assertEqual((status, antwort["ok"]), (400, False))
+                self.assertIn(grund, antwort["ausgabe"])
+        self.assertFalse((self.tmp / "home").exists())
+        self.assertFalse((self.tmp / "weg.md").exists())
+
+    def test_ueberschreibt_nichts(self):
+        datei = self.tmp / "home/.claude/agents/code-pruefer.md"
+        datei.parent.mkdir(parents=True)
+        datei.write_text("vorher")
+        status, antwort = self.anlegen()
+        self.assertFalse(antwort["ok"])
+        self.assertEqual(datei.read_text(), "vorher")
+        # ein Agent dieses Namens in einer anderen Datei desselben Ordners: Claude Code kennte zwei gleichnamige
+        self.inventar_mit_projekt([{"id": "agent:code-pruefer", "name": "code-pruefer", "typ": "Agent", "pfad": str(self.tmp / "home/.claude/agents/alt.md")}])
+        datei.unlink()
+        status, antwort = self.anlegen()
+        self.assertFalse(antwort["ok"])
+        self.assertFalse(datei.exists())
 
 
 if __name__ == "__main__":

@@ -510,6 +510,12 @@ def mcp_server(cfg, plugin_liste, mcp_tage, direkt=None):
     return ergebnis
 
 
+def projektordner(cfg):
+    """Wohin der Server einen neuen Agenten legen darf: Projekte aus [projects], die es gibt, ohne das Home (dort ist er global)."""
+    projekte_cfg = cfg.get("projects") if isinstance(cfg.get("projects"), dict) else {}
+    return sorted(p for p in projekte_cfg if Path(p).is_dir() and Path(p).resolve() != HOME.resolve())
+
+
 def projekte(cfg, aus, autoren):
     """Was nur in Projekten aus [projects] gilt: Skills aus .agents/skills und .codex/skills laden immer,
     MCP-Server aus .codex/config.toml nur in vertrauten Projekten."""
@@ -738,6 +744,7 @@ def inventar():
         "overrides_verwaist": verwaiste_pfade(cfg),
         "mcp": mcp,
         "plugins": plugin_liste,
+        "projektordner": projektordner(cfg),
         "skills": skills,
         "projekt_skills": projekt_skills,
         "projekt_mcp": projekt_mcp,
