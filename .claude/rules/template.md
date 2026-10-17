@@ -22,12 +22,12 @@ Ihr Text ist gegliedert (`erklaert()`): ein Satz, worum es geht, dann je Begriff
 Als ein Absatz Fließtext war der Begriff, den man suchte, nicht zu finden.
 Eine neue Erläuterung deshalb nicht als Fließtext schreiben.
 Über jeder Tabelle steht ein Filter, der beim Scrollen unter dem Seitenkopf stehen bleibt (`position: sticky` mit `--kopf`).
-„Skills“ filtert seine Daten selbst und merkt sich die Wahl (`skillsFiltern()`); die Empfehlungen entstehen bei jeder Aktion neu und haben deshalb ein Suchfeld außerhalb von `#empf-inhalt` (`empfFiltern()`); alle anderen Tabellen stehen fertig im Dokument, und `tabellenFilter()` setzt ein Suchfeld davor und je Spalte mit `data-filter` im Tabellenkopf eine Auswahl aus den Werten, die in der Tabelle vorkommen.
+„Skills“, „Befehle“ und „Agenten“ filtern ihre Daten selbst und merken sich die Wahl (`LISTEN`, `renderListe()`, `listeFiltern()`, je Liste ein Zustand `F` und ein Schlüssel im Browser, Skills mit dem alten); die Empfehlungen entstehen bei jeder Aktion neu und haben deshalb ein Suchfeld außerhalb von `#empf-inhalt` (`empfFiltern()`); alle anderen Tabellen stehen fertig im Dokument, und `tabellenFilter()` setzt ein Suchfeld davor und je Spalte mit `data-filter` im Tabellenkopf eine Auswahl aus den Werten, die in der Tabelle vorkommen.
 Eine neue Tabelle bekommt den Filter also von selbst, eine Auswahl braucht nur das Attribut.
 Die Suche liest auch die aufgeklappten Einzelheiten einer Zeile mit (im Tab „Projekte“ findet `git push` die Projekte mit dieser Regel).
 Tabellen in aufgeklappten Zeilen bekommen keinen Filter, und diese Filter merken sich nichts.
 Sortiert wird jede fertige Tabelle, auch in Gruppen und aufgeklappten Zeilen (`tabellenSortieren()`, getrennt vom Filter, der diese auslässt): anfangs nach der ersten Spalte, per Klick nach ihr oder einer Spalte mit `class="zahl"`, wie bei „Skills“ (`sortKnopf()`, `sortMarke()`); die Einzelheiten (`tr.detail`, `tr.inhalt`) wandern mit ihrer Zeile, Zellen ohne Zahl („–“, „nie“) landen in beiden Richtungen hinten.
-„Skills“ sortiert seine Daten selbst und merkt sich die Wahl, die Empfehlungen entstehen bei jeder Aktion neu und behalten nur die Richtung des Namens (`EMPF_RICHTUNG`).
+Diese drei sortieren ihre Daten selbst und merken sich die Wahl, die Empfehlungen entstehen bei jeder Aktion neu und behalten nur die Richtung des Namens (`EMPF_RICHTUNG`).
 `seitenvergleich.py` klickt je Art nur die ersten 8 Knöpfe in der Reihenfolge der Seite: Nach einer Änderung der Sortierung sind das andere Knöpfe, und „Klicks“ meldet Unterschiede, obwohl sich kein Knopf anders verhält.
 Auch die Tabellenköpfe bleiben stehen, unter Seitenkopf und Filter (`--kopf` plus `--filter`, die Höhe des Filters, die ein `ResizeObserver` an das Element danach schreibt).
 Dafür hat `.tabelle` kein `overflow-x: auto` mehr, außer unter 900 Pixeln Breite: Mit `overflow` hinge der Kopf an diesem Kasten statt an der Seite.
@@ -76,3 +76,11 @@ Die Rückfragen bleiben getrennt, weil sie Verschiedenes erklären; der Weg dana
 `befehlText()` kennt deshalb nur die Schritte der Einträge aus `ALLE`; die fünf Schritte von Regeln und Anweisungen erreichen es nie, Zweige dafür wären toter Code.
 Dasselbe Skript prüft die Klicks an Regeln und Anweisungen: Es hängt ein Skript an die gefüllte Seite, das `fetch` und `frage()` ersetzt, jeden Knopf klickt und mitschreibt, was die Rückfrage sagt, was an den Server ginge und welche Meldung danach steht, je einmal mit Erfolg, Fehler und anderem Harness.
 Den `<dialog>` dabei nicht durchklicken: Sein `close` kommt in Brave ohne Fenster (`--virtual-time-budget`) verzögert an, und der Schritt landet beim nächsten Klick.
+
+## Skills, Befehle und Agenten
+
+Bis Oktober 2026 standen alle drei in einem Tab „Skills, Befehle und Agenten“, weil sie im Inventar eine Liste sind (`skills`, Feld `typ`).
+Befehle behandelt Claude Code wie Skills (Aufruf mit `/`, `skillOverrides`, `skillUsage`), Agenten nicht: Sie laufen als Subagent, lassen sich nur entfernen und zählen ihre Starts nur in 14 Tagen; der Knopf „Agent anlegen“ stand über lauter Skills.
+Jetzt entsteht je Typ ein Tab aus derselben Vorlage (`LISTEN`): gleiche Spalten und Zeilen, aber eigene Filter; „Aufruf“ fehlt bei Agenten (immer „als Subagent“), „beide Harnesses“ gibt es nur bei Skills, „ungenutzt“ nicht bei Agenten.
+Unter Codex fehlt der Tab „Befehle“ samt Link (`nav-befehle`): Codex kennt keine eigenen Befehle, die die Inventur liest.
+Die Tabellen tragen `tbody.eigene-liste`; daran lassen `tabellenFilter()` und `tabellenSortieren()` sie aus.

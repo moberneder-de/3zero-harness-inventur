@@ -355,6 +355,8 @@ try {
   <a href="#mcp">MCP-Server</a>
   <a href="#plugins">Plugins</a>
   <a href="#skills">Skills</a>
+  <a href="#befehle" id="nav-befehle">Befehle</a>
+  <a href="#agenten">Agenten</a>
   <a href="#hooks">Hooks</a>
   <a href="#mods">Mods</a>
   <a href="#anweisungen">Anweisungen</a>
@@ -550,7 +552,7 @@ function wahlFeld(e) {
 }
 const wahlZelle = e => AKTIONEN ? `<td>${wahlFeld(e)}</td>` : "";
 
-/* Filter über jeder Tabelle. „Skills“ filtert seine Daten selbst (skillsFiltern), die Empfehlungen entstehen bei jeder
+/* Filter über jeder Tabelle. Skills, Befehle und Agenten filtern ihre Daten selbst (listeFiltern), die Empfehlungen entstehen bei jeder
    Aktion neu (empfFiltern). Alle anderen Tabellen stehen fertig im Dokument: tabellenFilter() setzt ein Suchfeld
    davor, das im Text der Zeile und ihrer aufgeklappten Einzelheiten sucht, und je Spalte mit data-filter eine
    Auswahl aus den Werten, die in der Tabelle vorkommen. Tabellen in aufgeklappten Zeilen bekommen keinen. */
@@ -571,7 +573,7 @@ function sortMarke(th, aktiv, richtung) {
 }
 function tabellenFilter() {
   document.querySelectorAll("#app .tabelle").forEach(huelle => {
-    if (huelle.closest("tr, details, #empf-inhalt, #suche") || huelle.querySelector("#skills-body")) return;
+    if (huelle.closest("tr, details, #empf-inhalt, #suche") || huelle.querySelector(".eigene-liste")) return;
     const tabelle = huelle.querySelector("table");
     const zeilen = [...tabelle.tBodies[0].rows].filter(r => !r.matches(".detail, .inhalt"));
     const einzelheiten = r => r.nextElementSibling?.matches(".detail, .inhalt") ? r.nextElementSibling : null;
@@ -609,7 +611,7 @@ function tabellenFilter() {
    die Suche baut ihre Karten bei jedem Lauf neu. */
 function tabellenSortieren() {
   document.querySelectorAll("#app .tabelle > table").forEach(tabelle => {
-    if (tabelle.closest("#empf-inhalt, #suche") || tabelle.querySelector("#skills-body") || !tabelle.tHead || !tabelle.tBodies[0]) return;
+    if (tabelle.closest("#empf-inhalt, #suche") || tabelle.querySelector(".eigene-liste") || !tabelle.tHead || !tabelle.tBodies[0]) return;
     const zeilen = [...tabelle.tBodies[0].rows].filter(r => !r.matches(".detail, .inhalt"));
     const dazu = new Map(zeilen.map(r => [r, r.nextElementSibling?.matches(".detail, .inhalt") ? r.nextElementSibling : null]));
     const koepfe = [...tabelle.tHead.rows[0].cells].map((th, i) => [th, i]).filter(([th, i]) => i === 0 || th.classList.contains("zahl"));
@@ -715,7 +717,7 @@ function renderUeberblick() {
     last: `Tokens, die in jeder Sitzung laden: automatisch geladene Beschreibungen, SessionStart-Hooks, MCP-Anweisungen und Werkzeugnamen und deine globalen Anweisungen (${je("CLAUDE.md, Output-Style", "AGENTS.md")}). Ohne die eingebauten Skills und den Systemprompt des Harness. Geschätzt: Zeichen ÷ 4.`,
     empfehlungen: "Offene Empfehlungen aus der Bewertung: zum Entfernen, zum Abschalten (auch „nur manuell“) und zum Prüfen. Was schon umgesetzt ist, zählt nicht mehr.",
     sparen: "So viele Tokens je Sitzung fallen weg, wenn du alle Empfehlungen zum Entfernen und Abschalten umsetzt. Ohne „prüfen“: Dort fehlt noch deine Entscheidung.",
-    ungenutzt: `Skills, die ihre Beschreibung in jede Sitzung laden, seit ${D.ungenutzt_tage} Tagen nicht genutzt wurden und länger installiert sind, mit ihren Tokens je Sitzung. Im Tab Skills zeigt sie der Statusfilter „${UNGENUTZT}“.`,
+    ungenutzt: `Skills, die ihre Beschreibung in jede Sitzung laden, seit ${D.ungenutzt_tage} Tagen nicht genutzt wurden und länger installiert sind, mit ihren Tokens je Sitzung. In den Tabs Skills und Befehle zeigt sie der Statusfilter „${UNGENUTZT}“.`,
   };
   const kpis = `<div class="kpis">
     ${kpi(`${mcpAn}<small> / ${D.mcp.length}</small>`, "MCP-Server", `${je("verbunden", "aktiv")} / eingetragen`, GENAU.mcp)}
@@ -955,52 +957,69 @@ function renderPlugins() {
         ["Kontext", "Geschätzte Tokenzahl seiner Skill-Beschreibungen je Sitzung."]])));
 }
 
-/* Skills-Tabelle mit Filter und Sortierung */
-const F = { suche: "", quelle: "", status: "", aufruf: "", empf: "", geteilt: "", teile: true, sort: "name", richtung: 1 };
-/* Filter und Sortierung überleben das Neuladen, das nach jeder Aktion und nach „neu einlesen“ kommt; je Harness wie die Auswahl */
-const FILTER_SPEICHER = `3zero-harness-inventur:filter:${D.harness}`;
-const FILTERFELDER = [["f-suche", "suche"], ["f-quelle", "quelle"], ["f-status", "status"], ["f-aufruf", "aufruf"], ["f-empf", "empf"], ["f-geteilt", "geteilt"]];
-try {
-  const gemerkt = JSON.parse(localStorage.getItem(FILTER_SPEICHER)) || {};
-  for (const k in F) if (typeof gemerkt[k] === typeof F[k]) F[k] = gemerkt[k];
-} catch (_) { /* ohne Speicher gelten die Vorgaben */ }
-/* Skills aus ~/.agents/skills liegen für beide Harnesses im selben Ordner und laden deshalb in beiden */
-const GETEILT = je("auch in Codex", "auch in Claude Code");
+/* Skills, Befehle und Agenten: je ein Tab mit derselben Tabelle, aber eigenem Filter und eigener Sortierung. Befehle
+   behandelt Claude Code wie Skills (Aufruf mit /, skillOverrides, skillUsage); Agenten startet es als Subagent, und sie
+   lassen sich nur entfernen. In einer Liste stand „Agent anlegen“ über lauter Skills. Codex kennt keine eigenen Befehle. */
+const GETEILT = je("auch in Codex", "auch in Claude Code"); /* Skills aus ~/.agents/skills laden in beiden Harnesses */
 const UNGENUTZT = `seit ${D.ungenutzt_tage} Tagen ungenutzt`;
-function renderSkillsRahmen() {
-  const quellen = [...new Set(SKILLS.map(lieferweg))].sort((a, b) => a.localeCompare(b));
-  const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
-  const filter = `<div class="filter">
-    <input type="search" id="f-suche" placeholder="Name oder Text suchen …" aria-label="In Name und Beschreibung suchen">
-    <select id="f-quelle" aria-label="Herkunft">${opt(quellen, "alle Herkünfte")}</select>
-    <select id="f-status" aria-label="Status">${opt(["aktiv", "aus", "Update verfügbar", UNGENUTZT], "jeder Status")}</select>
-    <select id="f-aufruf" aria-label="Aufruf">${opt(je(["automatisch + /", "nur /", "nur automatisch", "als Subagent"], ["automatisch + $", "nur $", "als Subagent"]), "jeder Aufruf")}</select>
-    <select id="f-empf" aria-label="Empfehlung">${opt(["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}</select>
-    <select id="f-geteilt" aria-label="Gilt in beiden Harnesses">${opt([`nur für ${D.harness_name}`, GETEILT], "beide Harnesses")}</select>
-    <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
-    <span class="anzahl" id="f-anzahl"></span></div>`;
-  const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
-    .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}">${sortKnopf(t)}</th>`
-      : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
-  const neu = TOKEN ? '<p><button type="button" class="btn btn-outline" id="agent-neu">Agent anlegen</button></p>' : "";
-  return abschnitt("skills", "Skills, Befehle und Agenten",
-    neu + filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
-    je(erklaert("Globale Skills aus ~/.claude/skills (viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills.", [
+const LISTEN = [
+  { id: "skills", titel: "Skills", typen: ["Skill", "Harness"], aufrufe: je(["automatisch + /", "nur /", "nur automatisch"], ["automatisch + $", "nur $"]), geteilt: true },
+  ...(CODEX ? [] : [{ id: "befehle", titel: "Befehle", typen: ["Befehl"], aufrufe: ["automatisch + /", "nur /", "nur automatisch"] }]),
+  { id: "agenten", titel: "Agenten", typen: ["Agent"] },
+].map(L => ({ ...L, eintraege: SKILLS.filter(s => L.typen.includes(s.typ)),
+  /* Filter und Sortierung überleben das Neuladen nach jeder Aktion; je Harness wie die Auswahl. Skills behält den alten Schlüssel */
+  speicher: `3zero-harness-inventur:filter:${D.harness}` + (L.id === "skills" ? "" : ":" + L.id),
+  F: { suche: "", quelle: "", status: "", aufruf: "", empf: "", geteilt: "", teile: true, sort: "name", richtung: 1 } }));
+for (const L of LISTEN) {
+  try {
+    const gemerkt = JSON.parse(localStorage.getItem(L.speicher)) || {};
+    for (const k in L.F) if (typeof gemerkt[k] === typeof L.F[k]) L.F[k] = gemerkt[k];
+  } catch (_) { /* ohne Speicher gelten die Vorgaben */ }
+}
+const liste = id => LISTEN.find(L => L.id === id);
+const ERKLAERUNG = {
+  skills: je(erklaert("Globale Skills aus ~/.claude/skills (viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), die Skills der Plugins und die in Claude Code eingebauten Skills. Befehle und Agenten haben eigene Tabs.", [
         ["nur /", "Lädt erst, wenn du den Befehl eintippst."],
         ["Eingebaute Skills", `Lassen sich nicht deinstallieren. Ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`],
-        ["Agenten", `Eigene aus ~/.claude/agents und die aus Plugins. „Genutzt“ zählt bei ihnen die Starts in den Transkripten der letzten ${D.mess_tage} Tage.`],
-        ["Eingebaute Agenten", `Subagenten wie <code>general-purpose</code> oder <code>Explore</code>, die in keiner Datei stehen, aber in den letzten ${D.mess_tage} Tagen gestartet wurden. Ein gerade gelöschter eigener Agent steht hier, bis er aus diesem Fenster fällt.`],
         [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]]),
-      erklaert("Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system.", [
+      erklaert("Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, die Skills der Plugins und die in Codex eingebauten Skills aus ~/.codex/skills/.system. Agenten haben einen eigenen Tab.", [
         ["nur $", "Lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>)."],
         ["Genutzt", "Zählt Codex-Sitzungen."],
         ["Eingebaute Skills", "Lassen sich nicht deinstallieren."],
-        [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]])));
+        [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]])),
+  befehle: erklaert("Eigene Befehle aus ~/.claude/commands und die der Plugins. Claude Code behandelt sie wie Skills: Aufruf mit <code>/name</code>, abschalten und „nur manuell“ über <code>skillOverrides</code>.", [
+    ["nur /", "Lädt erst, wenn du den Befehl eintippst."]]),
+  agenten: je(erklaert("Eigene Agenten aus ~/.claude/agents, die der Plugins und die in Claude Code eingebauten. Claude startet sie als Subagent; einen einzelnen abschalten geht nicht, nur entfernen.", [
+      ["Genutzt", `Starts in den Transkripten der letzten ${D.mess_tage} Tage.`],
+      ["Eingebaute Agenten", `Subagenten wie <code>general-purpose</code> oder <code>Explore</code>, die in keiner Datei stehen, aber in den letzten ${D.mess_tage} Tagen gestartet wurden. Ein gerade gelöschter eigener Agent steht hier, bis er aus diesem Fenster fällt.`]]),
+    erklaert("Eigene Agenten aus ~/.codex/agents. Codex startet sie als Subagent; einen einzelnen abschalten geht nicht, nur alle zusammen (<code>agents.enabled</code>).", [
+      ["Kontext", "Ob Codex ihre Beschreibung in jede Sitzung lädt, sagt seine Doku nicht: Sie zählen nicht mit."]])),
+};
+function renderListe(L) {
+  const quellen = [...new Set(L.eintraege.map(lieferweg))].sort((a, b) => a.localeCompare(b));
+  const opt = (werte, leer) => `<option value="">${leer}</option>` + werte.map(w => `<option>${esc(w)}</option>`).join("");
+  const auswahl = (feld, label, werte, leer) => `<select data-feld="${feld}" aria-label="${label}">${opt(werte, leer)}</select>`;
+  const filter = `<div class="filter" data-liste="${L.id}">
+    <input type="search" data-feld="suche" placeholder="Name oder Text suchen …" aria-label="In Name und Beschreibung suchen">
+    ${auswahl("quelle", "Herkunft", quellen, "alle Herkünfte")}
+    ${auswahl("status", "Status", ["aktiv", "aus", "Update verfügbar", ...(L.id === "agenten" ? [] : [UNGENUTZT])], "jeder Status")}
+    ${L.aufrufe ? auswahl("aufruf", "Aufruf", L.aufrufe, "jeder Aufruf") : ""}
+    ${auswahl("empf", "Empfehlung", ["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}
+    ${L.geteilt ? auswahl("geteilt", "Gilt in beiden Harnesses", [`nur für ${D.harness_name}`, GETEILT], "beide Harnesses") : ""}
+    <label><input type="checkbox" data-feld="teile" checked> Plugin-Bestandteile</label>
+    <span class="anzahl"></span></div>`;
+  const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
+    .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}">${sortKnopf(t)}</th>`
+      : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
+  const neu = L.id === "agenten" && TOKEN ? '<p><button type="button" class="btn btn-outline" id="agent-neu">Agent anlegen</button></p>' : "";
+  return abschnitt(L.id, L.titel, neu + filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody class="eigene-liste"></tbody></table></div>`,
+    ERKLAERUNG[L.id]);
 }
-function skillsFiltern() {
-  try { localStorage.setItem(FILTER_SPEICHER, JSON.stringify(F)); } catch (_) { /* dann gilt er nur für diese Seite */ }
+function listeFiltern(L) {
+  const F = L.F;
+  try { localStorage.setItem(L.speicher, JSON.stringify(F)); } catch (_) { /* dann gilt er nur für diese Seite */ }
   const q = F.suche.toLowerCase();
-  const liste = SKILLS.filter(s => {
+  const treffer = L.eintraege.filter(s => {
     const empf = s.bewertung ? (s.wirksam?.empfehlung || "keine") : "unbewertet";
     return (F.teile || !s.plugin)
       && (!q || `${s.name} ${s.beschreibung || ""} ${s.bewertung?.was || ""}`.toLowerCase().includes(q))
@@ -1012,12 +1031,14 @@ function skillsFiltern() {
   });
   const zahlwert = s => F.sort === "tokens" ? s.tokens : F.sort === "nutzung" ? (s.nutzung?.anzahl || 0) : null;
   /* Namen über localeCompare wie in den übrigen Tabellen: mit > und < landen Umlaute hinter „z“ */
-  liste.sort((a, b) => (zahlwert(a) === null
+  treffer.sort((a, b) => (zahlwert(a) === null
     ? a.name.localeCompare(b.name)
     : (zahlwert(a) > zahlwert(b) ? 1 : zahlwert(a) < zahlwert(b) ? -1 : 0)) * F.richtung);
-  document.querySelectorAll("#skills th[data-sort]").forEach(th => sortMarke(th, th.dataset.sort === F.sort, F.richtung));
-  document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
-  document.getElementById("skills-body").innerHTML = liste.map(s => {
+  const sektion = document.getElementById(L.id);
+  sektion.querySelectorAll("th[data-sort]").forEach(th => sortMarke(th, th.dataset.sort === F.sort, F.richtung));
+  sektion.querySelector(".filter .anzahl").textContent = `${treffer.length} von ${L.eintraege.length}`;
+  const leer = `<tr><td colspan="${7 + SP}" class="leer">${L.eintraege.length ? "Kein Eintrag passt zu diesem Filter." : `Keine ${esc(L.titel)} gefunden.`}</td></tr>`;
+  sektion.querySelector("tbody.eigene-liste").innerHTML = treffer.length ? treffer.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
     return `<tr class="haupt"><td class="name">${aufklapp(s.name)}<div class="klein">${esc(s.typ)}${s.status === "aus" ? " · aus" : ""}</div>
         ${s.reife ? `<span class="tag">${esc(s.reife)}</span>` : ""}${s.update ? '<span class="tag">Update verfügbar</span>' : ""}${s.ungenutzt ? `<span class="tag" title="${esc(UNGENUTZT)}, lädt aber in jede Sitzung">ungenutzt</span>` : ""}${s.geteilt ? `<span class="tag">${esc(GETEILT)}</span>` : ""}</td>
@@ -1034,7 +1055,7 @@ function skillsFiltern() {
         ["Datei", s.pfad ? `<code>${esc(s.pfad)}</code>` : ""],
         ["Umsetzen", s.befehl ? befehlZeile(s.befehl) : ""],
       ]);
-  }).join("");
+  }).join("") : leer;
 }
 
 /* Alles, was nur in einem Projekt gilt, je Projekt: zusätzliche Skills, Befehle und MCP-Server, dazu dort abgeschaltete globale Server */
@@ -1689,7 +1710,7 @@ function agentFormular() {
   const ziele = ['<option value="global">global, in jedem Projekt</option>', ...(D.projektordner || []).map(p => `<option value="${esc(p)}">${esc(kurzPfad(p))}</option>`)];
   const feld = (id, titel, eingabe, hinweis = "") => `<div class="feld"><label for="${id}">${titel}</label>${eingabe}${hinweis ? `<span class="klein">${hinweis}</span>` : ""}</div>`;
   d.innerHTML = `<h3 id="agent-titel">Agent anlegen</h3>
-    <p class="klein">Legt eine Datei an, die ${je("Claude", "Codex")} als Subagent starten kann. Danach steht der Agent im Tab „Skills“.</p>
+    <p class="klein">Legt eine Datei an, die ${je("Claude", "Codex")} als Subagent starten kann. Danach steht er im Tab „Agenten“.</p>
     <form method="dialog" class="felder">
       ${feld("agent-name", "Name", '<input id="agent-name" name="name" required maxlength="64" pattern="[a-z0-9][a-z0-9\\-]*" placeholder="code-pruefer" autofocus>',
         "Wird auch der Dateiname: Kleinbuchstaben, Ziffern und Bindestriche.")}
@@ -1711,7 +1732,7 @@ async function agentAnlegen() {
   if (!f) return;
   const datei = `${f.ziel === "global" ? je("~/.claude", "~/.codex") : kurzPfad(f.ziel) + je("/.claude", "/.codex")}/agents/${f.name}.${je("md", "toml")}`;
   if (!await frage("Agent anlegen?", `${datei} wird neu angelegt. ${f.ziel === "global" ? "Der Agent gilt in jedem Projekt." : "Die Datei liegt im Projektordner, also auch im Repo."}\n\n`
-    + "Eine vorhandene Datei überschreibt der Server nicht. Entfernen lässt sich der Agent danach im Tab „Skills“.", "anlegen", [f.beschreibung])) return;
+    + "Eine vorhandene Datei überschreibt der Server nicht. Entfernen lässt sich der Agent danach im Tab „Agenten“.", "anlegen", [f.beschreibung])) return;
   await mitSperre(async () => {
     const r = await api("/api/agent", f);
     if (r.harnessWechsel) return harnessGewechselt(r);
@@ -1808,7 +1829,7 @@ function renderHilfe() {
     </ul>`], ["Bestand lesen", `<ul>
       <li>Ein Klick auf eine Zeile, oder Enter auf ihrem Namen, klappt die Details auf, je nach Tabelle etwa Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen.</li>
       <li>Herkunft zeigt, wie ein Skill auf den Rechner kam, und damit, wie er wieder geht: <b>Plugin …</b> kommt mit einem Plugin, <b>Besitzer/Repo</b> per <code>npx skills</code> von GitHub, <b>eigen</b> als Symlink in eines deiner Repos, <b>im Projekt</b> liegt im Projektordner, <b>unbekannt</b> ist eine Kopie ohne Beleg, <b>Anthropic/Claude Code</b> ist in Claude Code eingebaut. Den Autor nennen die Details.</li>
-      <li>In der Skills-Tabelle steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese. Filter und Sortierung merkt sich die Seite.</li>
+      <li>In den Tabellen Skills, Befehle und Agenten steht unter dem Namen die Art (Skill, Befehl, Agent, Harness) und, falls zutreffend, „aus“, der Upstream-Status oder „Update verfügbar“. Der Statusfilter darüber zeigt auf Wunsch nur Skills mit Update. „ungenutzt“ heißt: lädt in jede Sitzung, wurde aber seit ${D.ungenutzt_tage} Tagen nicht genutzt und ist länger installiert; der Statusfilter zeigt nur diese. Filter und Sortierung merkt sich die Seite.</li>
       <li>Eingebaute Skills (Harness) stehen zum Vergleich in der Liste. Sie lassen sich nicht deinstallieren und haben deshalb keine Empfehlung.</li>
       <li>Die Tabs stehen in Gruppen: „Aufräumen“ (Empfehlungen, Überschneidungen, Hinweise), „Bestand“ (MCP-Server, Plugins, Skills, Hooks, Mods, Anweisungen) und „Einstellungen“ (Berechtigungen, Modelle, Versionen); die zweite Zeile zeigt die Tabs der gewählten Gruppe.</li>
       <li>Der Tab „Projekte“ zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt, ${je("seine Regeln und ", "")}die Modelle, die dort liefen. Die Tabs unter „Bestand“ zeigen, was global gilt.</li>
@@ -1921,15 +1942,23 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + renderSkillsRahmen() + renderHooks() + renderMods() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + LISTEN.map(renderListe).join("") + renderHooks() + renderMods() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
-for (const [id, feld] of FILTERFELDER) {
-  const el = document.getElementById(id);
-  el.value = F[feld];
-  if (el.value !== F[feld]) F[feld] = "";
+for (const L of LISTEN) {
+  document.querySelectorAll(`.filter[data-liste="${L.id}"] [data-feld]`).forEach(el => {
+    const feld = el.dataset.feld, haken = el.type === "checkbox";
+    if (haken) el.checked = L.F[feld];
+    else {
+      el.value = L.F[feld];
+      if (el.value !== L.F[feld]) L.F[feld] = "";
+    }
+    el.addEventListener(haken ? "change" : "input", () => { L.F[feld] = haken ? el.checked : el.value; listeFiltern(L); });
+  });
+  /* ein gemerkter Wert für ein Feld, das diese Liste nicht hat (etwa „Aufruf“ bei Agenten), filtert nicht unsichtbar weiter */
+  for (const feld of ["aufruf", "geteilt"]) if (!document.querySelector(`.filter[data-liste="${L.id}"] [data-feld="${feld}"]`)) L.F[feld] = "";
+  listeFiltern(L);
 }
-document.getElementById("f-teile").checked = F.teile;
-skillsFiltern();
+if (CODEX) document.getElementById("nav-befehle").remove(); /* Codex kennt keine eigenen Befehle */
 tabellenFilter();
 tabellenSortieren();
 document.getElementById("empf-suche").addEventListener("input", empfFiltern);
@@ -1995,9 +2024,10 @@ document.addEventListener("click", ev => {
   }
   const th = ev.target.closest("th[data-sort]");
   if (th) {
+    const L = liste(th.closest("section").id), F = L.F;
     F.richtung = F.sort === th.dataset.sort ? -F.richtung : (th.dataset.sort === "name" ? 1 : -1);
     F.sort = th.dataset.sort;
-    skillsFiltern();
+    listeFiltern(L);
     return;
   }
   if (ev.target.closest("#agent-neu")) { agentAnlegen(); return; }
@@ -2014,10 +2044,6 @@ function klappe(zeile) {
   zeile.classList.toggle("offen", !detail.hidden);
   zeile.querySelector("button.aufklappen")?.setAttribute("aria-expanded", !detail.hidden);
 }
-for (const [id, feld] of FILTERFELDER) {
-  document.getElementById(id).addEventListener("input", ev => { F[feld] = ev.target.value; skillsFiltern(); });
-}
-document.getElementById("f-teile").addEventListener("change", ev => { F.teile = ev.target.checked; skillsFiltern(); });
 
 if (TOKEN) {
   document.addEventListener("change", ev => {
