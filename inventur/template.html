@@ -532,6 +532,16 @@ const zeilenText = zeile => ohne(zeile, "select, button.zeilenknopf, button.kopi
 /* eine Zelle kann mehrere Marken tragen („breit“ und „doppelt“): Jede ist ein eigener Wert */
 const zellWerte = td => { const marken = [...td.querySelectorAll(".status, .badge")];
   return (marken.length ? marken : [td]).map(el => ohne(el, "[aria-hidden], select, .klein, .geerbt, button.zeilenknopf, button.kopieren")).filter(w => w && w !== "–"); };
+/* Sortieren wie bei „Skills“: nach dem Namen (erste Spalte) und nach Zahlenspalten. Zahlen stehen deutsch formatiert
+   da („≈ 1.234“, „12,5 %“); ohne Zahl („–“) landet die Zeile hinten, in beiden Richtungen. */
+const zellName = td => ohne(td, "[aria-hidden], select, .klein, .tag, button.zeilenknopf, button.kopieren");
+const zellZahl = td => { const m = ohne(td, "[aria-hidden]").replace(/\.(?=\d{3})/g, "").replace(",", ".").match(/-?\d+(\.\d+)?/); return m ? Number(m[0]) : null; };
+const sortKnopf = text => `<button type="button" class="sortieren">${text} <span class="richtung" aria-hidden="true">↕</span></button>`;
+function sortMarke(th, aktiv, richtung) {
+  if (aktiv) th.setAttribute("aria-sort", richtung === 1 ? "ascending" : "descending");
+  else th.removeAttribute("aria-sort");
+  th.querySelector(".richtung").textContent = aktiv ? (richtung === 1 ? "↑" : "↓") : "↕";
+}
 function tabellenFilter() {
   document.querySelectorAll("#app .tabelle").forEach(huelle => {
     if (huelle.closest("tr, details, #empf-inhalt, #suche") || huelle.querySelector("#skills-body")) return;
@@ -565,6 +575,38 @@ function tabellenFilter() {
     };
     leiste.addEventListener("input", anwenden);
     anwenden();
+  });
+}
+/* Jede fertige Tabelle, auch in Gruppen und aufgeklappten Zeilen, ist anfangs nach dem Namen sortiert; die
+   aufgeklappten Einzelheiten wandern mit ihrer Zeile. „Skills“ und die Empfehlungen sortieren ihre Daten selbst,
+   die Suche baut ihre Karten bei jedem Lauf neu. */
+function tabellenSortieren() {
+  document.querySelectorAll("#app .tabelle > table").forEach(tabelle => {
+    if (tabelle.closest("#empf-inhalt, #suche") || tabelle.querySelector("#skills-body") || !tabelle.tHead || !tabelle.tBodies[0]) return;
+    const zeilen = [...tabelle.tBodies[0].rows].filter(r => !r.matches(".detail, .inhalt"));
+    const dazu = new Map(zeilen.map(r => [r, r.nextElementSibling?.matches(".detail, .inhalt") ? r.nextElementSibling : null]));
+    const koepfe = [...tabelle.tHead.rows[0].cells].map((th, i) => [th, i]).filter(([th, i]) => i === 0 || th.classList.contains("zahl"));
+    let spalte = 0, richtung = 1;
+    const sortieren = () => {
+      const zahlen = new Map(zeilen.map(r => [r, spalte ? zellZahl(r.cells[spalte]) : null]));
+      zeilen.sort((a, b) => {
+        if (!spalte) return zellName(a.cells[0]).localeCompare(zellName(b.cells[0]), "de", { numeric: true }) * richtung;
+        const [x, y] = [zahlen.get(a), zahlen.get(b)];
+        return x === y ? 0 : x === null ? 1 : y === null ? -1 : (x - y) * richtung;
+      });
+      zeilen.forEach(r => tabelle.tBodies[0].append(r, ...(dazu.get(r) ? [dazu.get(r)] : [])));
+      koepfe.forEach(([th, i]) => sortMarke(th, i === spalte, richtung));
+    };
+    for (const [th, i] of koepfe) {
+      th.classList.add("sortierbar");
+      th.innerHTML = sortKnopf(th.innerHTML);
+      th.addEventListener("click", () => {
+        richtung = spalte === i ? -richtung : (i === 0 ? 1 : -1);
+        spalte = i;
+        sortieren();
+      });
+    }
+    sortieren();
   });
 }
 function empfFiltern() {
@@ -719,6 +761,7 @@ function empfZeile(e) {
     <td style="min-width:250px">${AKTIONEN ? wahlFeld(e) + befehl : befehlZeile(e.befehl)}</td>
     ${AKTIONEN ? `<td>${ausfuehrZelle(e)}</td>` : ""}</tr>`;
 }
+let EMPF_RICHTUNG = 1; /* die Empfehlungen entstehen bei jeder Aktion neu: Die Richtung des Namens überdauert das */
 function renderEmpfInhalt() {
   let html = "";
   const typen = ["entfernen", "abschalten", "nur manuell", "prüfen"];
@@ -727,19 +770,20 @@ function renderEmpfInhalt() {
   /* alles mit Aktion, das in keiner der Empfehlungsgruppen steht */
   gruppen.push(["selbst gewählt", ALLE.filter(e => gewaehlt(e) && !offen(e))]);
   for (const [typ, roh] of gruppen) {
-    const liste = roh.sort((a, b) => a.name.localeCompare(b.name));
+    const liste = roh.sort((a, b) => a.name.localeCompare(b.name) * EMPF_RICHTUNG);
     if (!liste.length) continue;
     const shell = liste.map(e => e.befehl).filter(b => !b.includes("→"));
     const alle = shell.length > 1 && (typ === "entfernen" || typ === "prüfen")
       ? `<button type="button" class="kopieren" data-copy="${esc(shell.join("\n"))}">alle ${shell.length} Befehle kopieren</button>` : "";
     html += `<div class="empf-gruppe"><div class="kopf"><h3>${typ === "selbst gewählt" ? '<span class="badge e-neu">selbst gewählt</span>' : empfMarke({ empfehlung: typ })} ${liste.length} Einträge</h3>${alle}</div>
       <p>${GRUPPEN_TEXT[typ]}</p>
-      <div class="tabelle"><table><thead><tr><th>Name</th><th>Was es macht</th><th>Warum</th><th>${AKTIONEN ? "Aktion" : "Befehl"}</th>${AKTIONEN ? "<th>Ausführen</th>" : ""}</tr></thead>
+      <div class="tabelle"><table><thead><tr><th class="sortierbar" data-empf-sort>${sortKnopf("Name")}</th><th>Was es macht</th><th>Warum</th><th>${AKTIONEN ? "Aktion" : "Befehl"}</th>${AKTIONEN ? "<th>Ausführen</th>" : ""}</tr></thead>
       <tbody>${liste.map(empfZeile).join("")}</tbody></table></div></div>`;
   }
   const erledigt = ALLE.filter(e => e.umgesetzt).map(e => e.name).sort((a, b) => a.localeCompare(b));
   if (erledigt.length) html += `<p class="klein">Schon umgesetzt: ${erledigt.map(esc).join(", ")}.</p>`;
   document.getElementById("empf-inhalt").innerHTML = html || '<p class="leer">Keine offenen Empfehlungen.</p>';
+  document.querySelectorAll("#empf-inhalt th[data-empf-sort]").forEach(th => sortMarke(th, true, EMPF_RICHTUNG));
   empfFiltern();
   if (TOKEN) {
     const offen = warteschlange().filter(e => !ERGEBNIS.get(e.id)?.ok).length;
@@ -909,7 +953,7 @@ function renderSkillsRahmen() {
     <label><input type="checkbox" id="f-teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl" id="f-anzahl"></span></div>`;
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
-    .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}"><button type="button" class="sortieren">${t} <span class="richtung" aria-hidden="true">↕</span></button></th>`
+    .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}">${sortKnopf(t)}</th>`
       : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
   return abschnitt("skills", "Skills, Befehle und Agenten",
     filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
@@ -941,12 +985,7 @@ function skillsFiltern() {
   liste.sort((a, b) => (zahlwert(a) === null
     ? a.name.localeCompare(b.name)
     : (zahlwert(a) > zahlwert(b) ? 1 : zahlwert(a) < zahlwert(b) ? -1 : 0)) * F.richtung);
-  document.querySelectorAll("#skills th[data-sort]").forEach(th => {
-    const aktiv = th.dataset.sort === F.sort;
-    if (aktiv) th.setAttribute("aria-sort", F.richtung === 1 ? "ascending" : "descending");
-    else th.removeAttribute("aria-sort");
-    th.querySelector(".richtung").textContent = aktiv ? (F.richtung === 1 ? "↑" : "↓") : "↕";
-  });
+  document.querySelectorAll("#skills th[data-sort]").forEach(th => sortMarke(th, th.dataset.sort === F.sort, F.richtung));
   document.getElementById("f-anzahl").textContent = `${liste.length} von ${SKILLS.length}`;
   document.getElementById("skills-body").innerHTML = liste.map(s => {
     const kontext = s.tokens ? `≈ ${zahl(s.tokens)}` : '<span class="leer">–</span>';
@@ -1820,6 +1859,7 @@ for (const [id, feld] of FILTERFELDER) {
 document.getElementById("f-teile").checked = F.teile;
 skillsFiltern();
 tabellenFilter();
+tabellenSortieren();
 document.getElementById("empf-suche").addEventListener("input", empfFiltern);
 /* Der Tabellenkopf steht unter dem Filter: dessen Höhe (er bricht um) als --filter an dem Element danach.
    Beim Wechsel von Tab und Reiter sofort, nicht erst mit dem nächsten Bild: Sonst läge der Kopf kurz unter dem Filter. */
@@ -1876,6 +1916,11 @@ document.addEventListener("click", ev => {
   }
   const reiter = ev.target.closest('[role="tab"]');
   if (reiter) { waehleReiter(reiter); return; }
+  if (ev.target.closest("th[data-empf-sort]")) {
+    EMPF_RICHTUNG = -EMPF_RICHTUNG;
+    renderEmpfInhalt();
+    return;
+  }
   const th = ev.target.closest("th[data-sort]");
   if (th) {
     F.richtung = F.sort === th.dataset.sort ? -F.richtung : (th.dataset.sort === "name" ? 1 : -1);
