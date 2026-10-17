@@ -1,6 +1,6 @@
 ---
 name: 3zero-harness-inventur
-description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen). Mit „suche <Bedarf>“ sucht er neue Skills, Plugins und MCP-Server, gleicht sie mit dem Bestand ab und installiert nach Bestätigung.
+description: Aktualisiert das HTML-Dashboard der installierten MCP-Server, Plugins, Skills, Projekt-Skills und Hooks und zieht die Bewertung nach (Beschreibung, Überschneidungen, Empfehlungen). Mit „suche <Bedarf>“ sucht er neue Skills, Plugins, Agenten und MCP-Server, gleicht sie mit dem Bestand ab und installiert nach Bestätigung.
 disable-model-invocation: true
 argument-hint: "[suche <Bedarf> | wochenlauf einrichten | wochenlauf entfernen]"
 ---
@@ -117,6 +117,7 @@ Fertig, wenn: feststeht, was der Bestand schon abdeckt und was fehlt.
 - Skills: `npx -y skills find <Stichwörter>` (zeigt Installationen je Skill), mehrere Formulierungen. Was ein Repo sonst enthält: `npx -y skills add <owner/repo> -l`. Das `-y` gilt dem Nachladen von `skills` selbst: Ohne den Schalter fragt npx, und in einem Lauf ohne Terminal scheitert der Befehl daran. Es installiert nichts in die Konfiguration.
 - Plugins: In Claude Code `claude plugin list --json --available` und in `available` nach Name und Beschreibung filtern. In Codex die Marktplatz-Dateien lesen: `~/.codex/.tmp/plugins/.agents/plugins/marketplace.json`, `~/.codex/.tmp/bundled-marketplaces/*/.agents/plugins/marketplace.json` und den Online-Katalog `~/.codex/cache/remote_plugin_catalog/*.json` (groß: mit `jq` oder `grep` nach Name und Beschreibung filtern).
 - MCP-Server: Die CLI hat keine Suche. Suche im Web nach einem offiziellen Server des Anbieters und nimm den Installationsbefehl aus dessen Doku.
+- Agenten: Sie kommen mit einem Plugin (dann ist der Kandidat das Plugin) oder als einzelne Datei in einem GitHub-Repo, für Claude Code als Markdown mit Kopf (`name`, `description`), für Codex als TOML (`name`, `description`, `developer_instructions`). Suche im Web und auf GitHub und nenne Repo und Pfad der Datei.
 
 Führe die Suchbefehle aus einem Ordner außerhalb von `~` aus.
 
@@ -130,7 +131,7 @@ Belege je Kandidat, bevor du ihn nennst:
 - Verbreitung: ab 1.000 Installationen, unter 100 skeptisch. Bekannte Quellen (`anthropics`, `vercel-labs`, `microsoft`, offizielle Marktplätze, Anbieter selbst) vor unbekannten.
 - Pflege: `gh api repos/<owner>/<repo> -q '.stargazers_count, .pushed_at'` (ohne `gh`: `curl -s https://api.github.com/repos/<owner>/<repo>`). Unter 100 Sternen oder ohne Commit seit Monaten skeptisch.
 - Reife: liegt der Skill in `in-progress`, `experimental` oder `deprecated`?
-- Kosten: Beschreibung ÷ 4 Tokens je Sitzung, `disable-model-invocation` kostet nichts. Bei MCP-Servern: worauf sie zugreifen und welche Anmeldung sie brauchen.
+- Kosten: Beschreibung ÷ 4 Tokens je Sitzung, `disable-model-invocation` kostet nichts. Bei MCP-Servern: worauf sie zugreifen und welche Anmeldung sie brauchen. Bei Agenten: welche Werkzeuge sie bekommen (`tools` im Kopf) und ob die Anweisung Dateien ändern oder Befehle ausführen lässt.
 - Überschneidung: mit welchen IDs aus dem Bestand.
 
 Fertig, wenn: höchstens drei Kandidaten mit Belegen übrig sind, oder keiner.
@@ -148,8 +149,9 @@ Nur, was der Benutzer bestätigt hat:
 - Skill: `npx skills add <owner/repo> --skill <name> -g -y --agent <agent>` mit `<agent>` = `claude-code` bzw. `codex`
 - Plugin: in Claude Code `claude plugin install <name>@<marktplatz>`, in Codex `codex plugin add <name>@<marktplatz>`
 - MCP-Server: den Befehl aus der Doku des Anbieters, in Claude Code mit `-s user`, in Codex `codex mcp add …`
+- Agent: die Datei vom letzten Commit, an dem sie sich änderte, nach `~/.claude/agents/<name>.md` bzw. `~/.codex/agents/<name>.toml`, mit `<name>` aus ihrem Kopf; vorher den ganzen Text zeigen, eine vorhandene Datei nicht überschreiben. Im Dashboard übernimmt das der Server.
 
-Fertig, wenn: der Eintrag in `npx skills list -g`, `claude plugin list` / `codex plugin list` oder `claude mcp list` / `codex mcp list` erscheint.
+Fertig, wenn: der Eintrag in `npx skills list -g`, `claude plugin list` / `codex plugin list` oder `claude mcp list` / `codex mcp list` erscheint, bei einem Agenten seine Datei im Ordner liegt.
 
 ### S7. Inventur nachziehen
 

@@ -1349,5 +1349,97 @@ class AgentAnlegen(ServerBasis):
         self.assertFalse(datei.exists())
 
 
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+AGENT_MD = "---\nname: code-reviewer\ndescription: Prüft Code\n---\nDu prüfst Code.\n"
+AGENT_TOML = 'name = "code-reviewer"\ndescription = "Prüft Code"\ndeveloper_instructions = "Du prüfst Code."\n'
+
+
+class AgentAusDerSuche(ServerBasis):
+    """Ein Agent aus der Suche ist eine einzelne Datei in einem Repo. Der Server lädt sie auf einem festen Commit, die
+    Seite zeigt den Text, und installiert wird genau dieser Text, ohne ein zweites Mal zu laden."""
+
+    def setUp(self):
+        super().setUp()
+        self.srv.agenten = {"claude-code": self.tmp / "home/.claude/agents", "codex": self.tmp / "home/.codex/agents"}
+        self.abrufe = []
+
+    def kandidat(self, pfad="agents/code-reviewer.md", repo="acme/agents"):
+        self.srv.kandidaten = [server.geprueft({"art": "agent", "name": "code-reviewer", "was": "prüft", "befehl": "", "repo": repo, "pfad": pfad})]
+
+    def netz(self, text):
+        def abruf(url):
+            self.abrufe.append(url)
+            if "/commits?" in url:
+                return json.dumps([{"sha": COMMIT}])
+            return text
+        return mock.patch.object(server, "github_text", abruf)
+
+    def post(self, pfad, daten):
+        status, inhalt = self.anfrage("POST", pfad, daten)
+        return status, json.loads(inhalt)
+
+    def test_installierbar_nur_mit_harmlosem_pfad(self):
+        ok = lambda pfad: server.installierbar({"art": "agent", "repo": "acme/agents", "pfad": pfad})
+        self.assertTrue(ok("agents/code-reviewer.md") and ok(".claude/agents/x.md") and ok("x.toml"))
+        for pfad in ("../x.md", "/x.md", "a//x.md", "a/./x.md", "x.sh", "x.md?y", "a b.md", None):
+            with self.subTest(pfad=pfad):
+                self.assertFalse(ok(pfad))
+        self.assertFalse(server.installierbar({"art": "agent", "repo": "acme/../x", "pfad": "x.md"}))
+
+    def test_ansehen_dann_genau_diesen_text_installieren(self):
+        self.kandidat()
+        status, antwort = self.post("/api/installieren", {"nr": 0})
+        self.assertFalse(antwort["ok"])  # ohne Ansehen kein Installieren
+        with self.netz(AGENT_MD):
+            status, antwort = self.post("/api/agent_vorschau", {"nr": 0})
+        self.assertEqual((status, antwort["ok"], antwort["text"], antwort["commit"]), (200, True, AGENT_MD, COMMIT), antwort)
+        self.assertEqual(self.abrufe, ["https://api.github.com/repos/acme/agents/commits?path=agents/code-reviewer.md&per_page=1",
+                                       f"https://raw.githubusercontent.com/acme/agents/{COMMIT}/agents/code-reviewer.md"])
+        with self.netz("---\nname: anders\n---\nAnderer Text\n"):  # was danach im Repo steht, zählt nicht mehr
+            status, antwort = self.post("/api/installieren", {"nr": 0})
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual((self.tmp / "home/.claude/agents/code-reviewer.md").read_text(), AGENT_MD)
+        self.assertEqual(len(self.abrufe), 2)
+
+    def test_suchlauf_bringt_keine_eigene_vorschau_mit(self):
+        """Der Suchlauf liest fremde Webseiten: Ein Feld `vorschau` von dort hieße Text und Ziel ungesehen schreiben."""
+        ziel = self.tmp / "untergeschoben.md"
+        k = server.geprueft({"art": "agent", "name": "x", "was": "", "befehl": "", "repo": "acme/agents", "pfad": "x.md",
+                             "vorschau": {"text": "böse", "datei": str(ziel), "commit": COMMIT}, "installiert": True})
+        self.assertEqual(sorted(k), ["art", "befehl", "belege", "installierbar", "name", "pfad", "repo", "was"])
+        self.srv.kandidaten = [k]
+        self.assertFalse(self.post("/api/installieren", {"nr": 0})[1]["ok"])
+        self.assertFalse(ziel.exists())
+
+    def test_unter_codex_als_toml(self):
+        self.auf_codex()
+        self.kandidat("codex/code-reviewer.toml")
+        with self.netz(AGENT_TOML):
+            self.assertTrue(self.post("/api/agent_vorschau", {"nr": 0})[1]["ok"])
+        self.assertTrue(self.post("/api/installieren", {"nr": 0})[1]["ok"])
+        self.assertEqual((self.tmp / "home/.codex/agents/code-reviewer.toml").read_text(), AGENT_TOML)
+
+    def test_was_nicht_geht(self):
+        """Der Name im Kopf wird der Dateiname; eine Datei im Format des anderen Harness lädt hier nicht."""
+        for pfad, text, grund in [("agents/x.md", "---\nname: ../weg\ndescription: d\n---\nx\n", "Name"),
+                                  ("agents/x.md", "kein Kopf\n", "Kopf"),
+                                  ("agents/x.toml", AGENT_TOML, "Format"),
+                                  ("agents/x.md", "---\nname: x\n---\nohne Beschreibung\n", "Beschreibung")]:
+            with self.subTest(text=text):
+                self.kandidat(pfad)
+                with self.netz(text):
+                    status, antwort = self.post("/api/agent_vorschau", {"nr": 0})
+                self.assertFalse(antwort["ok"])
+                self.assertIn(grund, antwort["ausgabe"])
+                self.assertFalse(self.post("/api/installieren", {"nr": 0})[1]["ok"])
+        datei = self.tmp / "home/.claude/agents/code-reviewer.md"
+        datei.parent.mkdir(parents=True)
+        datei.write_text("vorher")
+        self.kandidat()
+        with self.netz(AGENT_MD):
+            self.assertFalse(self.post("/api/agent_vorschau", {"nr": 0})[1]["ok"])
+        self.assertEqual(datei.read_text(), "vorher")
+
+
 if __name__ == "__main__":
     unittest.main()
