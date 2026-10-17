@@ -520,7 +520,8 @@ class Inventar(CodexOrdner):
         with mock.patch.object(codex, "updates_markieren"):
             daten = codex.inventar()
         self.assertEqual(sorted(daten), ["bewertung_stand", "config_lesbar", "eingebaut", "entfallen", "gruppen", "hinweise", "hooks",
-                                         "live_status", "mcp", "mess_tage", "overrides_verwaist", "plugins", "projekt_hooks", "projekt_mcp", "projekt_skills", "skills", "unbewertet"])
+                                         "live_status", "mcp", "mess_tage", "overrides_verwaist", "plugins", "projekt_hooks", "projekt_mcp", "projekt_skills", "projektordner", "skills", "unbewertet"])
+        self.assertEqual(daten["projektordner"], [])
         self.assertEqual((daten["unbewertet"], daten["entfallen"], daten["live_status"], daten["bewertung_stand"]),
                          (["mcp:node_repl"], ["skill:weg"], None, "2026-09-15"))
         g = daten["skills"][0]
@@ -547,6 +548,7 @@ class Agenten(CodexOrdner):
         self.assertEqual(codex.aktionen(g), {"deinstallieren": {"papierkorb": pfad}})
         self.assertEqual(codex.befehl(g, "abschalten"), codex.papierkorb_befehl(codex.shellwort(pfad)))
         skills, _ = codex.projekte({"projects": {str(kit): {"trust_level": "trusted"}}}, (set(), set()), {})
+        self.assertEqual(codex.projektordner({"projects": {str(kit): {}, str(self.home): {}, str(self.tmp / "weg"): {}}}), [str(kit)])
         eintraege = {e["id"]: e for e in skills}
         self.assertEqual(sorted(eintraege), ["agent:Kit/tester", "skill:Kit/tester"])
         self.assertEqual(codex.aktionen(eintraege["agent:Kit/tester"]), {"deinstallieren": {"papierkorb": str(kit / ".codex/agents/tester.toml")}})

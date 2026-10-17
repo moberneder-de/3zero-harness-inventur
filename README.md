@@ -83,6 +83,8 @@ Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in
 
 Schreibt der Server selbst in eine Konfigurationsdatei, legt er vorher eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, die letzten 10 bleiben), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Aktionen über `claude`, `codex` oder `npx skills` schreiben mit den Mitteln dieser Programme, ohne eigene Sicherung. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen. Der Server läuft unter macOS und Linux, unter Windows startet er nicht. Alles wirkt ab der nächsten Sitzung.
 
+Im Tab **Skills** legt **Agent anlegen** einen eigenen Agenten an: Name, Beschreibung, Anweisung und Modell, global oder in einem eingetragenen Projekt, als Markdown unter Claude Code und als TOML unter Codex. Eine vorhandene Datei überschreibt der Server nie.
+
 ## Beide Harness
 
 Inventarisiert wird der Harness, in dem der Skill zuletzt gestartet wurde:

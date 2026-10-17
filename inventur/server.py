@@ -344,6 +344,19 @@ def in_den_papierkorb(ziel):
 BEFEHL_ANFANG = ("claude mcp add ", "codex mcp add ", "npx skills add ", "npx -y skills add ",
                  "claude plugin install ", "codex plugin add ")
 BEFEHL_ZEICHEN = re.compile(r"[A-Za-z0-9 @%+=:,./_-]+")
+AGENT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")  # wird der Dateiname: kein Pfad, kein Punkt
+AGENT_MODELLE = ("sonnet", "opus", "haiku", "inherit")  # was Claude Code im Kopf eines Agenten als Kurzname kennt
+CODEX_MODELL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
+
+
+def agent_text(codex, name, beschreibung, anweisung, modell):
+    """Die Datei eines neuen Agenten im Format des Harness. Beschreibung und Anweisung stehen als JSON-String da, das in
+    YAML wie in TOML gilt: Ein Doppelpunkt, ein Anführungszeichen oder „---“ aus dem Formular beendet so weder Wert noch Kopf."""
+    wert = lambda s: json.dumps(s, ensure_ascii=False)
+    if codex:
+        return "".join([f"name = {wert(name)}\n", f"description = {wert(beschreibung)}\n", f"model = {wert(modell)}\n" if modell else "",
+                        f"developer_instructions = {wert(anweisung)}\n"])
+    return f"---\nname: {name}\ndescription: {wert(beschreibung)}\n" + (f"model: {modell}\n" if modell else "") + f"---\n\n{anweisung}\n"
 
 
 def sicherer_befehl(befehl):
@@ -497,6 +510,7 @@ class Inventarserver(ThreadingHTTPServer):
         self.laeufe, self.laeufe_sperre = {}, threading.Lock()
         self.prozesse = {}  # der laufende claude- oder codex-Prozess je Art, damit abbrechen() ihn beenden kann
         self.codex_skills = Path.home() / ".agents" / "skills"  # dorthin legt npx skills die Skills
+        self.agenten = {"claude-code": Path.home() / ".claude" / "agents", "codex": Path.home() / ".codex" / "agents"}  # globale Agenten
 
     def harness(self):
         return harness.aktuell(self.daten)
@@ -722,6 +736,46 @@ class Inventarserver(ThreadingHTTPServer):
                 return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
             return dict(lauf_)
 
+    def agent_anlegen(self, auftrag):
+        """Legt einen eigenen Agenten aus dem Formular an, global oder in einem Projekt aus dem Inventar, und gibt
+        (Status, Antwort) zurück. Eine vorhandene Datei bleibt, wie sie ist: Geschrieben wird nur, was es noch nicht gibt.
+        Der Text kommt vom Benutzer selbst, nicht aus einem Lauf, der fremde Inhalte liest; Name und Ziel werden
+        trotzdem Pfade und gehen nur so durch, wie der Server sie kennt."""
+        h = self.harness()
+        codex = h == "codex"
+        f = auftrag if isinstance(auftrag, dict) else {}
+        name, beschreibung, anweisung = f.get("name"), f.get("beschreibung"), f.get("anweisung")
+        modell, ziel = f.get("modell") or "", f.get("ziel")
+        if not isinstance(name, str) or not AGENT_NAME.fullmatch(name):
+            return 400, {"ok": False, "ausgabe": "Name: nur Kleinbuchstaben, Ziffern und Bindestriche, höchstens 64 Zeichen."}
+        if not isinstance(beschreibung, str) or not beschreibung.strip() or len(beschreibung) > 1000 or "\n" in beschreibung or "\r" in beschreibung:
+            return 400, {"ok": False, "ausgabe": "Beschreibung: eine Zeile, höchstens 1000 Zeichen."}
+        if not isinstance(anweisung, str) or not anweisung.strip() or len(anweisung) > 50000:
+            return 400, {"ok": False, "ausgabe": "Anweisung: fehlt oder ist länger als 50000 Zeichen."}
+        if not isinstance(modell, str) or modell and not (CODEX_MODELL.fullmatch(modell) if codex else modell in AGENT_MODELLE):
+            return 400, {"ok": False, "ausgabe": "Modell: " + ("ein Modellname wie gpt-5.5." if codex else "sonnet, opus, haiku oder inherit.")}
+        inventar = json.loads(self.datei("inventar").read_text(encoding="utf-8"))
+        if ziel == "global":
+            ordner = self.agenten[h]
+        elif isinstance(ziel, str) and ziel in (inventar.get("projektordner") or []) and Path(ziel).is_dir():  # sonst legte mkdir ihn neu an
+            ordner = Path(ziel) / (".codex" if codex else ".claude") / "agents"
+        else:
+            return 400, {"ok": False, "ausgabe": "Projekt: nur global oder ein eingetragenes Projekt aus dem Inventar."}
+        datei = ordner / f"{name}.{'toml' if codex else 'md'}"
+        # ein gleichnamiger Agent in einer anderen Datei desselben Ordners: Der Harness kennte dann zwei
+        doppelt = [e["pfad"] for e in inventar.get("skills", []) + inventar.get("projekt_skills", [])
+                   if e.get("typ") == "Agent" and e.get("name") == name and Path(e.get("pfad", "")).parent == ordner]
+        if doppelt:
+            return 200, {"ok": False, "ausgabe": f"Einen Agenten {name} gibt es dort schon: {doppelt[0]}"}
+        with self.sperre:
+            ordner.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(datei, "x", encoding="utf-8") as ausgabe:  # „x“: nur neu anlegen, nie überschreiben
+                    ausgabe.write(agent_text(codex, name, beschreibung.strip(), anweisung.strip(), modell))
+            except FileExistsError:
+                return 200, {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
+        return 200, {"ok": True, "ausgabe": f"{datei} angelegt."}
+
     def installieren(self, k, nur_manuell):
         """`k` ist der Kandidat selbst, nicht seine Nummer: Zwischen Prüfung und Zugriff konnte eine neue Suche
         die Liste austauschen, und der Zugriff lief ins Leere."""
@@ -805,7 +859,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
         if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren", "/api/abbrechen",
-                             "/api/pruefen", "/api/pruefung"):
+                             "/api/pruefen", "/api/pruefung", "/api/agent"):
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:
             anfrage = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -813,6 +867,11 @@ class Handler(BaseHTTPRequestHandler):
             anfrage = None
         if self.path == "/api/bewerten":
             return self.antworte(200, self.server.im_hintergrund("bewertung", self.server.bewerten))
+        if self.path == "/api/agent":
+            try:
+                return self.antworte(*self.server.agent_anlegen(anfrage))
+            except (OSError, ValueError) as fehler:
+                return self.antworte(200, {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"})
         if self.path == "/api/suchen":
             bedarf = anfrage.get("bedarf") if isinstance(anfrage, dict) else None
             if not isinstance(bedarf, str) or not 0 < len(bedarf.strip()) <= 300:

@@ -1123,6 +1123,8 @@ def inventar(cfg, settings, bewertung, lock):
         "overrides_verwaist": verwaist,
         "mcp": mcp,
         "plugins": plugin_liste,
+        # wohin der Server einen neuen Agenten legen darf: eingetragene Projekte, die es gibt, ohne das Home (dort ist er global)
+        "projektordner": sorted(p for p in eingetragen if Path(p).is_dir() and Path(p).resolve() != HOME.resolve()),
         "skills": skills,
         "projekt_skills": projekte,
         "projekt_mcp": mcp_projekte,

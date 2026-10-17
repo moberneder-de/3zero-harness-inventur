@@ -243,6 +243,11 @@ dialog.frage h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
 dialog.frage p { margin: 0 0 10px; }
 dialog.frage ul { margin: 0 0 10px; padding-left: 18px; max-height: 40vh; overflow: auto; font-size: 14px; }
 dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+dialog.frage form.felder { display: grid; justify-content: stretch; gap: 12px; margin-top: 4px; }
+dialog.frage .feld { display: grid; gap: 4px; font-size: 14px; }
+dialog.frage .feld input, dialog.frage .feld select, dialog.frage .feld textarea { font: 15px/1.4 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 7px 10px; background: var(--bg); }
+dialog.frage .feld textarea { resize: vertical; }
+dialog.frage .knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 .kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
 .kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: var(--bg); }
@@ -347,6 +352,7 @@ try {
 </div>
 <main><div id="meldung-bereich"></div><div id="app"></div></main>
 <dialog class="frage" id="frage" aria-labelledby="frage-titel"></dialog>
+<dialog class="frage" id="agent-dialog" aria-labelledby="agent-titel"></dialog>
 
 <script id="daten" type="application/json">__DATEN__</script>
 <script id="token" type="application/json">null</script>
@@ -961,8 +967,9 @@ function renderSkillsRahmen() {
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
     .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}">${sortKnopf(t)}</th>`
       : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
+  const neu = TOKEN ? '<p><button type="button" class="btn btn-outline" id="agent-neu">Agent anlegen</button></p>' : "";
   return abschnitt("skills", "Skills, Befehle und Agenten",
-    filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
+    neu + filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody id="skills-body"></tbody></table></div>`,
     je(erklaert("Globale Skills aus ~/.claude/skills (viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills.", [
         ["nur /", "Lädt erst, wenn du den Befehl eintippst."],
         ["Eingebaute Skills", `Lassen sich nicht deinstallieren. Ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`],
@@ -1656,6 +1663,42 @@ function schalte(id, aktion, misslungen) {
   });
 }
 
+/* Agent anlegen: erst das Formular, dann eine Rückfrage mit dem Pfad, dann schreibt der Server die Datei (agent_anlegen).
+   Die Muster sind dieselben wie im Server; der prüft trotzdem selbst. */
+function agentFormular() {
+  const d = document.getElementById("agent-dialog");
+  const modell = je(`<select name="modell"><option value="">wie die Sitzung</option>${AGENT_MODELLE.map(m => `<option>${m}</option>`).join("")}</select>`,
+    '<input name="modell" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" placeholder="leer: wie die Sitzung">');
+  const ziele = ['<option value="global">global, in jedem Projekt</option>', ...(D.projektordner || []).map(p => `<option value="${esc(p)}">${esc(kurzPfad(p))}</option>`)];
+  d.innerHTML = `<h3 id="agent-titel">Agent anlegen</h3>
+    <form method="dialog" class="felder">
+      <label class="feld">Name<input name="name" required maxlength="64" pattern="[a-z0-9][a-z0-9\\-]*" placeholder="code-pruefer" autofocus></label>
+      <label class="feld">Beschreibung: wann ${je("Claude", "Codex")} ihn einsetzen soll<input name="beschreibung" required maxlength="1000"></label>
+      <label class="feld">Anweisung<textarea name="anweisung" required rows="8" maxlength="50000"></textarea></label>
+      <label class="feld">Modell${modell}</label>
+      <label class="feld">Wo<select name="ziel">${ziele.join("")}</select></label>
+      <div class="knoepfe"><button class="btn btn-outline" value="nein" formnovalidate>Abbrechen</button><button class="btn btn-primary" value="ja">weiter</button></div>
+    </form>`;
+  d.returnValue = "";
+  d.showModal();
+  return new Promise(fertig => d.addEventListener("close", () =>
+    fertig(d.returnValue === "ja" ? Object.fromEntries(new FormData(d.querySelector("form"))) : null), { once: true }));
+}
+const AGENT_MODELLE = ["sonnet", "opus", "haiku", "inherit"];
+async function agentAnlegen() {
+  const f = await agentFormular();
+  if (!f) return;
+  const datei = `${f.ziel === "global" ? je("~/.claude", "~/.codex") : kurzPfad(f.ziel) + je("/.claude", "/.codex")}/agents/${f.name}.${je("md", "toml")}`;
+  if (!await frage("Agent anlegen?", `${datei} wird neu angelegt. ${f.ziel === "global" ? "Der Agent gilt in jedem Projekt." : "Die Datei liegt im Projektordner, also auch im Repo."}\n\n`
+    + "Eine vorhandene Datei überschreibt der Server nicht. Entfernen lässt sich der Agent danach im Tab „Skills“.", "anlegen", [f.beschreibung])) return;
+  await mitSperre(async () => {
+    const r = await api("/api/agent", f);
+    if (r.harnessWechsel) return harnessGewechselt(r);
+    if (!r.ok) return setMeldung("Agent anlegen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
+    await neuEinlesen();
+  });
+}
+
 async function neuEinlesen() {
   setMeldung("Liest den Bestand neu ein …", "Inventar");
   const r = await api("/api/neu");
@@ -1936,6 +1979,7 @@ document.addEventListener("click", ev => {
     skillsFiltern();
     return;
   }
+  if (ev.target.closest("#agent-neu")) { agentAnlegen(); return; }
   const auf = ev.target.closest("button.aufklappen");
   if (auf) { klappe(auf.closest("tr.haupt")); return; }
   if (ev.target.closest("a, button, input, select")) return;

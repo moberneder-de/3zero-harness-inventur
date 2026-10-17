@@ -51,6 +51,8 @@ Eine dunkle Palette kennt das Kit nicht: Jede Farbe steht deshalb einmal als `li
 Dunkel übernimmt `--hero` als Kartenfarbe, nur Seitengrund, Linien und die Zeile unter dem Mauszeiger sind abgeleitet.
 Neue Flächen deshalb nie auf `#fff` setzen, sondern auf `var(--bg)`.
 Bestätigungen laufen über `frage()` mit einem `<dialog>` im Stil der Service-Card, nie über `confirm()` oder `prompt()`; das Kit hat keinen Dialog-Baustein.
+Das Formular „Agent anlegen“ (`agentFormular()`) ist ein zweiter `<dialog>` derselben Klasse (`#agent-dialog`, `form.felder`); die Rückfrage danach läuft wieder über `frage()`, mit dem Pfad, den der Server schreiben wird.
+`form.felder` setzt `justify-content` zurück: Die Regel für die Knopfleiste der Rückfrage (`flex-end`) schob die Spalte des Formulars sonst nach rechts.
 
 ## Icons
 
