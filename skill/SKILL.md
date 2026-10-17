@@ -71,7 +71,7 @@ Fertig, wenn: keine dieser IDs mehr in deiner Bewertungsdatei vorkommt.
 ## 4. Gruppen, Eingebautes und Hinweise nachziehen
 
 - Gruppen: Gehört ein neuer Eintrag in eine bestehende Überschneidungsgruppe, oder bildet er mit anderen eine neue? Passe `einschaetzung` und `empfehlung` der betroffenen Gruppen an. Mitglieder stehen als ID in der Liste, eingebaute Skills als `builtin:<name>`.
-- `eingebaut`: In Claude Code gleichst du die Liste mit den eingebauten Skills ab, die Claude Code dir in dieser Sitzung anbietet (ohne Plugin-Präfix und nicht in `~/.claude/skills`). In Codex liest `build.py` die eingebauten Skills selbst aus `~/.codex/skills/.system`; du trägst nur je Name ein deutsches `was` ein. Ein Eintrag hat nur `name`, `was` und optional `tokens`.
+- `eingebaut`: In Claude Code gleichst du die Liste mit den eingebauten Skills ab, die Claude Code dir in dieser Sitzung anbietet (ohne Plugin-Präfix und nicht in `~/.claude/skills`). In Codex liest `build.py` die eingebauten Skills selbst aus `~/.codex/skills/.system`; du trägst nur je Name ein deutsches `was` ein. Ein Eintrag hat nur `name`, `was` und optional `tokens`. Einträge mit `typ: "Agent"` unter `eingebaut` im Inventar misst `build.py` selbst in den Transkripten: Trag sie nicht in die Bewertung ein.
 - `hinweise`: Prüfe jeden Hinweis nach (liegt die Datei noch da, tritt der Fehler noch auf?). Erledigte Hinweise löschen, neue Funde ergänzen. Ein Hinweis hat nur `titel` und `text`, keine Befehle.
 - Begründungen, die Zahlen oder Daten nennen, gegen das Inventar deines Harness prüfen und angleichen.
 - `stand` auf das heutige Datum setzen.

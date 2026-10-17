@@ -544,6 +544,51 @@ def messen(hooks, ausgaben, dauern):
             h["tokens"] = sum(f["tokens"] for f in funde)
 
 
+def agent_aufrufe(dateien):
+    """Je Subagent-Typ die Tage, an denen er in den Transkripten der letzten MESS_TAGE Tage startete: beim Werkzeug
+    Agent (früher Task) als `subagent_type`. Woher der Typ kommt (Datei, Plugin, eingebaut), steht dort nicht."""
+    grenze, tage, gesehen = zeitgrenze(), {}, set()
+    for datei in dateien:
+        try:
+            f = open(datei, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with f:
+            for zeile in f:
+                if '"subagent_type"' not in zeile:
+                    continue
+                try:
+                    d = json.loads(zeile)
+                except ValueError:
+                    continue
+                zeit = d.get("timestamp") or ""
+                inhalt = (d.get("message") or {}).get("content")
+                for c in inhalt if isinstance(inhalt, list) and zeit[:19] >= grenze else []:
+                    if not (isinstance(c, dict) and c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task")):
+                        continue
+                    typ = (c.get("input") or {}).get("subagent_type")
+                    if isinstance(typ, str) and typ and c.get("id") not in gesehen:  # dieselbe Nachricht kann zweimal im Transkript stehen
+                        gesehen.add(c.get("id"))
+                        tage.setdefault(typ, []).append(zeit[:10])
+    return tage
+
+
+def agenten_messen(eintraege, aufrufe):
+    """Gibt den Agenten unter `eintraege` ihre Aufrufe aus `aufrufe` (agent_aufrufe) als Nutzung und liefert den Rest
+    als eingebaute Agenten. Ein Typ mit „:“ ist ein Plugin-Agent, dessen Plugin nicht mehr da ist, also nicht eingebaut;
+    ein gerade gelöschter eigener Agent steht dagegen als eingebaut da, bis er aus dem Messfenster fällt."""
+    def gezaehlt(tage):
+        return {"anzahl": len(tage), "zuletzt": max(tage)} if tage else None
+    bekannt = set()
+    for e in eintraege:
+        if e.get("typ") == "Agent":
+            schluessel = e.get("schluessel", e["name"])
+            bekannt.add(schluessel)
+            e["nutzung"] = gezaehlt(aufrufe.get(schluessel))
+    return [{"name": typ, "typ": "Agent", "was": "", "tokens": 0, "nutzung": gezaehlt(tage)}
+            for typ, tage in sorted(aufrufe.items()) if typ not in bekannt and ":" not in typ]
+
+
 def mcp_messungen(dateien, praefixe=()):
     """Je MCP-Server aus den Transkripten: angebotene Werkzeuge, Kontext in Tokens, Aufrufe. `tokens` sind der
     Anweisungsblock und die Werkzeugnamen, die jede Sitzung in ihrer Liste sieht; die Schemata lädt Claude Code erst
@@ -1044,6 +1089,7 @@ def inventar(cfg, settings, bewertung, lock):
     hooks = eigene_hooks(settings, CLAUDE / "settings.json") + plugin_hooks + ordner_hooks_
     mods = plugin_mods + ordner_mods
     dateien = transkripte()
+    eingebaute_agenten = agenten_messen(skills + projekte, agent_aufrufe(dateien))
     messen(hooks, *hook_ausgaben(dateien))
     for p in plugin_liste:
         p["tokens"] += sum(h["tokens"] for h in hooks if h.get("plugin") == f"{p['name']}@{p['marktplatz']}")
@@ -1066,7 +1112,7 @@ def inventar(cfg, settings, bewertung, lock):
         e["aktionen"] = aktionen(e)
         e["umgesetzt"] = umgesetzt(e)
 
-    eingebaut = eingebaute(cfg, bewertung)
+    eingebaut = eingebaute(cfg, bewertung) + eingebaute_agenten
 
     unbewertet, entfallen = abgleich(alle, bewertung)
     # Overrides gelten nach Namen, auch für Projekt- und eingebaute Skills

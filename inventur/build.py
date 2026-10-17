@@ -239,7 +239,8 @@ def ungenutzt_markieren(skills, plugins, heute):
     for e in skills:
         genutzt = (e.get("nutzung") or {}).get("zuletzt") or ""
         da_seit = (seit.get(e["plugin"]) if e.get("plugin") else e.get("installiert")) or ""
-        # Agenten zählt keiner der Harnesses: Im Dashboard steht „nicht erfasst“, ungenutzt hieße jeder
+        # Agenten nie: Claude Code zählt ihre Starts nur in den Transkripten der letzten MESS_TAGE Tage, Codex gar nicht;
+        # 14 Tage belegen keine 30 ohne Nutzung
         if e.get("typ") != "Agent" and e.get("im_kontext") and e.get("tokens") and genutzt < grenze and da_seit < grenze:
             e["ungenutzt"] = True
 

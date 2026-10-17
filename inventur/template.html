@@ -384,7 +384,10 @@ const befehlZeile = text => `<div class="befehl"><code>${esc(text)}</code>${kopi
 
 const ALLE = [...D.mcp, ...D.plugins, ...D.skills, ...D.projekt_skills, ...D.projekt_mcp, ...D.hooks, ...(D.mods || [])];
 const INDEX = new Map(ALLE.map(e => [e.id, e]));
-const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + b.name, typ: "Harness", status: "aktiv", bewertung: { was: b.was }, tokens: b.tokens || 0, quelle: { art: "eingebaut", autor: je("Anthropic", "OpenAI") } }));
+/* eingebaute Agenten (typ „Agent“) misst claude.py in den Transkripten, eingebaute Skills nennt die Bewertung */
+const EINGEBAUT = D.eingebaut.map(b => ({ ...b, id: "builtin:" + (b.typ === "Agent" ? "agent:" : "") + b.name, typ: b.typ || "Harness", status: "aktiv",
+  ...(b.typ === "Agent" ? { aufruf: "als Subagent", beschreibung: "Subagent, den Claude Code mitbringt; gestartet laut Transkripten." } : {}),
+  bewertung: { was: b.was }, tokens: b.tokens || 0, quelle: { art: "eingebaut", autor: je("Anthropic", "OpenAI") } }));
 EINGEBAUT.forEach(e => INDEX.set(e.id, e));
 /* Tab Skills: installierte und eingebaute Skills in einer Liste */
 const SKILLS = [...D.skills, ...EINGEBAUT];
@@ -404,7 +407,7 @@ function empfMarke(w) {
   return `<span class="badge ${k.cls}"><span aria-hidden="true">${k.icon}</span>${esc(w.empfehlung)}${w.geerbt ? '<span class="geerbt">· Plugin</span>' : ""}</span>`;
 }
 function empfBadge(e) {
-  if (e.typ === "Harness") return '<span class="leer">–</span>';
+  if (e.quelle?.art === "eingebaut") return '<span class="leer">–</span>';
   if (!e.bewertung) return '<span class="badge e-neu">neu · unbewertet</span>';
   return empfMarke(e.wirksam);
 }
@@ -425,7 +428,10 @@ function statusBadge(s) {
   return `<span class="status st-${cls}"><span aria-hidden="true">${icon}</span> ${esc(s)}</span>`;
 }
 function nutzungText(e) {
-  if (e.typ === "Agent" || e.typ === "Hook") return '<span class="leer">nicht erfasst</span>';
+  if (e.typ === "Hook" || (e.typ === "Agent" && CODEX)) return '<span class="leer">nicht erfasst</span>';
+  /* Agenten zählt claude.py in den Transkripten, also nur im Messfenster, Skills dagegen seit der Installation */
+  if (e.typ === "Agent") return e.nutzung ? `${zahl(e.nutzung.anzahl)}× <span class="klein">· ${datum(e.nutzung.zuletzt)} · in ${D.mess_tage} Tagen</span>`
+    : `<span class="leer">nicht in ${D.mess_tage} Tagen</span>`;
   // Claude Code zählt MCP-Aufrufe aus den Transkripten: gemessen ist ein Server, wenn er dort vorkam (werkzeuge ist dann eine Zahl)
   if (e.id.startsWith("mcp:") && (CODEX ? !("nutzung" in e) : typeof e.werkzeuge !== "number")) return '<span class="leer">nicht erfasst</span>';
   if (e.id.startsWith("plugin:") && !e.skills.length && !e.befehle.length) return '<span class="leer">–</span>';
@@ -441,7 +447,7 @@ function quelleText(e) {
 /* Herkunft in den Skill-Tabellen: wie der Skill auf den Rechner kam, also auch, wie er wieder geht. Der Autor steht in der Detailzeile */
 function lieferweg(s) {
   if (s.plugin) return `Plugin ${s.plugin.split("@")[0]}`;
-  if (s.typ === "Harness") return je("Anthropic/Claude Code", "OpenAI/Codex");
+  if (s.quelle.art === "eingebaut") return je("Anthropic/Claude Code", "OpenAI/Codex");
   /* Besitzer lesbar über `autoren` in der Bewertungsdatei, der GitHub-Pfad steht in der Detailzeile */
   if (s.quelle.repo) return `${s.quelle.autor}/${s.quelle.repo.split("/")[1]}`;
   if (s.projekt) return "im Projekt";
@@ -960,6 +966,8 @@ function renderSkillsRahmen() {
     je(erklaert("Globale Skills aus ~/.claude/skills (viele per <code>npx skills</code> aus ~/.agents/skills verlinkt), eigene Befehle, alles, was Plugins mitbringen, und die in Claude Code eingebauten Skills.", [
         ["nur /", "Lädt erst, wenn du den Befehl eintippst."],
         ["Eingebaute Skills", `Lassen sich nicht deinstallieren. Ihre Liste pflegt <code>/3zero-harness-inventur</code>, Stand ${datum(D.bewertung_stand)}.`],
+        ["Agenten", `Eigene aus ~/.claude/agents und die aus Plugins. „Genutzt“ zählt bei ihnen die Starts in den Transkripten der letzten ${D.mess_tage} Tage.`],
+        ["Eingebaute Agenten", `Subagenten wie <code>general-purpose</code> oder <code>Explore</code>, die in keiner Datei stehen, aber in den letzten ${D.mess_tage} Tagen gestartet wurden. Ein gerade gelöschter eigener Agent steht hier, bis er aus diesem Fenster fällt.`],
         [esc(GETEILT), "Liegt in ~/.agents/skills und gilt damit für beide Harnesses. Der Filter rechts zeigt diese Skills oder nur die übrigen."]]),
       erklaert("Skills aus ~/.agents/skills (dort legt <code>npx skills</code> sie ab) und ~/.codex/skills, alles, was Plugins mitbringen, und die in Codex eingebauten Skills aus ~/.codex/skills/.system.", [
         ["nur $", "Lädt erst, wenn du <code>$name</code> eintippst (<code>agents/openai.yaml</code>)."],

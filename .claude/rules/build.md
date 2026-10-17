@@ -22,7 +22,7 @@ Weil mit dem Tag davor verglichen wird, steht die Karte den ganzen Tag bei jedem
 Die Kontextlast zählt Skills, Hooks, MCP-Anweisungen, Werkzeugnamen und die globalen Anweisungsdateien (`anweisungen.py`), aber nicht die eingebauten Skills des Harness: Codex legt sie als Dateien ab und könnte sie messen, Claude Code spielt sie zur Laufzeit ein.
 Sonst hieße dieselbe Kachel in beiden Dashboards gleich und meinte Verschiedenes.
 „ungenutzt“ setzt `ungenutzt_markieren()` für beide Harnesses: lädt in jede Sitzung, seit `UNGENUTZT_TAGE` nicht genutzt und länger installiert (bei Plugin-Bestandteilen zählt die Installation des Plugins, unter Codex mangels Datum der Stand seines Ordners).
-Agenten nie: Ihre Nutzung zählt keiner der Harnesses, das Dashboard schreibt „nicht erfasst“, und ungenutzt hieße dann jeder.
+Agenten nie: Claude Code zählt ihre Starts nur in den Transkripten der letzten `MESS_TAGE` Tage (`agent_aufrufe()` in `claude.py`), Codex gar nicht, und 14 Tage belegen keine 30 ohne Nutzung.
 Was das Dashboard aus der Bewertung ableitet, rechnet Python und legt es fertig ins Inventar: je Eintrag `umgesetzt` und `wirksam`, oben `ersparnis` und `versionen_offen`.
 `umgesetzt()` steht in jedem Leser neben `aktionen()`, dessen Gegenstück es ist: Was schon abgeschaltet oder auf „nur manuell“ gestellt ist, braucht keine Aktion mehr; die Merkmale dafür sind je Harness verschieden, deshalb je Leser eine Funktion statt einer gemeinsamen mit Schaltern.
 `empfehlungen_ableiten()` gilt für beide: `wirksam` ist die eigene Empfehlung, bei Plugin-Bestandteilen ohne eigene die ihres Plugins (`geerbt`), und `ersparnis` zählt jede Tokenzahl einmal (geht ein Plugin ganz, zählen seine Teile nicht noch einmal).
