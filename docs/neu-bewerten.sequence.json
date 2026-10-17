@@ -8,7 +8,7 @@
     "column_fit": "spread",
     "viewBox": [
       1085,
-      480
+      660
     ],
     "views": [
       {
@@ -96,24 +96,24 @@
       "id": "kopieren",
       "from": "server",
       "to": "arbeit",
-      "y": 228,
+      "y": 236,
       "label": "Bewertung kopieren",
-      "note": "Davor hat der Server build.py ausgeführt: Das braucht Netz, der Lauf hat keins. Unter Claude Code liegt dort auch eine Kopie des Skills für --plugin-dir, weil --restricted ~/.claude/skills nicht lädt."
+      "note": "Davor führt der Server build.py aus, denn der Lauf hat kein Netz. Unter Claude Code liegt dort auch eine Kopie des Skills für --plugin-dir."
     },
     {
       "id": "starten",
       "from": "server",
       "to": "lauf",
-      "y": 256,
+      "y": 316,
       "label": "starten, ohne Netz",
       "variant": "security",
-      "note": "Claude Code: --restricted ohne Einstellungen und MCP-Server des Benutzers, --tools nur Lesen, Suchen und Edit, deny sperrt das Home; beschreibbar bleibt nur der Arbeitsordner. Codex: Sandbox workspace-write, $TMPDIR und /tmp gesperrt."
+      "note": "Claude Code: --restricted, --strict-mcp-config, --tools nur Lesen, Suchen und Edit, deny sperrt das Home. Codex: Sandbox workspace-write, $TMPDIR und /tmp gesperrt."
     },
     {
       "id": "aendern",
       "from": "lauf",
       "to": "arbeit",
-      "y": 284,
+      "y": 388,
       "label": "nur die Kopie ändern",
       "variant": "security"
     },
@@ -121,7 +121,7 @@
       "id": "abbrechen",
       "from": "browser",
       "to": "server",
-      "y": 312,
+      "y": 416,
       "label": "POST /api/abbrechen",
       "variant": "dashed",
       "note": "Jederzeit möglich, solange der Lauf läuft: Der Server beendet seine ganze Prozessgruppe, die Arbeitskopie verfällt, die bisherige Bewertung gilt weiter."
@@ -130,7 +130,7 @@
       "id": "bericht",
       "from": "lauf",
       "to": "server",
-      "y": 340,
+      "y": 456,
       "label": "Bericht",
       "variant": "return"
     },
@@ -138,7 +138,7 @@
       "id": "pruefen",
       "from": "server",
       "to": "arbeit",
-      "y": 368,
+      "y": 484,
       "label": "als JSON prüfen",
       "note": "Kein Symlink, ein echtes Objekt. Sonst bleibt die alte Bewertung stehen."
     },
@@ -146,7 +146,7 @@
       "id": "zurueck",
       "from": "server",
       "to": "daten",
-      "y": 396,
+      "y": 524,
       "label": "atomar ersetzen",
       "variant": "emphasis",
       "note": "Danach baut der Server erneut und legt den Bericht als Karte in den Seitenkopf."
@@ -156,18 +156,18 @@
     {
       "participant": "server",
       "from": 172,
-      "to": 396
+      "to": 524
     },
     {
       "participant": "lauf",
-      "from": 256,
-      "to": 340,
+      "from": 316,
+      "to": 456,
       "type": "security"
     },
     {
       "participant": "arbeit",
-      "from": 228,
-      "to": 396
+      "from": 236,
+      "to": 524
     }
   ],
   "cards": [

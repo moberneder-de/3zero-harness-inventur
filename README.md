@@ -142,7 +142,7 @@ Fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet". 
 
 ## Neu bewerten und Suchen
 
-Drei Knöpfe starten einen Agenten im Hintergrund. Alle sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
+Drei Knöpfe starten einen Lauf von Claude oder Codex im Hintergrund. Alle sind eng eingezäunt, weil sie fremde Texte lesen, die Anweisungen enthalten könnten.
 
 **Neu bewerten** zieht die Bewertung auf den Stand des Bestands nach. Beide Harnesses arbeiten auf einer Arbeitskopie der Bewertung in einem Temp-Ordner; der Server prüft das Ergebnis als JSON-Objekt und schreibt es erst dann atomar zurück. Unter Claude Code läuft das als `claude -p --restricted` (`--restricted` hält die Einstellungen des Benutzers draußen, `--strict-mcp-config` seine MCP-Server), `--tools` gibt nur Lesen, Suchen und `Edit`, und `deny` in einer eigenen Einstellungsdatei (`--settings`) sperrt das Schreiben im ganzen Home. Den Skill bekommt der Lauf als Kopie per `--plugin-dir`. Unter Codex läuft es als `codex exec` in der Sandbox, ohne Netz. Liefert der Lauf kein JSON-Objekt, bleibt die alte Bewertung stehen.
 
@@ -157,6 +157,7 @@ Der Skill dahinter heißt `/3zero-harness-inventur` (in Codex `$3zero-harness-in
 | Angabe | Quelle | Verlässlichkeit |
 |---|---|---|
 | Nutzung | `skillUsage` in `~/.claude.json`, bzw. `~/.codex/sessions` (auch archivierte), eine Sitzung je Skill | gezählt |
+| Agenten | Starts mit `subagent_type` in den Transkripten der letzten 14 Tage (Claude Code); was dort startet, aber in keiner Datei steht, gilt als eingebaut | gezählt |
 | Kontextkosten | Länge von Name und Beschreibung ÷ 4 | Schätzung |
 | Anweisungen | Länge von `CLAUDE.md` (auch `CLAUDE.local.md`, aus Ordnern darüber und verwaltete), Regeln, Output-Style und `MEMORY.md` (200 Zeilen) ÷ 4; eingebundene Dateien (`@pfad`) zählen nicht mit, außer einer `AGENTS.md`, die eine eigene Zeile hat. Die globalen zählen zur Kontextlast | Schätzung |
 | Hook-Wirkung | Transkripte unter `~/.claude/projects` der letzten 14 Tage, ÷ 4 | Schätzung |
