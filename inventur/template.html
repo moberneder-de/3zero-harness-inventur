@@ -246,11 +246,23 @@ dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; g
 dialog.frage:has(pre.vorschau) { width: min(760px, calc(100vw - 40px)); }
 dialog.frage pre.vorschau { max-height: 45vh; overflow: auto; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius);
   font: 12px/1.45 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
-dialog.frage form.felder { display: grid; justify-content: stretch; gap: 12px; margin-top: 4px; }
-dialog.frage .feld { display: grid; gap: 4px; font-size: 14px; }
-dialog.frage .feld input, dialog.frage .feld select, dialog.frage .feld textarea { font: 15px/1.4 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 7px 10px; background: var(--bg); }
-dialog.frage .feld textarea { resize: vertical; }
-dialog.frage .knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+/* Formular „Agent anlegen“: Jede Spalte höchstens so breit wie der Dialog (minmax(0, …), width 100 %), sonst machte ein
+   langer Projektpfad die Auswahl „Wo“ breiter als das Fenster, und die Knöpfe lagen rechts außerhalb */
+dialog.frage.formular { width: min(640px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: hidden auto; padding-bottom: 0; }
+dialog.frage.formular > .klein { margin: 0; }
+dialog.frage form.felder { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 16px; margin-top: 18px; }
+dialog.frage .feld { display: grid; gap: 5px; min-width: 0; }
+dialog.frage .feld label { font: 600 12px var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dark); }
+dialog.frage .feld .klein { line-height: 1.4; }
+dialog.frage .feld input, dialog.frage .feld select, dialog.frage .feld textarea { box-sizing: border-box; width: 100%; min-width: 0; font: 15px/1.4 var(--body);
+  color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 8px 10px; background: var(--bg); }
+dialog.frage .feld :is(input, select, textarea):focus { outline: none; border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+dialog.frage .feld textarea { resize: vertical; min-height: 140px; }
+dialog.frage .zwei { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
+@media (max-width: 560px) { dialog.frage .zwei { grid-template-columns: minmax(0, 1fr); } }
+/* bleibt unten sichtbar, wenn das Formular in einem niedrigen Fenster scrollt */
+dialog.frage .knoepfe { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; margin: 4px -24px 0; padding: 16px 24px 24px;
+  border-top: 1px solid var(--border-light); background: var(--bg); }
 .kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
 .kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: var(--bg); }
@@ -355,7 +367,7 @@ try {
 </div>
 <main><div id="meldung-bereich"></div><div id="app"></div></main>
 <dialog class="frage" id="frage" aria-labelledby="frage-titel"></dialog>
-<dialog class="frage" id="agent-dialog" aria-labelledby="agent-titel"></dialog>
+<dialog class="frage formular" id="agent-dialog" aria-labelledby="agent-titel"></dialog>
 
 <script id="daten" type="application/json">__DATEN__</script>
 <script id="token" type="application/json">null</script>
@@ -1672,16 +1684,20 @@ function schalte(id, aktion, misslungen) {
    Die Muster sind dieselben wie im Server; der prüft trotzdem selbst. */
 function agentFormular() {
   const d = document.getElementById("agent-dialog");
-  const modell = je(`<select name="modell"><option value="">wie die Sitzung</option>${AGENT_MODELLE.map(m => `<option>${m}</option>`).join("")}</select>`,
-    '<input name="modell" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" placeholder="leer: wie die Sitzung">');
+  const modell = je(`<select id="agent-modell" name="modell"><option value="">wie die Sitzung</option>${AGENT_MODELLE.map(m => `<option>${m}</option>`).join("")}</select>`,
+    '<input id="agent-modell" name="modell" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" placeholder="wie die Sitzung">');
   const ziele = ['<option value="global">global, in jedem Projekt</option>', ...(D.projektordner || []).map(p => `<option value="${esc(p)}">${esc(kurzPfad(p))}</option>`)];
+  const feld = (id, titel, eingabe, hinweis = "") => `<div class="feld"><label for="${id}">${titel}</label>${eingabe}${hinweis ? `<span class="klein">${hinweis}</span>` : ""}</div>`;
   d.innerHTML = `<h3 id="agent-titel">Agent anlegen</h3>
+    <p class="klein">Legt eine Datei an, die ${je("Claude", "Codex")} als Subagent starten kann. Danach steht der Agent im Tab „Skills“.</p>
     <form method="dialog" class="felder">
-      <label class="feld">Name<input name="name" required maxlength="64" pattern="[a-z0-9][a-z0-9\\-]*" placeholder="code-pruefer" autofocus></label>
-      <label class="feld">Beschreibung: wann ${je("Claude", "Codex")} ihn einsetzen soll<input name="beschreibung" required maxlength="1000"></label>
-      <label class="feld">Anweisung<textarea name="anweisung" required rows="8" maxlength="50000"></textarea></label>
-      <label class="feld">Modell${modell}</label>
-      <label class="feld">Wo<select name="ziel">${ziele.join("")}</select></label>
+      ${feld("agent-name", "Name", '<input id="agent-name" name="name" required maxlength="64" pattern="[a-z0-9][a-z0-9\\-]*" placeholder="code-pruefer" autofocus>',
+        "Wird auch der Dateiname: Kleinbuchstaben, Ziffern und Bindestriche.")}
+      ${feld("agent-beschreibung", "Beschreibung", '<input id="agent-beschreibung" name="beschreibung" required maxlength="1000" placeholder="Prüft geänderten Code auf Fehler und fehlende Tests.">',
+        `Danach entscheidet ${je("Claude", "Codex")}, wann es den Agenten startet. Eine Zeile.`)}
+      ${feld("agent-anweisung", "Anweisung", '<textarea id="agent-anweisung" name="anweisung" required rows="7" maxlength="50000" placeholder="Du prüfst Code. Du änderst keine Dateien."></textarea>',
+        "Was der Agent tun soll und was nicht: Das ist sein Systemprompt.")}
+      <div class="zwei">${feld("agent-modell", "Modell", modell)}${feld("agent-ziel", "Wo", `<select id="agent-ziel" name="ziel">${ziele.join("")}</select>`)}</div>
       <div class="knoepfe"><button class="btn btn-outline" value="nein" formnovalidate>Abbrechen</button><button class="btn btn-primary" value="ja">weiter</button></div>
     </form>`;
   d.returnValue = "";

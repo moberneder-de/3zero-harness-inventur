@@ -21,6 +21,7 @@ from pathlib import Path
 from . import harness
 from . import mcp_direkt
 from . import werkzeuge
+from .modelle import SCRATCH
 from .bestand import (MESS_TAGE, abgleich, bewerte, frisch, frontmatter, hook_eintraege, lesefehler, lies_json, mehrfache_namen, netz,
                      papierkorb_befehl, projekt_ids, shellwort, updates_markieren, verdecken, werkzeug_praefix, zeitgrenze, ziel_text)
 
@@ -1076,6 +1077,15 @@ def sammelordner(projekte):
                   and any(q.startswith(p.rstrip("/") + "/") for q in projekte))
 
 
+def projektordner(projekte):
+    """Wohin der Server einen neuen Agenten legen darf: eingetragene Projekte, die es gibt. Nicht das Home (dort ist er
+    global), nichts in ~/.claude, keine Sammelordner und keine Scratch-Ordner der App: Claude Code trägt jeden Ordner
+    ein, in dem einmal eine Sitzung lief, und ein Agent in ~/.claude/.claude/agents nützte niemandem."""
+    sammel = set(sammelordner(projekte))
+    return sorted(p for p in projekte if Path(p).is_dir() and Path(p).resolve() != HOME.resolve() and p not in sammel
+                  and not Path(p).resolve().is_relative_to(CLAUDE.resolve()) and SCRATCH not in p + "/")
+
+
 def inventar(cfg, settings, bewertung, lock):
     """Der Bestand von Claude Code. `cfg` ist ~/.claude.json, `settings` ~/.claude/settings.json, `bewertung` die Datei
     aus dem Datenordner, `lock` die Skills aus ~/.agents/.skill-lock.json: build.main() liest sie einmal und gibt sie mit."""
@@ -1123,8 +1133,7 @@ def inventar(cfg, settings, bewertung, lock):
         "overrides_verwaist": verwaist,
         "mcp": mcp,
         "plugins": plugin_liste,
-        # wohin der Server einen neuen Agenten legen darf: eingetragene Projekte, die es gibt, ohne das Home (dort ist er global)
-        "projektordner": sorted(p for p in eingetragen if Path(p).is_dir() and Path(p).resolve() != HOME.resolve()),
+        "projektordner": projektordner(eingetragen.keys()),
         "skills": skills,
         "projekt_skills": projekte,
         "projekt_mcp": mcp_projekte,
