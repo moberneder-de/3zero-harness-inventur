@@ -43,7 +43,7 @@ Der Server lauscht nur auf `127.0.0.1` und zeigt die Seite nur mit dem Schlüsse
 
 ## Was das Dashboard zeigt
 
-Sieben Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks, Mods, Anweisungen; unter Codex ohne Befehle), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Suche**, **Hilfe**.
+Acht Tabs, drei davon Gruppen mit einer zweiten Zeile: **Überblick**, **Aufräumen** (Empfehlungen, Überschneidungen, Hinweise), **Bestand** (MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks, Mods, Anweisungen; unter Codex ohne Befehle), **Projekte**, **Einstellungen** (Berechtigungen, Modelle, Versionen), **Erstellen**, **Suche**, **Hilfe**.
 
 Die Tabs unter **Bestand** zeigen Globales, Anweisungen auch je Projekt. **Projekte** zeigt alles zu einem Projekt an einer Stelle: was nur dort lädt (Skills, MCP-Server, Hooks und Mods), seine Anweisungen, seine Regeln und die Modelle, die dort liefen. Sammelordner wie `~` lässt er weg und nennt sie darunter. Projekt-Hooks und Projekt-Mods sind nur angezeigt, ohne Bewertung und Knopf: Sie gehören oft zum Repo. Über jeder Tabelle steht ein Filter mit Suchfeld und, wo es passt, einer Auswahl je Spalte (Status, Empfehlung, Herkunft); er bleibt beim Scrollen stehen. Jede Tabelle ist anfangs nach dem Namen sortiert; ein Klick auf den Namen oder eine Zahlenspalte sortiert um, ein zweiter dreht die Richtung. Ein Klick auf eine Zeile klappt die Details auf: Beschreibung, Begründung, Autor, Quelle, Datei und den Befehl zum Umsetzen. Bietet ein Plugin ein Update an, steht „Update verfügbar“ beim Status, auch bei seinen MCP-Servern, Hooks und Mods (mit dem Zusatz „über Plugin …“), und der Statusfilter findet es; eingespielt wird es am Plugin.
 
@@ -83,7 +83,7 @@ Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in
 
 Schreibt der Server selbst in eine Konfigurationsdatei, legt er vorher eine Sicherung `<datei>.bak-<Zeitstempel>` an (eine je Serverlauf, die letzten 10 bleiben), schreibt atomar und nimmt die Änderung zurück, wenn die Datei danach nicht mehr parst. Aktionen über `claude`, `codex` oder `npx skills` schreiben mit den Mitteln dieser Programme, ohne eigene Sicherung. Eigene Skills und Befehle verschiebt er in den Papierkorb des Systems (macOS: `~/.Trash`, Linux: XDG-Papierkorb), unter einem freien Namen. Der Server läuft unter macOS und Linux, unter Windows startet er nicht. Alles wirkt ab der nächsten Sitzung.
 
-Im Tab **Agenten** legt **Agent anlegen** einen eigenen Agenten an: Name, Beschreibung, Anweisung und Modell, global oder in einem eingetragenen Projekt, als Markdown unter Claude Code und als TOML unter Codex. Eine vorhandene Datei überschreibt der Server nie.
+Der Tab **Erstellen** legt eigene Bausteine an: einen **Agenten** (Markdown unter Claude Code, TOML unter Codex, wahlweise mit Modell), einen **Skill** (Ordner mit `SKILL.md`, wahlweise „nur manuell“) und unter Claude Code einen **Befehl** und einen **Output-Style**. Alles global oder in einem eingetragenen Projekt, den Output-Style nur global. Eine vorhandene Datei überschreibt der Server nie. Hooks und MCP-Server legt das Dashboard bewusst nicht an: Sie starten Programme.
 
 ## Beide Harness
 

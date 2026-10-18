@@ -57,7 +57,7 @@ python3 wochenlauf.py entfernen
 Diese Vorgaben stehen auch in den Regeln der Module, mit ihrem Grund. Hier stehen sie, weil eine Regel erst lädt, wenn ihre Datei angefasst wird.
 
 - `dashboard*.html` und `inventar*.json` im Datenordner sind erzeugt: nicht von Hand bearbeiten.
-- Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in `claude.py` bzw. `codex.py` fest, für Regeln und Anweisungen `rechte_aktionen()` und `anweisungen_aktionen()` in `build.py`. Der Server führt nur aus, was so im Inventar steht. Text schreibt er nur an zwei Stellen in eine neue Datei: einen Agenten aus dem Formular (`agent_anlegen()`) und einen aus der Suche, nachdem der Benutzer den Text gesehen hat (`agent_vorschau()`).
+- Welche Aktion ein Eintrag anbietet und mit welchem Befehl, legen `aktionen()` in `claude.py` bzw. `codex.py` fest, für Regeln und Anweisungen `rechte_aktionen()` und `anweisungen_aktionen()` in `build.py`. Der Server führt nur aus, was so im Inventar steht. Text schreibt er nur an zwei Stellen in eine neue Datei: einen Agenten, Skill, Befehl oder Output-Style aus dem Tab „Erstellen“ (`anlegen()`) und einen Agenten aus der Suche, nachdem der Benutzer den Text gesehen hat (`agent_vorschau()`).
 - Den Befehl zum Umsetzen baut immer `befehl()`, nie die Bewertung: Sie stammt aus einem Lauf, der fremde Skill-Texte liest, und der Befehl steht im Dashboard neben dem Kopierknopf. Aus demselben Grund übernimmt `eingebaute()` von `eingebaut` nur `name`, `was` und `tokens`, und Hinweise zeigen keine Befehle.
 - Ein Absturz in `build.py` verhindert den Serverstart: Fehler je Quelle abfangen und über `lesefehler()` melden.
 - `SKILLS_CLI` in `harness.py`: eine neue Version erst prüfen, dann eintragen.
@@ -72,7 +72,7 @@ Die Einzelheiten zu jedem Modul stehen in `.claude/rules/<Modul>.md`: wie es arb
 - `harness.py`: Datenordner (`DATEN`), gemerkter Harness (`harness.json`) und die feste Version in `SKILLS_CLI`; von `build.py`, `claude.py`, `codex.py` und `server.py` importiert. Keine eigene Regel, die Vorgaben stehen oben unter „Was immer gilt“.
 - `codex.py` liest denselben Bestand aus `~/.codex` und `~/.agents`, in derselben Datenform. → `.claude/rules/codex.md`
 - `bestand.py`: was beide Leser brauchen (lesen ohne Absturz, IDs, Zugangsdaten verdecken, `bewerte()`); importiert weder `build` noch `claude` noch `codex`. → `.claude/rules/bestand.md`
-- `server.py` zeigt das Dashboard und führt die gewählten Aktionen aus, startet „neu bewerten“ und die Suche und legt Agenten an. → `.claude/rules/server.md`
+- `server.py` zeigt das Dashboard und führt die gewählten Aktionen aus, startet „neu bewerten“ und die Suche und legt im Tab „Erstellen“ eigene Bausteine an. → `.claude/rules/server.md`
 - `konfig.py` ändert für den Server die Konfigurationsdateien: ein Eingang, ein Schreibweg mit Sicherung und Rücknahme. → `.claude/rules/konfig.md`
 - `inventur/template.html` ist die Oberfläche, dazu Icons und Logo. → `.claude/rules/template.md`
 - `anweisungen.py`: Tab „Anweisungen“, was als Text in die Sitzung lädt. → `.claude/rules/anweisungen.md`
