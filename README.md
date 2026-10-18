@@ -1,16 +1,17 @@
 # 3zero-Harness-Inventur
 
-Inventur der Laufzeitumgebung von Claude Code oder Codex: MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks und Mods, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard.
+Inventur der Laufzeitumgebung von Claude Code oder Codex: MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks und Mods, global und in Projekten, mit Bewertung von Überschneidungen, Empfehlungen und Umsetzung per Dashboard. Dazu sucht es neue Werkzeuge passend zum Bestand und legt eigene Agenten, Skills, Befehle und Output-Styles an.
 
 ## Wozu
 
 Eine gewachsene Agenten-Umgebung wird unübersichtlich. Skills kommen über Plugins, über `npx skills`, als Symlink aus eigenen Repos oder als Kopie ohne Beleg. Mehrere tun dasselbe. Manche laden ihre Beschreibung in jede Sitzung und kosten Kontext, ohne je benutzt zu werden. Und was in `~/.claude` steht, gilt nicht in `~/.codex`.
 
-Das Werkzeug beantwortet drei Fragen:
+Das Werkzeug beantwortet vier Fragen:
 
 - **Was ist überhaupt installiert**, woher kam es, ist es aktiv, wie oft wurde es benutzt?
 - **Was überschneidet sich**, und was kann deshalb weg?
 - **Wie setze ich das um**, ohne die Befehle selbst zusammenzusuchen?
+- **Was fehlt noch**, gibt es das schon fertig, oder baue ich es selbst?
 
 ## Zwei Schichten
 
