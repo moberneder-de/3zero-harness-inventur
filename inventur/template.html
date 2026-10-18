@@ -233,8 +233,8 @@ button:disabled { opacity: .45; cursor: default; pointer-events: none; }
 /* Lange Berichte füllten sonst die ganze Seite, bevor man die Tabs wieder sieht */
 .meldung .inhalt.gekuerzt { max-height: 50vh; overflow: auto; }
 .meldung .inhalt > :last-child { margin-bottom: 0; }
-.suchfeld { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
-.suchfeld textarea { flex: 1 1 320px; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: var(--bg); resize: vertical; }
+.suchfeld { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.suchfeld textarea { width: 100%; max-width: 640px; font: 16px/1.5 var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 9px 12px; background: var(--bg); resize: vertical; }
 .suchfeld .btn:disabled { opacity: .5; cursor: default; }
 /* Dialog: gebaut wie die Service-Card des Brand-Kits, dahinter der Hero-Overlay; ohne Schatten, das Kit kennt sie nur als Hover-Rückmeldung */
 dialog.frage { border: 1px solid var(--border-light); border-top: 3px solid var(--cyan); border-radius: var(--radius); padding: 28px 24px; width: min(520px, calc(100vw - 40px)); background: var(--bg); color: var(--text); }
@@ -1857,10 +1857,10 @@ function renderHilfe() {
       ${nachAktionenHilfe}
       <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
-      <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen und bei Anbietern von MCP-Servern.</li>
+      <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Codex prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Codex-Marktplätzen, auf GitHub nach Agenten und bei Anbietern von MCP-Servern.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
       <li>Die Suche läuft in einer Sandbox: nichts schreiben außer dem npm-Zwischenspeicher, Zugangsdaten gesperrt, Netz nur zu skills.sh, npm und GitHub und nur lesend. Mit eingeschaltetem VPN kommt dieses Netz nicht durch; Codex sucht dann nur über seine Websuche und sagt das im Bericht.</li>
-      <li>Skills und Plugins installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“: Skills mit <code>npx skills add … --agent codex</code>, Plugins mit <code>codex plugin add</code>. MCP-Server bleiben zum Kopieren.</li>
+      <li>Skills und Plugins installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“: Skills mit <code>npx skills add … --agent codex</code>, Plugins mit <code>codex plugin add</code>. Einen Agenten zeigt er vorher mit seinem ganzen Text und legt ihn dann nach <code>~/.codex/agents</code>. MCP-Server bleiben zum Kopieren.</li>
       <li>Neu Installiertes erscheint danach als „neu · unbewertet“; „neu bewerten“ trägt die Bewertung nach.</li>
       <li>Dasselbe mit Rückfragen im Gespräch: <code>$3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Codex.</li>
     </ul>`], ["Woher die Zahlen kommen", `<ul>
@@ -1907,10 +1907,10 @@ function renderHilfe() {
       ${nachAktionenHilfe}
       <li>Startest du den Skill inzwischen im anderen Harness, zeigt diese Seite noch den alten. Der Server führt dann nichts aus und bittet dich, die Seite neu zu laden: Beide Inventare kennen dieselben Einträge, ein Klick träfe sonst die falsche Konfiguration.</li>
     </ul>`], ["Suchen und installieren", `<ul>
-      <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
+      <li>Im Tab „Suche“ beschreibst du, wofür du ein Werkzeug suchst. Claude prüft zuerst, ob dein Bestand das schon kann, sucht dann bei skills.sh, in den Plugin-Marktplätzen, auf GitHub nach Agenten und bei Anbietern von MCP-Servern und prüft die Kandidaten auf Herkunft, Verbreitung, Pflege, Reife und Kontextkosten.</li>
       <li>Das Ergebnis nennt höchstens drei Kandidaten mit Überschneidungen zum Bestand und einer Empfehlung; „nichts installieren“ ist eine davon. Es bleibt im Tab, auch über ein Neuladen hinweg, bis du es verwirfst.</li>
       <li>Die Suche läuft ohne Rückfragen und nur mit Lese- und Suchrechten: Sie liest fremde Webseiten und darf deshalb nichts schreiben und nichts installieren; Zugangsdaten wie <code>~/.ssh</code>, <code>~/.aws</code> und <code>~/.claude.json</code> kann sie nicht lesen.</li>
-      <li>Skills und Plugins aus dem Ergebnis installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“. Den Befehl baut er selbst aus Repo und Name, nie aus Claudes Text. MCP-Server bleiben zum Kopieren, weil jeder Anbieter sie anders einrichtet.</li>
+      <li>Skills und Plugins aus dem Ergebnis installiert der Server per Knopf nach einer Bestätigung, bei Skills wahlweise gleich auf „nur manuell“. Den Befehl baut er selbst aus Repo und Name, nie aus Claudes Text. Einen Agenten zeigt er vorher mit seinem ganzen Text und legt ihn dann nach <code>~/.claude/agents</code>. MCP-Server bleiben zum Kopieren, weil jeder Anbieter sie anders einrichtet.</li>
       <li>Neu Installiertes erscheint danach als „neu · unbewertet“; „neu bewerten“ trägt die Bewertung nach.</li>
       <li>Dasselbe mit Rückfragen im Gespräch: <code>/3zero-harness-inventur suche &lt;Bedarf&gt;</code> in Claude Code.</li>
     </ul>`], ["Woher die Zahlen kommen", `<ul>
