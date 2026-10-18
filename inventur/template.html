@@ -246,23 +246,30 @@ dialog.frage form { display: flex; flex-wrap: wrap; justify-content: flex-end; g
 dialog.frage:has(pre.vorschau) { width: min(760px, calc(100vw - 40px)); }
 dialog.frage pre.vorschau { max-height: 45vh; overflow: auto; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius);
   font: 12px/1.45 var(--mono); color: var(--text-dark); white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Formular „Agent anlegen“: Jede Spalte höchstens so breit wie der Dialog (minmax(0, …), width 100 %), sonst machte ein
-   langer Projektpfad die Auswahl „Wo“ breiter als das Fenster, und die Knöpfe lagen rechts außerhalb */
-dialog.frage.formular { width: min(640px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: hidden auto; padding-bottom: 0; }
-dialog.frage.formular > .klein { margin: 0; }
-dialog.frage form.felder { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 16px; margin-top: 18px; }
-dialog.frage .feld { display: grid; gap: 5px; min-width: 0; }
-dialog.frage .feld label { font: 600 12px var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dark); }
-dialog.frage .feld .klein { line-height: 1.4; }
-dialog.frage .feld input, dialog.frage .feld select, dialog.frage .feld textarea { box-sizing: border-box; width: 100%; min-width: 0; font: 15px/1.4 var(--body);
+/* Tab „Erstellen“: ein Formular für Agent, Skill, Befehl und Output-Style. Jede Spalte höchstens so breit wie der Platz
+   (minmax(0, …), width 100 %): Eine <select> würde sonst so breit wie ihr längster Projektpfad */
+form.anlegen { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; max-width: 760px; }
+.feld { display: grid; gap: 5px; min-width: 0; }
+/* display: grid schlüge sonst das hidden der Felder, die zur gewählten Art nicht passen */
+.feld[hidden] { display: none; }
+.feld > .titel { font: 600 12px var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dark); }
+.feld .klein { line-height: 1.4; }
+.feld :is(input[type=text], select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; font: 15px/1.4 var(--body);
   color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 8px 10px; background: var(--bg); }
-dialog.frage .feld :is(input, select, textarea):focus { outline: none; border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
-dialog.frage .feld textarea { resize: vertical; min-height: 140px; }
-dialog.frage .zwei { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
-@media (max-width: 560px) { dialog.frage .zwei { grid-template-columns: minmax(0, 1fr); } }
-/* bleibt unten sichtbar, wenn das Formular in einem niedrigen Fenster scrollt */
-dialog.frage .knoepfe { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; margin: 4px -24px 0; padding: 16px 24px 24px;
-  border-top: 1px solid var(--border-light); background: var(--bg); }
+.feld :is(input[type=text], select, textarea):focus { outline: none; border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+.feld textarea { resize: vertical; min-height: 200px; }
+.feld.haken label { display: flex; gap: 8px; align-items: baseline; font-size: 14px; color: var(--text-dark); }
+.zwei { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
+.zwei:has(> .feld[hidden]) { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 560px) { .zwei { grid-template-columns: minmax(0, 1fr); } }
+/* die Art als Reihe von Schaltern: echte Radio-Knöpfe, nur unsichtbar, damit Tastatur und Vorlesen gehen */
+.arten { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.arten label { position: relative; border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 8px 16px; cursor: pointer;
+  font: 600 14px var(--body); color: var(--text-dark); }
+.arten input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.arten label:has(input:checked) { border-color: var(--cyan); color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+.arten label:has(input:focus-visible) { outline: 2px solid var(--cyan); outline-offset: 2px; }
+form.anlegen .knoepfe { display: flex; gap: 10px; padding-top: 16px; border-top: 1px solid var(--border-light); }
 .kandidat { border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 12px; }
 .kandidat .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 select.wahl { font: 13px var(--body); color: var(--text-dark); border: 1px solid var(--cool-gray); border-radius: var(--radius); padding: 3px 6px; background: var(--bg); }
@@ -343,6 +350,7 @@ try {
   <a href="#mcp" data-gruppe="bestand">Bestand</a>
   <a href="#projekte">Projekte</a>
   <a href="#berechtigungen" data-gruppe="einstellungen">Einstellungen<span id="zahl-einstellungen"></span></a>
+  <a href="#erstellen">Erstellen</a>
   <a href="#suche">Suche<span id="such-stand"></span></a>
   <a href="#hilfe">Hilfe</a>
 </div>
@@ -369,7 +377,6 @@ try {
 </div>
 <main><div id="meldung-bereich"></div><div id="app"></div></main>
 <dialog class="frage" id="frage" aria-labelledby="frage-titel"></dialog>
-<dialog class="frage formular" id="agent-dialog" aria-labelledby="agent-titel"></dialog>
 
 <script id="daten" type="application/json">__DATEN__</script>
 <script id="token" type="application/json">null</script>
@@ -959,7 +966,7 @@ function renderPlugins() {
 
 /* Skills, Befehle und Agenten: je ein Tab mit derselben Tabelle, aber eigenem Filter und eigener Sortierung. Befehle
    behandelt Claude Code wie Skills (Aufruf mit /, skillOverrides, skillUsage); Agenten startet es als Subagent, und sie
-   lassen sich nur entfernen. In einer Liste stand „Agent anlegen“ über lauter Skills. Codex kennt keine eigenen Befehle. */
+   lassen sich nur entfernen. Codex kennt keine eigenen Befehle. */
 const GETEILT = je("auch in Codex", "auch in Claude Code"); /* Skills aus ~/.agents/skills laden in beiden Harnesses */
 const UNGENUTZT = `seit ${D.ungenutzt_tage} Tagen ungenutzt`;
 const LISTEN = [
@@ -1011,8 +1018,7 @@ function renderListe(L) {
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
     .map(([k, t, c]) => k ? `<th class="sortierbar ${c || ""}" data-sort="${k}">${sortKnopf(t)}</th>`
       : `<th class="${c || ""}">${t}</th>`).join("") + WAHL_KOPF;
-  const neu = L.id === "agenten" && TOKEN ? '<p><button type="button" class="btn btn-outline" id="agent-neu">Agent anlegen</button></p>' : "";
-  return abschnitt(L.id, L.titel, neu + filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody class="eigene-liste"></tbody></table></div>`,
+  return abschnitt(L.id, L.titel, filter + `<div class="tabelle"><table><thead><tr>${kopf}</tr></thead><tbody class="eigene-liste"></tbody></table></div>`,
     ERKLAERUNG[L.id]);
 }
 function listeFiltern(L) {
@@ -1701,42 +1707,88 @@ function schalte(id, aktion, misslungen) {
   });
 }
 
-/* Agent anlegen: erst das Formular, dann eine Rückfrage mit dem Pfad, dann schreibt der Server die Datei (agent_anlegen).
-   Die Muster sind dieselben wie im Server; der prüft trotzdem selbst. */
-function agentFormular() {
-  const d = document.getElementById("agent-dialog");
-  const modell = je(`<select id="agent-modell" name="modell"><option value="">wie die Sitzung</option>${AGENT_MODELLE.map(m => `<option>${m}</option>`).join("")}</select>`,
-    '<input id="agent-modell" name="modell" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" placeholder="wie die Sitzung">');
+/* Tab „Erstellen“: Agent, Skill, Befehl oder Output-Style anlegen. Erst das Formular, dann eine Rückfrage mit dem Pfad,
+   dann schreibt der Server die Datei (anlegen()). Die Muster sind dieselben wie im Server; der prüft trotzdem selbst.
+   Beim Wechsel der Art bleibt das Getippte stehen: Die Felder werden nur ein- und ausgeblendet. */
+const MODELLE = ["sonnet", "opus", "haiku", "inherit"];
+const NEU = [
+  { art: "agent", titel: "Agent", tab: "agenten", ordner: "agents", modell: true,
+    beschreibung: `Danach entscheidet ${je("Claude", "Codex")}, wann es den Agenten startet. Eine Zeile.`,
+    inhalt: ["Anweisung", "Was der Agent tun soll und was nicht: Das ist sein Systemprompt.", "Du prüfst Code. Du änderst keine Dateien."] },
+  { art: "skill", titel: "Skill", tab: "skills", ordner: "skills", manuell: true,
+    beschreibung: `Danach entscheidet ${je("Claude", "Codex")}, wann es den Skill lädt. Eine Zeile.`,
+    inhalt: ["Anleitung", "Der Text der SKILL.md: wie die Aufgabe geht, Schritt für Schritt.", "1. Lies die Datei. 2. Fasse sie in drei Sätzen zusammen."] },
+  ...(CODEX ? [] : [
+    { art: "befehl", titel: "Befehl", tab: "befehle", ordner: "commands", manuell: true,
+      beschreibung: "Steht in der Liste, die nach / erscheint. Eine Zeile.",
+      inhalt: ["Prompt", "Was Claude tut, wenn du /name eintippst. $ARGUMENTS steht für das, was du dahinter schreibst.", "Erkläre den Code in $ARGUMENTS in einfachen Worten."] },
+    { art: "stil", titel: "Output-Style", tab: "anweisungen", ordner: "output-styles", nurGlobal: true, programmieren: true,
+      beschreibung: "Steht in /config bei der Auswahl des Styles. Eine Zeile.",
+      inhalt: ["Anweisungen", "Wie Claude antworten soll. Wählen kannst du den Style danach im Tab „Anweisungen“.", "Antworte in höchstens drei Sätzen."] }]),
+];
+const kurzname = name => name.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+function renderErstellen() {
+  const feld = (id, titel, eingabe, hinweis = "", klasse = "") =>
+    `<div class="feld ${klasse}" id="${id}-feld"><label class="titel" for="${id}">${titel}</label>${eingabe}<span class="klein" id="${id}-hinweis">${hinweis}</span></div>`;
+  const modell = je(`<select id="neu-modell"><option value="">wie die Sitzung</option>${MODELLE.map(m => `<option>${m}</option>`).join("")}</select>`,
+    '<input type="text" id="neu-modell" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" placeholder="wie die Sitzung">');
   const ziele = ['<option value="global">global, in jedem Projekt</option>', ...(D.projektordner || []).map(p => `<option value="${esc(p)}">${esc(kurzPfad(p))}</option>`)];
-  const feld = (id, titel, eingabe, hinweis = "") => `<div class="feld"><label for="${id}">${titel}</label>${eingabe}${hinweis ? `<span class="klein">${hinweis}</span>` : ""}</div>`;
-  d.innerHTML = `<h3 id="agent-titel">Agent anlegen</h3>
-    <p class="klein">Legt eine Datei an, die ${je("Claude", "Codex")} als Subagent starten kann. Danach steht er im Tab „Agenten“.</p>
-    <form method="dialog" class="felder">
-      ${feld("agent-name", "Name", '<input id="agent-name" name="name" required maxlength="64" pattern="[a-z0-9][a-z0-9\\-]*" placeholder="code-pruefer" autofocus>',
-        "Wird auch der Dateiname: Kleinbuchstaben, Ziffern und Bindestriche.")}
-      ${feld("agent-beschreibung", "Beschreibung", '<input id="agent-beschreibung" name="beschreibung" required maxlength="1000" placeholder="Prüft geänderten Code auf Fehler und fehlende Tests.">',
-        `Danach entscheidet ${je("Claude", "Codex")}, wann es den Agenten startet. Eine Zeile.`)}
-      ${feld("agent-anweisung", "Anweisung", '<textarea id="agent-anweisung" name="anweisung" required rows="7" maxlength="50000" placeholder="Du prüfst Code. Du änderst keine Dateien."></textarea>',
-        "Was der Agent tun soll und was nicht: Das ist sein Systemprompt.")}
-      <div class="zwei">${feld("agent-modell", "Modell", modell)}${feld("agent-ziel", "Wo", `<select id="agent-ziel" name="ziel">${ziele.join("")}</select>`)}</div>
-      <div class="knoepfe"><button class="btn btn-outline" value="nein" formnovalidate>Abbrechen</button><button class="btn btn-primary" value="ja">weiter</button></div>
-    </form>`;
-  d.returnValue = "";
-  d.showModal();
-  return new Promise(fertig => d.addEventListener("close", () =>
-    fertig(d.returnValue === "ja" ? Object.fromEntries(new FormData(d.querySelector("form"))) : null), { once: true }));
+  const inhalt = TOKEN ? `<form class="anlegen" id="neu-form" novalidate>
+      <fieldset class="arten" aria-label="Was anlegen?">${NEU.map((n, i) => `<label><input type="radio" name="neu-art" value="${n.art}"${i ? "" : " checked"}>${n.titel}</label>`).join("")}</fieldset>
+      ${feld("neu-name", "Name", '<input type="text" id="neu-name" required maxlength="64">')}
+      ${feld("neu-beschreibung", "Beschreibung", '<input type="text" id="neu-beschreibung" required maxlength="1000">')}
+      ${feld("neu-inhalt", "Anweisung", '<textarea id="neu-inhalt" required rows="9" maxlength="50000"></textarea>')}
+      <div class="feld haken" id="neu-manuell-feld"><label><input type="checkbox" id="neu-manuell"> nur manuell: lädt erst, wenn du ihn aufrufst, und kostet sonst keinen Kontext</label></div>
+      <div class="feld haken" id="neu-programmieren-feld"><label><input type="checkbox" id="neu-programmieren"> Programmier-Anweisungen von Claude Code behalten (<code>keep-coding-instructions</code>)</label></div>
+      <div class="zwei">${feld("neu-modell", "Modell", modell)}${feld("neu-ziel", "Wo", `<select id="neu-ziel">${ziele.join("")}</select>`)}</div>
+      <div class="knoepfe"><button type="submit" class="btn btn-primary">weiter</button><button type="reset" class="btn btn-outline">leeren</button></div>
+    </form>`
+    : '<p class="leer">Anlegen braucht den Server: <code>python3 server.py</code> im Projektordner starten; das Dashboard öffnet sich dann von selbst.</p>';
+  return abschnitt("erstellen", "Erstellen", inhalt,
+    erklaert(`Legt einen eigenen Baustein als Datei an, global oder in einem deiner Projekte. Danach steht er im passenden Tab unter „Bestand“.`,
+      NEU.map(n => [n.titel, `${je("~/.claude", "~/.codex")}/${n.ordner}${n.nurGlobal ? ", nur global" : `, im Projekt ${je(".claude", ".codex")}/${n.ordner}`}`]),
+      ["Eine vorhandene Datei überschreibt der Server nie.", "Hooks und MCP-Server legt das Dashboard bewusst nicht an: Sie starten Programme, ein Tippfehler im Formular störte jede Sitzung."]));
 }
-const AGENT_MODELLE = ["sonnet", "opus", "haiku", "inherit"];
-async function agentAnlegen() {
-  const f = await agentFormular();
-  if (!f) return;
-  const datei = `${f.ziel === "global" ? je("~/.claude", "~/.codex") : kurzPfad(f.ziel) + je("/.claude", "/.codex")}/agents/${f.name}.${je("md", "toml")}`;
-  if (!await frage("Agent anlegen?", `${datei} wird neu angelegt. ${f.ziel === "global" ? "Der Agent gilt in jedem Projekt." : "Die Datei liegt im Projektordner, also auch im Repo."}\n\n`
-    + "Eine vorhandene Datei überschreibt der Server nicht. Entfernen lässt sich der Agent danach im Tab „Agenten“.", "anlegen", [f.beschreibung])) return;
+const neuArt = () => NEU.find(n => n.art === document.querySelector('input[name="neu-art"]:checked').value);
+function neuFelder() {
+  const n = neuArt(), name = document.getElementById("neu-name");
+  const stil = n.art === "stil";
+  /* im Muster gilt das Flag v: Klammern und Bindestrich in der Klasse brauchen einen Rückstrich */
+  name.pattern = stil ? "[\\p{L}\\p{N}_][\\p{L}\\p{N}_ .,\\(\\)!?\\-]*" : "[a-z0-9][a-z0-9\\-]*";
+  name.placeholder = stil ? "Kurz und knapp" : n.art === "befehl" ? "erklaeren" : n.art === "skill" ? "zusammenfassen" : "code-pruefer";
+  document.getElementById("neu-name-hinweis").textContent = stil ? "So erscheint er in /config. Die Datei bekommt eine Kurzform davon."
+    : `Wird auch der ${n.art === "skill" ? "Ordnername" : "Dateiname"}: Kleinbuchstaben, Ziffern und Bindestriche.`;
+  document.getElementById("neu-beschreibung-hinweis").textContent = n.beschreibung;
+  const [titel, hinweis, beispiel] = n.inhalt;
+  document.querySelector('label[for="neu-inhalt"]').textContent = titel;
+  document.getElementById("neu-inhalt-hinweis").textContent = hinweis;
+  document.getElementById("neu-inhalt").placeholder = beispiel;
+  document.getElementById("neu-modell-feld").hidden = !n.modell;
+  document.getElementById("neu-manuell-feld").hidden = !n.manuell;
+  document.getElementById("neu-programmieren-feld").hidden = !n.programmieren;
+  const ziel = document.getElementById("neu-ziel");
+  ziel.disabled = !!n.nurGlobal;
+  if (n.nurGlobal) ziel.value = "global";
+  document.getElementById("neu-ziel-hinweis").textContent = n.nurGlobal ? "Output-Styles gelten immer global." : "";
+}
+async function neuAnlegen(ev) {
+  ev.preventDefault();
+  const form = ev.target, n = neuArt();
+  if (!form.reportValidity()) return;
+  const wert = id => document.getElementById(id).value;
+  const f = { art: n.art, name: wert("neu-name").trim(), beschreibung: wert("neu-beschreibung").trim(), inhalt: wert("neu-inhalt"),
+    modell: n.modell ? wert("neu-modell") : "", nur_manuell: !!n.manuell && document.getElementById("neu-manuell").checked,
+    programmieren: !!n.programmieren && document.getElementById("neu-programmieren").checked, ziel: wert("neu-ziel") };
+  const basis = f.ziel === "global" ? je("~/.claude", "~/.codex") : kurzPfad(f.ziel) + je("/.claude", "/.codex");
+  const datei = `${basis}/${n.ordner}/` + (n.art === "skill" ? `${f.name}/SKILL.md` : `${n.art === "stil" ? kurzname(f.name) : f.name}.${CODEX && n.art === "agent" ? "toml" : "md"}`);
+  if (!await frage(`${n.titel} anlegen?`, `${datei} wird neu angelegt. ${f.ziel === "global" ? "Das gilt in jedem Projekt." : "Die Datei liegt im Projektordner, also auch im Repo."}\n\n`
+    + `Eine vorhandene Datei überschreibt der Server nicht. Entfernen lässt sich ${n.titel === "Output-Style" ? "der Style" : "der Eintrag"} danach im Tab „${document.querySelector(`nav a[href="#${n.tab}"]`)?.textContent || n.tab}“.`, "anlegen", [f.beschreibung])) return;
   await mitSperre(async () => {
-    const r = await api("/api/agent", f);
+    const r = await api("/api/anlegen", f);
     if (r.harnessWechsel) return harnessGewechselt(r);
-    if (!r.ok) return setMeldung("Agent anlegen fehlgeschlagen:\n\n" + r.ausgabe, "Fehler");
+    if (!r.ok) return setMeldung(`${n.titel} anlegen fehlgeschlagen:\n\n` + r.ausgabe, "Fehler");
+    history.replaceState(null, "", "#" + n.tab); /* nach dem Neuladen steht der neue Eintrag in seinem Tab */
     await neuEinlesen();
   });
 }
@@ -1942,7 +1994,7 @@ document.getElementById("stand").innerHTML =
 if (!AKTIONEN) document.getElementById("aktionen").innerHTML =
   `<div class="knopfstapel nur-zeit"><span class="zeit">Bestand vom ${zeitpunkt(D.erstellt)}</span><span class="zeit">Bewertung vom ${BEWERTET}</span></div>`;
 document.getElementById("app").innerHTML =
-  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + LISTEN.map(renderListe).join("") + renderHooks() + renderMods() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderSuche() + renderHilfe();
+  renderUeberblick() + renderEmpfehlungen() + renderGruppen() + renderMcp() + renderPlugins() + LISTEN.map(renderListe).join("") + renderHooks() + renderMods() + renderAnweisungen() + renderProjekte() + renderWerkzeuge() + renderBerechtigungen() + renderModelle() + renderHinweise() + renderErstellen() + renderSuche() + renderHilfe();
 /* Gemerkte Werte in die Felder; gibt es eine gemerkte Auswahl nicht mehr (etwa eine Herkunft), gilt wieder „alle“ */
 for (const L of LISTEN) {
   document.querySelectorAll(`.filter[data-liste="${L.id}"] [data-feld]`).forEach(el => {
@@ -1961,6 +2013,12 @@ for (const L of LISTEN) {
 if (CODEX) document.getElementById("nav-befehle").remove(); /* Codex kennt keine eigenen Befehle */
 tabellenFilter();
 tabellenSortieren();
+if (TOKEN) {
+  document.getElementById("neu-form").addEventListener("submit", neuAnlegen);
+  document.getElementById("neu-form").addEventListener("change", ev => { if (ev.target.name === "neu-art") neuFelder(); });
+  document.getElementById("neu-form").addEventListener("reset", () => setTimeout(neuFelder));
+  neuFelder();
+}
 document.getElementById("empf-suche").addEventListener("input", empfFiltern);
 /* Der Tabellenkopf steht unter dem Filter: dessen Höhe (er bricht um) als --filter an dem Element danach.
    Beim Wechsel von Tab und Reiter sofort, nicht erst mit dem nächsten Bild: Sonst läge der Kopf kurz unter dem Filter. */
@@ -2030,7 +2088,6 @@ document.addEventListener("click", ev => {
     listeFiltern(L);
     return;
   }
-  if (ev.target.closest("#agent-neu")) { agentAnlegen(); return; }
   const auf = ev.target.closest("button.aufklappen");
   if (auf) { klappe(auf.closest("tr.haupt")); return; }
   if (ev.target.closest("a, button, input, select")) return;

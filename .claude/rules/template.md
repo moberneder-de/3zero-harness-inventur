@@ -33,7 +33,7 @@ Auch die Tabellenköpfe bleiben stehen, unter Seitenkopf und Filter (`--kopf` pl
 Dafür hat `.tabelle` kein `overflow-x: auto` mehr, außer unter 900 Pixeln Breite: Mit `overflow` hinge der Kopf an diesem Kasten statt an der Seite.
 Schmal scrollt die Tabelle also weiter für sich, ohne festen Kopf.
 In der Meldungskarte (`.meldung`) steht der Kopf nicht fest: Ein langer Bericht scrollt dort in seinem eigenen Kasten (`.inhalt.gekuerzt`), und der feste Kopf hing um die Höhe des Seitenkopfs versetzt über der ersten Zeile der Tabelle.
-Die Navigation hat zwei Ebenen: sieben Einträge oben, davon drei Gruppen („Aufräumen“: Empfehlungen, Überschneidungen, Hinweise; „Bestand“: MCP-Server, Plugins, Skills, Hooks, Mods, Anweisungen; „Einstellungen“: Berechtigungen, Modelle, Versionen), deren Tabs in einer zweiten Zeile (`.unternav`) stehen.
+Die Navigation hat zwei Ebenen: acht Einträge oben, davon drei Gruppen („Aufräumen“: Empfehlungen, Überschneidungen, Hinweise; „Bestand“: MCP-Server, Plugins, Skills, Befehle, Agenten, Hooks, Mods, Anweisungen; „Einstellungen“: Berechtigungen, Modelle, Versionen), deren Tabs in einer zweiten Zeile (`.unternav`) stehen.
 Jeder Tab bleibt ein eigener `<section>` mit seiner Adresse (`#mcp`, `#modelle`); `zeigeTab()` liest die Gruppe aus der zweiten Zeile ab, ein neuer Tab braucht also nur dort einen Link.
 Vierzehn Tabs nebeneinander waren nach vier Ordnungen gewachsen (Art, Ort, Thema, Aufgabe) und brachen in zwei Zeilen um.
 Der Tab „Projekte“ zeigt je Projekt auch dessen Regeln und Modelle, mit denselben Tabellen wie die Tabs „Berechtigungen“ und „Modelle“ (`RECHT`, `MESSUNG`): zwei Sichten auf dieselben Daten, je Projekt und über alle Projekte.
@@ -51,8 +51,10 @@ Eine dunkle Palette kennt das Kit nicht: Jede Farbe steht deshalb einmal als `li
 Dunkel übernimmt `--hero` als Kartenfarbe, nur Seitengrund, Linien und die Zeile unter dem Mauszeiger sind abgeleitet.
 Neue Flächen deshalb nie auf `#fff` setzen, sondern auf `var(--bg)`.
 Bestätigungen laufen über `frage()` mit einem `<dialog>` im Stil der Service-Card, nie über `confirm()` oder `prompt()`; das Kit hat keinen Dialog-Baustein.
-Das Formular „Agent anlegen“ (`agentFormular()`) ist ein zweiter `<dialog>` derselben Klasse (`#agent-dialog`, `form.felder`); die Rückfrage danach läuft wieder über `frage()`, mit dem Pfad, den der Server schreiben wird.
-`form.felder` setzt `justify-content` zurück: Die Regel für die Knopfleiste der Rückfrage (`flex-end`) schob die Spalte des Formulars sonst nach rechts.
+Der Tab „Erstellen“ (`renderErstellen()`, `NEU`) legt Agent, Skill, Befehl und Output-Style an; bis Oktober 2026 stand nur „Agent anlegen“ als Dialog im Tab „Agenten“.
+Das Formular steht im Tab, nicht in einem `<dialog>`: Die Art wählen Radio-Knöpfe, und beim Wechsel blendet `neuFelder()` nur Felder ein und aus, damit das Getippte stehen bleibt; die Rückfrage danach läuft über `frage()`, mit dem Pfad, den der Server schreiben wird.
+`.feld[hidden]` braucht eine eigene Regel: `.feld { display: grid }` schlug sonst das `hidden`, und bei „Skill“ standen Modell und Programmier-Anweisungen da (ein Skript, das nur `hidden` abfragte, sah sie als ausgeblendet; erst das Bild zeigte es).
+Im Muster des Namens gilt das Flag `v`: Klammern und Bindestrich in einer Zeichenklasse brauchen einen Rückstrich, sonst ist das Muster ungültig und der Browser prüft gar nicht.
 Jede Spalte darin ist `minmax(0, …)` und jedes Feld `width: 100%`: Eine `<select>` wird sonst so breit wie ihre längste Option, ein Projektpfad mit 171 Zeichen machte das Formular 1266 Pixel breit, und die Knöpfe lagen rechts außerhalb (nachgemessen mit den echten Projekten, nicht mit zwei kurzen).
 Die Knopfleiste klebt unten (`position: sticky`), damit sie in einem niedrigen Fenster beim Scrollen sichtbar bleibt.
 

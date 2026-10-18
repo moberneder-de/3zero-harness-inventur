@@ -1277,13 +1277,13 @@ enabled = true
         return config
 
 
-class AgentAnlegen(ServerBasis):
-    """Der Server legt einen eigenen Agenten aus dem Formular an: global oder in einem Projekt aus dem Inventar,
-    im Format des Harness, und überschreibt nie eine vorhandene Datei."""
+class Anlegen(ServerBasis):
+    """Der Tab „Erstellen“: Der Server legt Agent, Skill, Befehl oder Output-Style aus dem Formular an, global oder in
+    einem Projekt aus dem Inventar, im Format des Harness, und überschreibt nie eine vorhandene Datei."""
 
     def setUp(self):
         super().setUp()
-        self.srv.agenten = {"claude-code": self.tmp / "home/.claude/agents", "codex": self.tmp / "home/.codex/agents"}  # nie das echte Home
+        self.srv.home = self.tmp / "home"  # nie das echte Home
         self.projekt = self.tmp / "Kit"
         self.projekt.mkdir()
         self.inventar_mit_projekt()
@@ -1293,27 +1293,26 @@ class AgentAnlegen(ServerBasis):
         datei.write_text(json.dumps({"mcp": [], "plugins": [], "skills": list(skills), "projekt_skills": [], "projektordner": [str(self.projekt)]}))
 
     def anlegen(self, **auftrag):
-        status, inhalt = self.anfrage("POST", "/api/agent", {"name": "code-pruefer", "beschreibung": 'Prüft Code: "streng" --- und knapp',
-                                                             "anweisung": "Du prüfst Code.\n---\nDu änderst nichts.", "modell": "sonnet",
-                                                             "ziel": "global", **auftrag})
+        status, inhalt = self.anfrage("POST", "/api/anlegen", {"art": "agent", "name": "code-pruefer", "beschreibung": 'Prüft Code: "streng" --- und knapp',
+                                                               "inhalt": "Du prüfst Code.\n---\nDu änderst nichts.", "modell": "sonnet",
+                                                               "ziel": "global", **auftrag})
         return status, json.loads(inhalt)
 
-    def test_global_unter_claude_code(self):
+    def test_agent_global_unter_claude_code(self):
         status, antwort = self.anlegen()
         datei = self.tmp / "home/.claude/agents/code-pruefer.md"
         self.assertEqual((status, antwort["ok"]), (200, True), antwort)
-        text = datei.read_text()
         # Beschreibung als JSON-String: Doppelpunkt, Anführungszeichen und „---“ beenden den Kopf nicht
-        self.assertEqual(text, '---\nname: code-pruefer\ndescription: "Prüft Code: \\"streng\\" --- und knapp"\nmodel: sonnet\n---\n\n'
-                               "Du prüfst Code.\n---\nDu änderst nichts.\n")
+        self.assertEqual(datei.read_text(), '---\nname: code-pruefer\ndescription: "Prüft Code: \\"streng\\" --- und knapp"\nmodel: sonnet\n---\n\n'
+                                            "Du prüfst Code.\n---\nDu änderst nichts.\n")
         self.assertIn(str(datei), antwort["ausgabe"])
 
-    def test_im_projekt_aus_dem_inventar(self):
+    def test_agent_im_projekt_aus_dem_inventar(self):
         status, antwort = self.anlegen(ziel=str(self.projekt), modell="")
         self.assertTrue(antwort["ok"], antwort)
         self.assertNotIn("model:", (self.projekt / ".claude/agents/code-pruefer.md").read_text())
 
-    def test_unter_codex_als_toml(self):
+    def test_agent_unter_codex_als_toml(self):
         self.auf_codex()
         self.inventar_mit_projekt()
         status, antwort = self.anlegen(modell="gpt-5.5")
@@ -1322,11 +1321,44 @@ class AgentAnlegen(ServerBasis):
             "name": "code-pruefer", "description": 'Prüft Code: "streng" --- und knapp', "model": "gpt-5.5",
             "developer_instructions": "Du prüfst Code.\n---\nDu änderst nichts."})
 
+    def test_skill_mit_nur_manuell(self):
+        """Ein Skill ist ein Ordner mit SKILL.md; „nur manuell“ steht unter Claude Code im Kopf, unter Codex in agents/openai.yaml."""
+        status, antwort = self.anlegen(art="skill", name="notizen", beschreibung="Schreibt Notizen", inhalt="Schreib knapp.", nur_manuell=True, modell="")
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual((self.tmp / "home/.claude/skills/notizen/SKILL.md").read_text(),
+                         '---\nname: notizen\ndescription: "Schreibt Notizen"\ndisable-model-invocation: true\n---\n\nSchreib knapp.\n')
+        self.assertTrue(self.anlegen(art="skill", name="tabellen", beschreibung="T", inhalt="x", ziel=str(self.projekt))[1]["ok"])
+        self.assertTrue((self.projekt / ".claude/skills/tabellen/SKILL.md").is_file())
+        self.auf_codex()
+        self.inventar_mit_projekt()
+        self.assertTrue(self.anlegen(art="skill", name="notizen", beschreibung="N", inhalt="x", nur_manuell=True, modell="")[1]["ok"])
+        ordner = self.tmp / "home/.codex/skills/notizen"
+        self.assertNotIn("disable-model-invocation", (ordner / "SKILL.md").read_text())
+        self.assertEqual((ordner / "agents/openai.yaml").read_text(), "policy:\n  allow_implicit_invocation: false\n")
+
+    def test_befehl_und_output_style_nur_unter_claude_code(self):
+        status, antwort = self.anlegen(art="befehl", name="bauen", beschreibung="Baut das Projekt", inhalt="Führe den Build aus.", modell="", ziel=str(self.projekt))
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual((self.projekt / ".claude/commands/bauen.md").read_text(), '---\ndescription: "Baut das Projekt"\n---\n\nFühre den Build aus.\n')
+        # ein Output-Style heißt, wie sein Kopf ihn nennt; die Datei bekommt eine Kurzform davon
+        status, antwort = self.anlegen(art="stil", name="Kurz und knapp", beschreibung="Antwortet knapp", inhalt="Antworte in drei Sätzen.",
+                                       programmieren=True, modell="")
+        self.assertTrue(antwort["ok"], antwort)
+        self.assertEqual((self.tmp / "home/.claude/output-styles/kurz-und-knapp.md").read_text(),
+                         '---\nname: Kurz und knapp\ndescription: "Antwortet knapp"\nkeep-coding-instructions: true\n---\n\nAntworte in drei Sätzen.\n')
+        self.assertFalse(self.anlegen(art="stil", name="Projekt", beschreibung="d", inhalt="x", modell="", ziel=str(self.projekt))[1]["ok"])
+        self.auf_codex()
+        self.inventar_mit_projekt()
+        for art in ("befehl", "stil"):
+            with self.subTest(art=art):
+                self.assertEqual(self.anlegen(art=art, name="x", beschreibung="d", inhalt="x", modell="")[0], 400)
+
     def test_was_nicht_geht(self):
         """Der Name wird ein Dateiname, das Ziel ein Ordner: Beides nimmt der Server nur so, wie er es kennt."""
         for auftrag, grund in [({"name": "../weg"}, "Name"), ({"name": "Gross"}, "Name"), ({"beschreibung": "zwei\nZeilen"}, "Beschreibung"),
-                               ({"beschreibung": " "}, "Beschreibung"), ({"anweisung": ""}, "Anweisung"), ({"modell": "gpt"}, "Modell"),
-                               ({"ziel": str(self.tmp)}, "Projekt"), ({"ziel": 3}, "Projekt")]:
+                               ({"beschreibung": " "}, "Beschreibung"), ({"inhalt": ""}, "Inhalt"), ({"modell": "gpt"}, "Modell"),
+                               ({"ziel": str(self.tmp)}, "Projekt"), ({"ziel": 3}, "Projekt"), ({"art": "hook"}, "Art"),
+                               ({"art": "stil", "name": 'Mit "Zitat"', "modell": ""}, "Name"), ({"art": "stil", "name": "a: b", "modell": ""}, "Name")]:
             with self.subTest(auftrag=auftrag):
                 status, antwort = self.anlegen(**auftrag)
                 self.assertEqual((status, antwort["ok"]), (400, False))
@@ -1347,6 +1379,10 @@ class AgentAnlegen(ServerBasis):
         status, antwort = self.anlegen()
         self.assertFalse(antwort["ok"])
         self.assertFalse(datei.exists())
+        # ein Skill-Ordner, den es schon gibt, bleibt unberührt, auch ohne SKILL.md darin
+        (self.tmp / "home/.claude/skills/notizen").mkdir(parents=True)
+        self.assertFalse(self.anlegen(art="skill", name="notizen", beschreibung="d", inhalt="x", modell="")[1]["ok"])
+        self.assertEqual(list((self.tmp / "home/.claude/skills/notizen").iterdir()), [])
 
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -1360,7 +1396,7 @@ class AgentAusDerSuche(ServerBasis):
 
     def setUp(self):
         super().setUp()
-        self.srv.agenten = {"claude-code": self.tmp / "home/.claude/agents", "codex": self.tmp / "home/.codex/agents"}
+        self.srv.home = self.tmp / "home"
         self.abrufe = []
 
     def kandidat(self, pfad="agents/code-reviewer.md", repo="acme/agents"):

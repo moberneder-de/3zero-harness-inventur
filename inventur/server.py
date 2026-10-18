@@ -354,14 +354,32 @@ AGENT_MODELLE = ("sonnet", "opus", "haiku", "inherit")  # was Claude Code im Kop
 CODEX_MODELL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 
 
-def agent_text(codex, name, beschreibung, anweisung, modell):
-    """Die Datei eines neuen Agenten im Format des Harness. Beschreibung und Anweisung stehen als JSON-String da, das in
-    YAML wie in TOML gilt: Ein Doppelpunkt, ein Anführungszeichen oder „---“ aus dem Formular beendet so weder Wert noch Kopf."""
+STIL_NAME = re.compile(r"\w[\w .,()!?-]{0,63}")  # steht ohne Anführungszeichen im Kopf: kein Doppelpunkt, kein #, kein "
+ANLEGEN_ORDNER = {"agent": "agents", "skill": "skills", "befehl": "commands", "stil": "output-styles"}
+
+
+def kurzname(name):
+    """Der Dateiname eines Output-Styles aus seinem Namen: „Erklär es mir einfach“ wird erklaer-es-mir-einfach."""
+    s = name.lower()
+    for alt, neu in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        s = s.replace(alt, neu)
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")[:64]
+
+
+def anlegen_text(art, codex, name, beschreibung, inhalt, modell="", nur_manuell=False, programmieren=False):
+    """Die Datei eines neuen Agenten, Skills, Befehls oder Output-Styles im Format des Harness. Die Beschreibung steht
+    als JSON-String da, der in YAML wie in TOML gilt: Ein Doppelpunkt, ein Anführungszeichen oder „---“ aus dem
+    Formular beendet so weder Wert noch Kopf."""
     wert = lambda s: json.dumps(s, ensure_ascii=False)
-    if codex:
+    if art == "agent" and codex:
         return "".join([f"name = {wert(name)}\n", f"description = {wert(beschreibung)}\n", f"model = {wert(modell)}\n" if modell else "",
-                        f"developer_instructions = {wert(anweisung)}\n"])
-    return f"---\nname: {name}\ndescription: {wert(beschreibung)}\n" + (f"model: {modell}\n" if modell else "") + f"---\n\n{anweisung}\n"
+                        f"developer_instructions = {wert(inhalt)}\n"])
+    kopf = {"agent": [f"name: {name}", f"description: {wert(beschreibung)}"] + ([f"model: {modell}"] if modell else []),
+            # „nur manuell“ steht unter Codex nicht im Kopf, sondern in agents/openai.yaml (siehe anlegen())
+            "skill": [f"name: {name}", f"description: {wert(beschreibung)}"] + (["disable-model-invocation: true"] if nur_manuell and not codex else []),
+            "befehl": [f"description: {wert(beschreibung)}"] + (["disable-model-invocation: true"] if nur_manuell else []),
+            "stil": [f"name: {name}", f"description: {wert(beschreibung)}"] + (["keep-coding-instructions: true"] if programmieren else [])}[art]
+    return "---\n" + "\n".join(kopf) + "\n---\n\n" + inhalt + "\n"
 
 
 def sicherer_befehl(befehl):
@@ -563,7 +581,7 @@ class Inventarserver(ThreadingHTTPServer):
         self.laeufe, self.laeufe_sperre = {}, threading.Lock()
         self.prozesse = {}  # der laufende claude- oder codex-Prozess je Art, damit abbrechen() ihn beenden kann
         self.codex_skills = Path.home() / ".agents" / "skills"  # dorthin legt npx skills die Skills
-        self.agenten = {"claude-code": Path.home() / ".claude" / "agents", "codex": Path.home() / ".codex" / "agents"}  # globale Agenten
+        self.home = Path.home()  # darunter legt „Erstellen“ an und die Suche ihre Agenten; in Tests ersetzt
 
     def harness(self):
         return harness.aktuell(self.daten)
@@ -789,44 +807,65 @@ class Inventarserver(ThreadingHTTPServer):
                 return {**{k: v for k, v in lauf_.items() if k != "beginn"}, "sekunden": round(time.time() - lauf_["beginn"])}
             return dict(lauf_)
 
-    def agent_anlegen(self, auftrag):
-        """Legt einen eigenen Agenten aus dem Formular an, global oder in einem Projekt aus dem Inventar, und gibt
-        (Status, Antwort) zurück. Eine vorhandene Datei bleibt, wie sie ist: Geschrieben wird nur, was es noch nicht gibt.
-        Der Text kommt vom Benutzer selbst, nicht aus einem Lauf, der fremde Inhalte liest; Name und Ziel werden
-        trotzdem Pfade und gehen nur so durch, wie der Server sie kennt."""
+    def anlegen(self, auftrag):
+        """Legt aus dem Tab „Erstellen“ einen Agenten, Skill, Befehl oder Output-Style an, global oder in einem Projekt
+        aus dem Inventar, und gibt (Status, Antwort) zurück. Eine vorhandene Datei bleibt, wie sie ist: Geschrieben wird
+        nur, was es noch nicht gibt. Der Text kommt vom Benutzer selbst, nicht aus einem Lauf, der fremde Inhalte liest;
+        Name und Ziel werden trotzdem Pfade und gehen nur so durch, wie der Server sie kennt."""
         h = self.harness()
         codex = h == "codex"
         f = auftrag if isinstance(auftrag, dict) else {}
-        name, beschreibung, anweisung = f.get("name"), f.get("beschreibung"), f.get("anweisung")
-        modell, ziel = f.get("modell") or "", f.get("ziel")
-        if not isinstance(name, str) or not AGENT_NAME.fullmatch(name):
+        art, name, beschreibung, inhalt = f.get("art"), f.get("name"), f.get("beschreibung"), f.get("inhalt")
+        modell, ziel = (f.get("modell") or "") if f.get("art") == "agent" else "", f.get("ziel")
+        nur_manuell, programmieren = f.get("nur_manuell") is True, f.get("programmieren") is True
+        if art not in (("agent", "skill") if codex else ("agent", "skill", "befehl", "stil")):
+            return 400, {"ok": False, "ausgabe": "Art: " + ("Agent oder Skill; eigene Befehle und Output-Styles kennt Codex nicht." if codex
+                                                          else "Agent, Skill, Befehl oder Output-Style.")}
+        if art == "stil":
+            name = name.strip() if isinstance(name, str) else name
+            if not (isinstance(name, str) and STIL_NAME.fullmatch(name) and AGENT_NAME.fullmatch(kurzname(name))):
+                return 400, {"ok": False, "ausgabe": "Name: Buchstaben, Ziffern, Leerzeichen und . , ( ) ! ? -, höchstens 64 Zeichen, ohne Doppelpunkt und Anführungszeichen."}
+        elif not isinstance(name, str) or not AGENT_NAME.fullmatch(name):
             return 400, {"ok": False, "ausgabe": "Name: nur Kleinbuchstaben, Ziffern und Bindestriche, höchstens 64 Zeichen."}
         if not isinstance(beschreibung, str) or not beschreibung.strip() or len(beschreibung) > 1000 or "\n" in beschreibung or "\r" in beschreibung:
             return 400, {"ok": False, "ausgabe": "Beschreibung: eine Zeile, höchstens 1000 Zeichen."}
-        if not isinstance(anweisung, str) or not anweisung.strip() or len(anweisung) > 50000:
-            return 400, {"ok": False, "ausgabe": "Anweisung: fehlt oder ist länger als 50000 Zeichen."}
+        if not isinstance(inhalt, str) or not inhalt.strip() or len(inhalt) > 50000:
+            return 400, {"ok": False, "ausgabe": "Inhalt: fehlt oder ist länger als 50000 Zeichen."}
         if not isinstance(modell, str) or modell and not (CODEX_MODELL.fullmatch(modell) if codex else modell in AGENT_MODELLE):
             return 400, {"ok": False, "ausgabe": "Modell: " + ("ein Modellname wie gpt-5.5." if codex else "sonnet, opus, haiku oder inherit.")}
         inventar = json.loads(self.datei("inventar").read_text(encoding="utf-8"))
         if ziel == "global":
-            ordner = self.agenten[h]
+            basis = self.home
+        elif art == "stil":
+            return 400, {"ok": False, "ausgabe": "Projekt: Output-Styles legt das Dashboard nur global an."}
         elif isinstance(ziel, str) and ziel in (inventar.get("projektordner") or []) and Path(ziel).is_dir():  # sonst legte mkdir ihn neu an
-            ordner = Path(ziel) / (".codex" if codex else ".claude") / "agents"
+            basis = Path(ziel)
         else:
             return 400, {"ok": False, "ausgabe": "Projekt: nur global oder ein eingetragenes Projekt aus dem Inventar."}
-        datei = ordner / f"{name}.{'toml' if codex else 'md'}"
-        # ein gleichnamiger Agent in einer anderen Datei desselben Ordners: Der Harness kennte dann zwei
-        doppelt = [e["pfad"] for e in inventar.get("skills", []) + inventar.get("projekt_skills", [])
-                   if e.get("typ") == "Agent" and e.get("name") == name and Path(e.get("pfad", "")).parent == ordner]
-        if doppelt:
-            return 200, {"ok": False, "ausgabe": f"Einen Agenten {name} gibt es dort schon: {doppelt[0]}"}
+        ordner = basis / (".codex" if codex else ".claude") / ANLEGEN_ORDNER[art]
+        datei = (ordner / name / "SKILL.md" if art == "skill" else
+                 ordner / f"{kurzname(name) if art == 'stil' else name}.{'toml' if codex and art == 'agent' else 'md'}")
+        if art == "agent":
+            # ein gleichnamiger Agent in einer anderen Datei desselben Ordners: Der Harness kennte dann zwei
+            doppelt = [e["pfad"] for e in inventar.get("skills", []) + inventar.get("projekt_skills", [])
+                       if e.get("typ") == "Agent" and e.get("name") == name and Path(e.get("pfad", "")).parent == ordner]
+            if doppelt:
+                return 200, {"ok": False, "ausgabe": f"Einen Agenten {name} gibt es dort schon: {doppelt[0]}"}
+        text = anlegen_text(art, codex, name, beschreibung.strip(), inhalt.strip(), modell, nur_manuell, programmieren)
         with self.sperre:
-            ordner.mkdir(parents=True, exist_ok=True)
+            datei.parent.parent.mkdir(parents=True, exist_ok=True)
             try:
+                if art == "skill":
+                    datei.parent.mkdir()  # ein Skill-Ordner, den es schon gibt, bleibt unberührt, auch ohne SKILL.md
+                else:
+                    datei.parent.mkdir(exist_ok=True)
                 with open(datei, "x", encoding="utf-8") as ausgabe:  # „x“: nur neu anlegen, nie überschreiben
-                    ausgabe.write(agent_text(codex, name, beschreibung.strip(), anweisung.strip(), modell))
+                    ausgabe.write(text)
             except FileExistsError:
-                return 200, {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
+                return 200, {"ok": False, "ausgabe": f"{datei.parent if art == 'skill' else datei} gibt es schon; überschrieben wird nichts."}
+            if art == "skill" and codex and nur_manuell:
+                (datei.parent / "agents").mkdir()
+                (datei.parent / "agents" / "openai.yaml").write_text("policy:\n  allow_implicit_invocation: false\n", encoding="utf-8")
         return 200, {"ok": True, "ausgabe": f"{datei} angelegt."}
 
     def agent_vorschau(self, k):
@@ -845,7 +884,7 @@ class Inventarserver(ThreadingHTTPServer):
         name, fehler = agent_pruefen(codex, text)
         if fehler:
             return {"ok": False, "ausgabe": fehler}
-        datei = self.agenten[h] / f"{name}.{'toml' if codex else 'md'}"
+        datei = self.home / (".codex" if codex else ".claude") / "agents" / f"{name}.{'toml' if codex else 'md'}"
         if datei.exists():
             return {"ok": False, "ausgabe": f"{datei} gibt es schon; überschrieben wird nichts."}
         k["vorschau"] = {"text": text, "datei": str(datei), "commit": commit}
@@ -951,7 +990,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/neu":
             return self.antworte(200, self.server.neu_einlesen())
         if self.path not in ("/api/ausfuehren", "/api/bewerten", "/api/bewertung", "/api/suchen", "/api/suche", "/api/installieren", "/api/abbrechen",
-                             "/api/pruefen", "/api/pruefung", "/api/agent", "/api/agent_vorschau"):
+                             "/api/pruefen", "/api/pruefung", "/api/anlegen", "/api/agent_vorschau"):
             return self.antworte(404, {"ok": False, "ausgabe": "nicht gefunden"})
         try:
             anfrage = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -959,9 +998,9 @@ class Handler(BaseHTTPRequestHandler):
             anfrage = None
         if self.path == "/api/bewerten":
             return self.antworte(200, self.server.im_hintergrund("bewertung", self.server.bewerten))
-        if self.path == "/api/agent":
+        if self.path == "/api/anlegen":
             try:
-                return self.antworte(*self.server.agent_anlegen(anfrage))
+                return self.antworte(*self.server.anlegen(anfrage))
             except (OSError, ValueError) as fehler:
                 return self.antworte(200, {"ok": False, "ausgabe": f"{type(fehler).__name__}: {fehler}"})
         if self.path == "/api/suchen":
