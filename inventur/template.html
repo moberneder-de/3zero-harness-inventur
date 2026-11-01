@@ -1012,7 +1012,7 @@ function renderListe(L) {
     ${auswahl("status", "Status", ["aktiv", "aus", "Update verfügbar", ...(L.id === "agenten" ? [] : [UNGENUTZT])], "jeder Status")}
     ${L.aufrufe ? auswahl("aufruf", "Aufruf", L.aufrufe, "jeder Aufruf") : ""}
     ${auswahl("empf", "Empfehlung", ["entfernen", "abschalten", "nur manuell", "prüfen", "behalten", "keine", "unbewertet"], "jede Empfehlung")}
-    ${L.geteilt ? auswahl("geteilt", "Gilt in beiden Harnesses", [`nur für ${D.harness_name}`, GETEILT], "beide Harnesses") : ""}
+    ${L.geteilt ? auswahl("geteilt", "Gilt in beiden Harnesses", [`nur für ${D.harness_name}`, GETEILT], "alle Skills") : ""}
     <label><input type="checkbox" data-feld="teile" checked> Plugin-Bestandteile</label>
     <span class="anzahl"></span></div>`;
   const kopf = [["name", "Name"], [null, "Herkunft"], [null, "Aufruf"], ["tokens", "Kontext", "zahl"], ["nutzung", "Genutzt", "zahl"], [null, "Was es macht"], [null, "Empfehlung"]]
