@@ -218,9 +218,9 @@ def persoenliche_skills(cfg, settings, lock, autoren):
         if not datei.is_file():
             continue
         e = skill_eintrag(cfg, settings, ordner.name, "Skill", datei)
-        # Codex liest ~/.agents/skills selbst; dieselbe Datei kann auch unter ~/.codex/skills liegen
-        verweis = CODEX / "skills" / ordner.name / "SKILL.md"
-        if datei.resolve().is_relative_to((AGENTS / "skills").resolve()) or (verweis.is_file() and verweis.resolve() == datei.resolve()):
+        # Codex liest ~/.agents/skills selbst; dieselbe Datei kann auch über einen Verweis dort oder unter ~/.codex/skills liegen
+        verweise = (AGENTS / "skills" / ordner.name / "SKILL.md", CODEX / "skills" / ordner.name / "SKILL.md")
+        if datei.resolve().is_relative_to((AGENTS / "skills").resolve()) or any(v.is_file() and v.resolve() == datei.resolve() for v in verweise):
             e["geteilt"] = True
         installation = lock.get(ordner.name)
         if installation:
