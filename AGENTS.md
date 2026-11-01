@@ -17,11 +17,12 @@ python3 server.py                        # Dashboard mit Knöpfen auf http://127
 python3 seitenvergleich.py               # nach einem Umbau an inventur/template.html: gleicher Text, gleiche Klicks wie in HEAD?
 python3 seitenvergleich.py --gegen main  # gegen einen anderen Git-Stand; ein eigenes Inventar als Argument geht auch
 python3 render-app-icon.py               # inventur/app-icon.svg → inventur/app-icon.png (Dock-Icon), Einmalschritt
+python3 dock-app.py                      # baut ~/Applications/3zero Harness-Inventur.app: startet server.py aus dem Dock, Beenden beendet ihn
 python3 wochenlauf.py einrichten         # wöchentlicher Lauf, montags 9 Uhr; nur nach Bestätigung
 python3 wochenlauf.py entfernen
 ```
 
-- Voraussetzung: Python 3.11 oder neuer (`tomllib`), keine fremden Pakete. Ausnahmen: `render-app-icon.py` braucht Pillow und `qlmanage` (nur macOS), `seitenvergleich.py` einen Chromium-Browser.
+- Voraussetzung: Python 3.11 oder neuer (`tomllib`), keine fremden Pakete. Ausnahmen: `render-app-icon.py` braucht Pillow und `qlmanage` (nur macOS), `dock-app.py` nur macOS, `seitenvergleich.py` einen Chromium-Browser.
 - Kein Linter oder Formatter im Projekt: nichts installieren oder ausführen.
 - Der Server lehnt http://127.0.0.1:8765 ohne Schlüssel ab (403): zum erneuten Öffnen `~/.3zero-harness-inventur/start.html` nehmen.
 - `build.py --harness codex` (ebenso `server.py --harness codex`) merkt sich Codex als Harness: Ein laufender Server zeigt danach das Codex-Dashboard. Zum Ausprobieren stattdessen `codex.inventar()` oder eine einzelne Funktion in einem Skript aufrufen; `codex.inventar()` liest dabei den echten Bestand aus `~/.codex` und `~/.agents` und schreibt nur den Tageszwischenspeicher `werkzeuge.json` in den Datenordner.
@@ -45,7 +46,7 @@ python3 wochenlauf.py entfernen
 
 ## Aufbau
 
-- Ordner: Im Hauptordner stehen nur die Startbefehle `build.py`, `server.py` und `wochenlauf.py` (je ein paar Zeilen, sie rufen `main()` im Paket) und die Werkzeuge `seitenvergleich.py` und `render-app-icon.py`. Der Code liegt im Paket `inventur/` mit Template, Icons und Logo, die Tests in `tests/`. Die Module importieren einander relativ (`from . import harness`), die Tests über `from inventur import build`. Was den Projektordner braucht (`build.py` starten, `skill/` kopieren), nimmt `harness.PROJEKT`, nie den Ordner des Moduls.
+- Ordner: Im Hauptordner stehen nur die Startbefehle `build.py`, `server.py` und `wochenlauf.py` (je ein paar Zeilen, sie rufen `main()` im Paket) und die Werkzeuge `seitenvergleich.py`, `render-app-icon.py` und `dock-app.py`. Der Code liegt im Paket `inventur/` mit Template, Icons und Logo, die Tests in `tests/`. Die Module importieren einander relativ (`from . import harness`), die Tests über `from inventur import build`. Was den Projektordner braucht (`build.py` starten, `skill/` kopieren), nimmt `harness.PROJEKT`, nie den Ordner des Moduls.
 - Datenordner: Alles, was zum Rechner des Benutzers gehört, liegt in `~/.3zero-harness-inventur` (`harness.DATEN`): beide Bewertungen, beide Inventare, beide Dashboards, beide Verläufe und `harness.json`. Der Projektordner enthält nur das Werkzeug und ist deshalb veröffentlichungsfähig. `build.py` legt den Ordner beim ersten Lauf an; fehlt eine Bewertung, gilt sie als leer und alles erscheint als „unbewertet“. In `server.py` ist `ordner` das Werkzeug und `daten` der Datenordner — wer beides verwechselt, lässt den Server wieder ins Repo schreiben.
 - Harness: Der Skill nennt beim Start seinen Harness (`build.py --harness claude-code|codex`), `build.py` merkt ihn sich in `harness.json`, der letzte Start zählt. Die Dateinamen je Harness (Inventar, Dashboard, Bewertung, Verlauf) stehen in `harness.HARNESSE`.
 - Bewertung: `bewertung-<harness>.json` im Datenordner enthält die Urteile: Beschreibung, Empfehlung, Überschneidungsgruppen, Hinweise.
