@@ -355,9 +355,13 @@ class ProjektSkills(unittest.TestCase):
         (claude_ordner / "skills/inventur").symlink_to(repo / "skill")
         (codex / "skills").mkdir(parents=True)
         (codex / "skills/inventur").symlink_to(repo / "skill")
+        # derselbe Ordner, für Codex über ~/.agents/skills statt ~/.codex/skills
+        self.schreibe(repo / "skills/toolbox/SKILL.md", "---\nname: toolbox\ndescription: richtet ein\n---\n")
+        (claude_ordner / "skills/toolbox").symlink_to(repo / "skills/toolbox")
+        (agents / "skills/toolbox").symlink_to(repo / "skills/toolbox")
         with mock.patch.object(claude, "CLAUDE", claude_ordner), mock.patch.object(claude, "AGENTS", agents), mock.patch.object(claude, "CODEX", codex):
             geteilt = {e["name"]: e.get("geteilt", False) for e in claude.persoenliche_skills({}, {}, {}, {})}
-        self.assertEqual(geteilt, {"grilling": True, "inventur": True, "kopie": False})
+        self.assertEqual(geteilt, {"grilling": True, "inventur": True, "kopie": False, "toolbox": True})
 
     def test_gleichnamige_projektordner_bekommen_eigene_ids(self):
         """Zwei Projekte namens „app“ teilten sich sonst skill:app/x, und eine Aktion träfe das erste. Den ganzen Pfad
