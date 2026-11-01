@@ -31,6 +31,14 @@ python3 build.py                 # Bestand einlesen und Dashboard bauen, ohne Se
 python3 server.py                # liest den Bestand selbst ein und öffnet das Dashboard auf http://127.0.0.1:8765
 ```
 
+### Aus dem Dock starten (macOS)
+
+```bash
+python3 dock-app.py              # baut ~/Applications/3zero Harness-Inventur.app mit dem App-Icon
+```
+
+Die App einmal öffnen und das Icon mit Rechtsklick > Optionen > Im Dock behalten. Sie startet `server.py` ohne Terminal und bleibt offen, solange er läuft; ein Klick aufs Icon holt den Dashboard-Tab nach vorn (Brave, Chrome, Edge; macOS fragt dafür einmal um Erlaubnis) oder öffnet einen neuen, Rechtsklick > Beenden beendet auch den Server. Läuft schon ein Server, etwa aus dem Terminal, öffnet sie nur das Dashboard. `python3` und den PATH merkt sie sich beim Bauen: nach einem Umzug des Projekts oder einem neuen Python-Pfad neu bauen.
+
 ### Jede Woche von selbst
 
 ```bash
@@ -112,6 +120,7 @@ Der Projektordner enthält **nur das Werkzeug**:
   AGENTS.md, CLAUDE.md            Anleitung für Agenten; CLAUDE.md bindet AGENTS.md nur ein
   .claude/rules/                  Regeln je Modul für Agenten
   seitenvergleich.py, render-app-icon.py   Werkzeuge für Umbauten am Template und am Icon
+  dock-app.py                     baut die Dock-App (macOS)
   inventur/                       der Code: Leser, Server, Tabs, dazu Template, Icons und Logo
   tests/                          die Tests (python3 -m unittest)
   skill/                          der Skill /3zero-harness-inventur
@@ -136,6 +145,7 @@ Alles, was den Rechner beschreibt, liegt daneben:
   werkzeuge.json                 Antworten aus dem Netz (Versionen, MCP-Messungen), einmal am Tag
   wochenlauf.json                was der wöchentliche Lauf schon gemeldet hat
   wochenlauf.log                 Ausgabe des wöchentlichen Laufs (macOS)
+  dock-app.log                   Ausgabe des Servers, wenn die Dock-App ihn startet (nur für dich lesbar)
   pruefung-<Projekt>-<Kürzel>.md Bericht zur CLAUDE.md oder AGENTS.md eines Projekts, vom Knopf „prüfen“
 ```
 
@@ -177,6 +187,7 @@ Mods und Projekt-Hooks misst die Inventur nicht: Die Transkripte führen Mods ga
 - **Python 3.11 oder neuer** (`tomllib`), keine fremden Pakete
 - Optional: **`gh`** für die Update-Erkennung, **`npx`** für Skill-Aktionen (lädt `skills` in der festen Version), **`claude`** bzw. **`codex`** für die Hintergrundläufe, Aktionen und Installationen; `claude` außerdem für den Live-Status der MCP-Server (`claude mcp list`) und für Mods (`claude plugin validate`); **`git`** für MCP-Server aus Quellcode, **`brew`** für „wartet auf Homebrew“
 - Nur für `render-app-icon.py`: **Pillow** und `qlmanage` (macOS)
+- Nur für `dock-app.py`: macOS (`osacompile`, `sips`, `iconutil`, `codesign` sind dabei)
 - Nur für `seitenvergleich.py`: ein Chromium-Browser (Brave, Chrome oder Chromium, sonst `BROWSER_BIN=<Pfad>`)
 
 Sonst nichts. Das Projekt liest keine Datei außerhalb von sich selbst, dem Home-Verzeichnis, den Projekten aus `~/.claude.json` bzw. `~/.codex/config.toml`, `CLAUDE.md` in Ordnern über einem Projekt, den Plugin-Ordnern, die Claude Code einträgt, und den verwalteten Einstellungen von Claude Code (`/Library/Application Support/ClaudeCode`, `/etc/claude-code`).
