@@ -83,6 +83,6 @@ Den `<dialog>` dabei nicht durchklicken: Sein `close` kommt in Brave ohne Fenste
 
 Bis Oktober 2026 standen alle drei in einem Tab „Skills, Befehle und Agenten“, weil sie im Inventar eine Liste sind (`skills`, Feld `typ`).
 Befehle behandelt Claude Code wie Skills (Aufruf mit `/`, `skillOverrides`, `skillUsage`), Agenten nicht: Sie laufen als Subagent, lassen sich nur entfernen und zählen ihre Starts nur in 14 Tagen; der Knopf „Agent anlegen“ stand über lauter Skills.
-Jetzt entsteht je Typ ein Tab aus derselben Vorlage (`LISTEN`): gleiche Spalten und Zeilen, aber eigene Filter; „Aufruf“ fehlt bei Agenten (immer „als Subagent“), „beide Harnesses“ gibt es nur bei Skills, „ungenutzt“ nicht bei Agenten.
+Jetzt entsteht je Typ ein Tab aus derselben Vorlage (`LISTEN`): gleiche Spalten und Zeilen, aber eigene Filter; „Aufruf“ fehlt bei Agenten (immer „als Subagent“), „auch in Codex“ gibt es nur bei Skills, „ungenutzt“ nicht bei Agenten.
 Unter Codex fehlt der Tab „Befehle“ samt Link (`nav-befehle`): Codex kennt keine eigenen Befehle, die die Inventur liest.
 Die Tabellen tragen `tbody.eigene-liste`; daran lassen `tabellenFilter()` und `tabellenSortieren()` sie aus.
