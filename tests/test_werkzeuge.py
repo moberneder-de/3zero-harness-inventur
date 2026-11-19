@@ -70,7 +70,7 @@ class Pruefen(unittest.TestCase):
         """Das Netz wird einmal am Tag gefragt; ohne Netz gilt der letzte Stand, und nichts bricht ab."""
         antworten = {"https://endoflife.date/api/v1/products/python/": {"result": {"releases": [
                          {"name": "3.14", "latest": {"name": "3.14.7"}, "eolFrom": "2030-10-31"}]}},
-                     "https://registry.npmjs.org/skills/latest": {"version": "1.8.0"}}
+                     "https://registry.npmjs.org/skills/latest": {"version": "999.0.0"}}  # neuer als jede feste SKILLS_CLI
         abrufe = []
 
         def abrufen(url):
@@ -87,7 +87,7 @@ class Pruefen(unittest.TestCase):
         self.assertEqual((eintraege["python3"]["status"], eintraege["python3"]["befehl"]), ("veraltet", "brew upgrade python3"))
         self.assertIn("Inventur", eintraege["python3"]["gebraucht_von"][0])
         skills = eintraege["skills"]
-        self.assertEqual((skills["installiert"], skills["neueste"], skills["status"]), (harness.SKILLS_CLI.split("@")[1], "1.8.0", "veraltet"))
+        self.assertEqual((skills["installiert"], skills["neueste"], skills["status"]), (harness.SKILLS_CLI.split("@")[1], "999.0.0", "veraltet"))
         self.assertIn("SKILLS_CLI", skills["befehl"])  # nie ein automatisches Update der festen Version
         self.assertEqual(eintraege["claude"]["status"], "fehlt")  # Harness-CLI gehört immer dazu
         self.assertNotIn("codex", eintraege)
