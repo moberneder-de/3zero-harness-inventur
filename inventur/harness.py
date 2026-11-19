@@ -26,7 +26,7 @@ HARNESSE = {
 STANDARD = "claude-code"
 # Feste Version statt der jeweils neuesten auf npm, in jedem Befehl, der skills installiert oder entfernt.
 # Neue Version: prüfen, dann hier eintragen.
-SKILLS_CLI = "skills@1.7.4"
+SKILLS_CLI = "skills@1.8.1"
 
 
 def schreiben(pfad, text):
